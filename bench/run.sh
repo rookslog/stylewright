@@ -26,6 +26,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Resolve and read the system prompt HERE, before anything changes directory.
+# A relative path used to be expanded inside the sample subshell, after the cd,
+# so `cat` failed, the flag received an empty string, and the arm ran with no
+# guidance at all. It then scored like the control, which is the one result an
+# arm can produce that looks like a finding and is not.
+if [ -n "$SYSTEM" ]; then
+  SYSTEM="${SYSTEM:A}"
+  [ -r "$SYSTEM" ] || { print -u2 "cannot read --system file: $SYSTEM"; exit 2 }
+  SYSTEM_TEXT="$(< "$SYSTEM")"
+  # `print -u2 --`, because the message starts with `--system` and print would
+  # otherwise read it as its own flags.
+  [ -n "$SYSTEM_TEXT" ] || { print -u2 -- "--system file is empty: $SYSTEM"; exit 2 }
+fi
+
 # An empty --setting-sources suppresses the operator's own CLAUDE.md as well as
 # settings. That is what makes a true no-guidance control possible without
 # touching a live config. Verified 2026-07-27 by asking a run whether it carried
@@ -41,13 +55,14 @@ for p in "$HERE"/prompts/*.txt; do
   for r in $(seq 1 "$REPS"); do
     f="$HERE/out/$ARM/$scenario-$r.txt"
     [ -s "$f" ] && continue
+    prompt_text="$(< "$p")"
     if [ -n "$SYSTEM" ]; then
       (cd "$WORK" && claude -p --model opus --setting-sources "$SOURCES" \
-        --strict-mcp-config --append-system-prompt "$(cat "$SYSTEM")" \
-        "$(cat "$p")" < /dev/null) > "$f" 2>&1
+        --strict-mcp-config --append-system-prompt "$SYSTEM_TEXT" \
+        "$prompt_text" < /dev/null) > "$f" 2>&1
     else
       (cd "$WORK" && claude -p --model opus --setting-sources "$SOURCES" \
-        --strict-mcp-config "$(cat "$p")" < /dev/null) > "$f" 2>&1
+        --strict-mcp-config "$prompt_text" < /dev/null) > "$f" 2>&1
     fi
     print "$ARM/$scenario-$r $(wc -w < "$f") words"
   done
