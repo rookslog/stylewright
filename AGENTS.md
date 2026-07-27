@@ -99,9 +99,13 @@ Flag a list that fails these. Do not flag a list for existing.
 
 Do not read a green pipeline as coverage of this one.
 
-- **`src/prompt.js` is never imported by a test.** Every test injects a fake
-  through `ctx`, so the sole consumer of `@inquirer/prompts` has no coverage.
-  A dependency bump that changes the prompt API passes CI. See issue #10.
+- **The prompt dialogue is tested through injected fakes, not a terminal.**
+  `test/prompt.test.js` covers the choice builders, the step order, the
+  overwrite warning, and the returned flag shape. It also asserts that
+  `@inquirer/prompts` still exports `checkbox`, `select`, and `confirm`, so a
+  rename or a removal fails CI. It does **not** catch a signature change that
+  keeps those names, because that needs a terminal. Treat a green run as
+  evidence about our logic, not about the library's behaviour.
 
 ## The Node floor is enforced, and how
 

@@ -58,8 +58,9 @@ test('bare install runs the guided dialogue and honours its selection', async ()
       sawCatalog = catalog.map((s) => s.name);
       // Pick ONE skill out of two, to prove the picker drives the install.
       // List-shaped, as parseFlags produces. This stub asserts nothing about
-      // the real promptTargets, which needs a terminal to run at all. PR #22
-      // makes it injectable, and the shape contract belongs in that test.
+      // the real promptTargets. The shape contract between the two lives in
+      // `the command layer installs what the dialogue returns`, in
+      // test/prompt.test.js, which runs both sides for real.
       return { platform: ['claude'], scope: ['user'], skill: ['demo-craft'] };
     },
   });

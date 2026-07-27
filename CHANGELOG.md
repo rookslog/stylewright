@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Tests for the guided install dialogue. `src/prompt.js` had no coverage at all,
+  so a major bump of `@inquirer/prompts` went green without executing a line of
+  the code it changed. The three prompt calls are now injectable, and one test
+  asserts the library still exports them.
 - The `update` command. It was documented in the README and in `--help` from the
   first release, and the dispatcher did not know it. With no flags it reads the
   installer's own manifests and refreshes every skill it finds.

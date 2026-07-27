@@ -38,6 +38,17 @@ export function platformChoices(detected) {
   }));
 }
 
+/**
+ * Build the scope choices. Each option names the directory it resolves to,
+ * because "user" and "project" mean nothing without the path behind them.
+ */
+export function scopeChoices({ home, cwd }) {
+  return [
+    { name: `user  — available everywhere (${home})`, value: 'user' },
+    { name: `project  — this directory only (${cwd})`, value: 'project' },
+  ];
+}
+
 /** Render the confirmation summary. Pure, so that it can be tested. */
 export function summarize({ names, platforms, scope, home, cwd }) {
   const lines = [`${names.length} skill(s): ${names.join(', ')}`, ''];
@@ -47,7 +58,17 @@ export function summarize({ names, platforms, scope, home, cwd }) {
   return lines.join('\n');
 }
 
-export async function promptTargets({ catalog, home, cwd, stdout }) {
+/**
+ * Run the guided install dialogue.
+ *
+ * `ask` holds the three prompt calls, and defaults to the real library. A test
+ * passes fakes, which is what lets the sequencing, the overwrite warning, and
+ * the returned flag shape be checked without a terminal. The library import
+ * stays in this module, which is the single exception to the purity rule.
+ */
+export async function promptTargets({
+  catalog, home, cwd, stdout, ask = { checkbox, select, confirm },
+}) {
   const say = (s) => stdout.write(`${s}\n`);
 
   const detected = await detectPlatforms({ home });
@@ -58,25 +79,22 @@ export async function promptTargets({ catalog, home, cwd, stdout }) {
     : 'No agent directories found in your home directory. Choose targets by hand.');
   say('');
 
-  const skill = await checkbox({
+  const skill = await ask.checkbox({
     message: 'Which skills? Everything is selected. Press space to remove one.',
     choices: skillChoices(catalog),
     required: true,
     pageSize: 15,
   });
 
-  const platforms = await checkbox({
+  const platforms = await ask.checkbox({
     message: 'Install for which platforms?',
     choices: platformChoices(detected),
     required: true,
   });
 
-  const scope = await select({
+  const scope = await ask.select({
     message: 'Install at which scope?',
-    choices: [
-      { name: `user  — available everywhere (${home})`, value: 'user' },
-      { name: `project  — this directory only (${cwd})`, value: 'project' },
-    ],
+    choices: scopeChoices({ home, cwd }),
   });
 
   const already = await installedSkills({ home, cwd, scope });
@@ -91,7 +109,7 @@ export async function promptTargets({ catalog, home, cwd, stdout }) {
   }
   say('');
 
-  const ok = await confirm({ message: 'Install now?', default: true });
+  const ok = await ask.confirm({ message: 'Install now?', default: true });
   if (!ok) return null;
 
   // The same shape `parseFlags` produces for a list flag. Handing back a
