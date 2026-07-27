@@ -21,7 +21,22 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   earlier error named the whole string as one unknown skill and then listed its
   parts as available.
 - `uninstall` removes its own manifest when the last skill goes, and removes the
-  empty `skills` directory. The agent's own directory stays.
+  empty `skills` directory. The agent's own directory stays. It leaves a
+  directory alone when it removed nothing from it.
+- **`install` no longer destroys a file it did not write.** The drift check
+  covered only paths already in the manifest, so a file you created at a path
+  the skill also ships was overwritten with no warning. This affects `install`
+  in 0.1.0, not only the new `update`. Pass `--force` to overwrite deliberately.
+- `install` and `update` remove a file that an earlier version installed and
+  this version no longer ships. It used to stay on disk unowned, where
+  `uninstall` could not reach it and the agent kept loading it.
+- The manifest records the release that last wrote it, rather than the release
+  that created it.
+- `update` rejects a misspelled `--platform` or `--scope` instead of reporting
+  that nothing is installed and exiting zero.
+- `uninstall` accepts a skill name that this repository has withdrawn, as long
+  as a selected manifest records it. `update` tells you to uninstall such a
+  skill, and that advice was impossible to follow.
 
 ### Changed
 

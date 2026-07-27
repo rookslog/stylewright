@@ -3,11 +3,28 @@ import { readManifest } from './manifest.js';
 import { installSkills } from './install.js';
 import { loadCatalog } from './catalog.js';
 
+function validateNames(given, known, label) {
+  const bad = given.filter((v) => !known.includes(v));
+  if (bad.length) {
+    throw new Error(
+      `Unknown ${label}: ${bad.join(', ')}. Known: ${known.join(', ')}`);
+  }
+}
+
 // `update` refreshes what is already installed, so it reads its own work list
 // from the manifests rather than from flags. A user who ran the guided install
 // months ago does not remember which platforms they picked, and should not have
 // to.
 export async function findInstalls({ home, cwd, platforms, scopes }) {
+  // A misspelled filter must fail loudly. Swallowing the error turned
+  // `--platform cluade` into an empty search, and the command then exited zero
+  // claiming nothing was installed.
+  //
+  // Enumerating the defaults is different. `agents` supports user scope only,
+  // so skipping an unsupported pair is correct there and only there.
+  if (platforms) validateNames(platforms, PLATFORMS, 'platform');
+  if (scopes) validateNames(scopes, SCOPES, 'scope');
+
   const found = [];
   const seen = new Set();
   for (const platform of platforms ?? PLATFORMS) {
@@ -16,6 +33,7 @@ export async function findInstalls({ home, cwd, platforms, scopes }) {
       try {
         targetDir = resolveTarget({ platform, scope, home, cwd });
       } catch {
+        // Reached only for a valid platform that does not offer this scope.
         continue;
       }
       if (seen.has(targetDir)) continue;

@@ -4,7 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { installSkills } from '../src/install.js';
-import { readManifest } from '../src/manifest.js';
+import { readManifest, writeManifest, hashFile } from '../src/manifest.js';
+import { VERSION } from '../src/version.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -64,4 +65,88 @@ test('rejects an unknown skill name', async () => {
   await assert.rejects(
     () => installSkills({ repoRoot: REPO, targetDir: target, names: ['nope'], now: NOW }),
     /nope/);
+});
+
+test('refuses to clobber a file it never wrote', async () => {
+  // The drift check only covered paths already in the manifest, so a file the
+  // user created at a path the skill also ships was overwritten with no
+  // warning and no way back. This is data loss on a plain install, and it is
+  // live in 0.1.0. Found while triaging the update review on PR #20.
+  const target = await tmp();
+  const mine = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(mine), { recursive: true });
+  await fs.writeFile(mine, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, []);
+  assert.equal(res.skipped.length, 1);
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
+  assert.match(res.skipped[0].files.join(' '), /SKILL\.md/);
+});
+
+test('force overwrites a file it never wrote', async () => {
+  const target = await tmp();
+  const mine = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(mine), { recursive: true });
+  await fs.writeFile(mine, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(res.installed, ['demo-craft']);
+  assert.notEqual(await fs.readFile(mine, 'utf8'), 'my own notes\n');
+});
+
+test('a file the user added beside the skill is left alone', async () => {
+  // Only a COLLISION matters. A file at a path the skill does not ship is not
+  // in the way, and must not block the install.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const note = path.join(target, 'demo-craft', 'NOTES.md');
+  await fs.writeFile(note, 'mine\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, ['demo-craft']);
+  assert.ok(await exists(note));
+});
+
+test('removes a file the previous version installed and this one does not', async () => {
+  // A retired or renamed path stayed on disk while the manifest entry was
+  // replaced. The file then belonged to nobody, so uninstall could not remove
+  // it and the agent kept loading it.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  // Simulate a path that an older release shipped and this one dropped.
+  const retired = path.join(target, 'demo-craft', 'references', 'gone.md');
+  await fs.mkdir(path.dirname(retired), { recursive: true });
+  await fs.writeFile(retired, 'from an older release\n');
+  const manifest = await readManifest(target);
+  manifest.skills['demo-craft'].files['references/gone.md'] = await hashFile(retired);
+  await writeManifest(target, manifest);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, ['demo-craft']);
+  assert.ok(!(await exists(retired)), 'the retired file must be removed');
+  const after = await readManifest(target);
+  assert.ok(!('references/gone.md' in after.skills['demo-craft'].files));
+});
+
+test('stamps the manifest with the release that wrote it', async () => {
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const stale = await readManifest(target);
+  stale.stylewrightVersion = '0.0.1-old';
+  await writeManifest(target, stale);
+
+  await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.equal((await readManifest(target)).stylewrightVersion, VERSION);
 });

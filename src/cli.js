@@ -6,6 +6,7 @@ import { installSkills } from './install.js';
 import { uninstallSkills } from './uninstall.js';
 import { updateSkills } from './update.js';
 import { doctor } from './doctor.js';
+import { readManifest } from './manifest.js';
 import { lintText } from './lint.js';
 import { checkAll } from './ground.js';
 import { scaffoldSkill } from './scaffold.js';
@@ -16,7 +17,8 @@ const USAGE = `stylewright ${VERSION}
   install    [--tier standards|craft|all] [--skill <name>]...
              [--platform ${PLATFORMS.join(',')}] [--scope user|project] [--force]
   update     [--skill <name>]... [--platform ...] [--scope ...] [--force]
-             With no flags, refreshes every skill this tool installed.
+             With no flags, covers user scope plus THIS directory. Installs in
+             other projects are not discoverable, so run it there too.
   uninstall  --skill <name>... [--platform ...] [--scope ...]
   list
   doctor
@@ -174,13 +176,19 @@ export async function run(argv, ctx) {
   }
 
   if (command === 'update') {
-    const results = await updateSkills({
-      repoRoot, home, cwd, now,
-      platforms: flags.platform ? splitList(flags.platform) : undefined,
-      scopes: flags.scope ? splitList(flags.scope) : undefined,
-      names: flags.skill.length ? flags.skill : undefined,
-      force: Boolean(flags.force),
-    });
+    let results;
+    try {
+      results = await updateSkills({
+        repoRoot, home, cwd, now,
+        platforms: flags.platform ? splitList(flags.platform) : undefined,
+        scopes: flags.scope ? splitList(flags.scope) : undefined,
+        names: flags.skill.length ? flags.skill : undefined,
+        force: Boolean(flags.force),
+      });
+    } catch (err) {
+      say(err.message);
+      return 2;
+    }
     if (!results.length) {
       say('Nothing to update. No installed skills were found.');
       say('Run `stylewright install` first, or pass --platform to look elsewhere.');
@@ -240,16 +248,27 @@ export async function run(argv, ctx) {
       return 2;
     }
 
+    const targetDirs = splitList(flags.platform)
+      .map((platform) => [platform, resolveTarget({ platform, scope, home, cwd })]);
+
     const known = new Set(catalog.map((s) => s.name));
+    // A skill this repository withdrew is still installed on the user's
+    // machine, and `update` tells them to uninstall it. Validating uninstall
+    // against the catalog alone made that advice impossible to follow, so
+    // uninstall also accepts any name a selected manifest records.
+    if (command === 'uninstall') {
+      for (const [, dir] of targetDirs) {
+        for (const n of Object.keys((await readManifest(dir)).skills)) known.add(n);
+      }
+    }
     const unknown = names.filter((n) => !known.has(n));
     if (unknown.length) {
       say(`Unknown skill: ${unknown.join(', ')}.`);
-      say(`Available: ${[...known].join(', ')}.`);
+      say(`Available: ${[...known].sort().join(', ')}.`);
       return 2;
     }
 
-    for (const platform of String(flags.platform).split(',')) {
-      const targetDir = resolveTarget({ platform, scope, home, cwd });
+    for (const [, targetDir] of targetDirs) {
       if (command === 'install') {
         const res = await installSkills({
           repoRoot, targetDir, names, now, force: Boolean(flags.force),

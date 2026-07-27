@@ -74,3 +74,16 @@ test('leaves a directory that holds a file it did not write', async () => {
   assert.ok(!(await exists(path.join(target, MANIFEST_NAME))), 'manifest still goes');
   assert.ok(await exists(target), 'the directory stays because it is not empty');
 });
+
+test('leaves a directory it never installed into', async () => {
+  // The manifest recorded nothing, so there was nothing to remove. Deleting
+  // the directory anyway reaches past what this tool ever wrote.
+  const parent = await tmp();
+  const target = path.join(parent, '.claude', 'skills');
+  await fs.mkdir(target, { recursive: true });
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.deepEqual(res.removed, []);
+  assert.deepEqual(res.missing, ['demo-craft']);
+  assert.ok(await exists(target), 'a directory we never wrote to must survive');
+});

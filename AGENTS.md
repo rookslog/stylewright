@@ -124,8 +124,15 @@ Two consequences for a change you propose here:
 
 - Install works by **copy**, never by symbolic link. A link breaks when the
   clone moves, and it is unsafe across the Cowork host and sandbox boundary.
-- `update` refuses to overwrite a file the user edited, unless `--force` is set.
-- `uninstall` removes only what the manifest records.
+- `install` and `update` refuse to overwrite two kinds of file, unless `--force`
+  is set: one the user edited, and one at a shipping path that the manifest
+  never recorded. The second is the user's file, and the first version of this
+  check missed it entirely.
+- `install` and `update` delete a recorded file that the current version no
+  longer ships. An orphaned file is worse than a stale one, because `uninstall`
+  cannot reach it.
+- `uninstall` removes only what the manifest records, and accepts a withdrawn
+  skill name that a manifest still records.
 - Add a skill with the scaffold, never by hand:
   `node bin/stylewright.mjs new-skill <name> --tier <standards|craft>`.
 - Do not put a `!` pattern inside `any-glob-to-any-file` in

@@ -227,3 +227,67 @@ test('update says so when nothing is installed', async () => {
   assert.equal(code, 0);
   assert.match(out.text(), /[Nn]othing/);
 });
+
+test('update rejects a misspelled platform instead of reporting nothing found', async () => {
+  // A blanket catch turned an invalid filter into an empty search, so a
+  // scripted update exited 0 while doing nothing.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--platform', 'cluade'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /cluade/);
+});
+
+test('update rejects a misspelled scope', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--scope', 'globl'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+});
+
+test('update still skips a platform that does not support the given scope', async () => {
+  // agents supports user scope only. Asking for project scope across every
+  // platform must not fail, because that combination is a normal gap rather
+  // than a typing mistake.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--scope', 'project'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 0, out.text());
+});
+
+test('uninstall accepts a skill this repository no longer ships', async () => {
+  // update tells the user to uninstall an orphan. uninstall validated the name
+  // against the catalog first and refused, so the advice could not be followed.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  // Rename the recorded entry to a skill the catalog does not know.
+  const { readManifest, writeManifest } = await import('../src/manifest.js');
+  const m = await readManifest(target);
+  m.skills.withdrawn = m.skills['demo-craft'];
+  delete m.skills['demo-craft'];
+  await writeManifest(target, m);
+  await fs.rename(path.join(target, 'demo-craft'), path.join(target, 'withdrawn'));
+
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'withdrawn', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /removed withdrawn/);
+});
+
+test('an unknown skill is still rejected on install', async () => {
+  const out = capture();
+  const code = await run(['install', '--skill', 'nonesuch', '--platform', 'claude'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /Unknown skill: nonesuch/);
+});

@@ -152,8 +152,21 @@ The installer records a hash of each file that it writes. `update` compares the
 hash first. When you have edited an installed skill, `update` stops and tells
 you which files changed. Add `--force` to overwrite.
 
+`update` also stops when a file sits at a path it is about to write and the
+manifest never recorded it. That file is yours, and the tool does not know what
+is in it.
+
+A file that an earlier version installed, and that this version no longer
+ships, is removed. Otherwise it stays on disk with no owner, and `uninstall`
+cannot reach it.
+
 Narrow it with `--skill`, `--platform`, or `--scope`. A skill that this
-repository no longer ships is reported and left alone.
+repository no longer ships is reported and left alone. Uninstall it by name
+when you want it gone.
+
+**What no-flag update covers.** User scope, plus this directory. A project
+install in another directory cannot be discovered from here, so run `update`
+in that project too.
 
 ### Uninstall is exact
 
