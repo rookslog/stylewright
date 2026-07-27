@@ -339,7 +339,15 @@ export async function run(argv, ctx) {
         for (const n of res.removed) say(`removed ${n} from ${targetDir}`);
         for (const n of res.missing) say(`not installed: ${n} in ${targetDir}`);
         for (const s of res.skipped) {
-          say(`kept ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to remove it anyway.`);
+          // Advise `--force` only where `--force` is the answer. A blocked
+          // ancestor, or a directory standing where a recorded file was, is
+          // refused whether or not it is passed — so the unconditional advice
+          // sent the user through the same command twice and left them with
+          // nothing to try. Naming the reason without a remedy is the honest
+          // report when there is no remedy to name.
+          const remedy = s.reason === 'locally-modified'
+            ? ' Use --force to remove it anyway.' : '';
+          say(`kept ${s.name}: ${s.reason} (${s.files.join(', ')}).${remedy}`);
         }
         changed += res.removed.length;
         refused += res.skipped.length;

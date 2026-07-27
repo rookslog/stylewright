@@ -155,6 +155,28 @@ test('a recorded path that became a directory does not throw part-way', async ()
   assert.ok(!(await exists(swapped)));
 });
 
+test('--force does not empty a directory standing where a recorded file was', async () => {
+  // `--force` means "remove a file I edited". A directory at a recorded path
+  // holds files the manifest never recorded, and removeAt deletes a directory
+  // recursively, so forcing here deleted the user's work rather than ours. The
+  // CLI's own advice was to pass --force, which made it the likely path.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const recorded = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.rm(recorded);
+  await fs.mkdir(recorded);
+  const mine = path.join(recorded, 'notes.md');
+  await fs.writeFile(mine, 'my own notes\n');
+
+  for (const force of [false, true]) {
+    const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'], force });
+    assert.deepEqual(res.removed, [], `must remove nothing with force=${force}`);
+    assert.equal(res.skipped[0].reason, 'not-ours', `force=${force} is not a remedy here`);
+    assert.deepEqual(res.skipped[0].files, ['SKILL.md']);
+    assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n', `notes survive force=${force}`);
+  }
+});
+
 test('a file you edited is kept, and --force removes it', async () => {
   // "uninstall removes only, and all of, what the installer wrote." A file the
   // user rewrote is not what the installer wrote, and install already refuses

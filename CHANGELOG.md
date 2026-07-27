@@ -82,7 +82,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   recorded path into a delete instruction. A recorded `../../../victim` with a
   matching hash removed that file with no `--force`, and a recorded `..` took
   the whole skills directory. A skill name must likewise be one directory name,
-  because it is joined as one.
+  because it is joined as one. A recorded path must also already be in normal
+  form, because every consumer joins the text as recorded: `a/.` and `a/b/..`
+  resolve to a directory, which is removed whole.
+- **`--force` no longer removes a file the installer never wrote.** It means
+  "remove or overwrite a file I edited". Where a directory of yours stood at a
+  recorded path, `uninstall --force` deleted it and everything in it, and
+  retirement during `install --force` did the same. The rule is now that force
+  may clear what stands in the way of something it must write, and may not
+  clear what merely stands where nothing is going.
+- `uninstall` advises `--force` only where `--force` is the answer. A blocked
+  ancestor, or a directory standing at a recorded path, is refused whether or
+  not you pass it, and the advice sent you through the same command twice.
 - `update` says what it changed before it says what it could not find. Naming
   one installed skill and one uninstalled one rewrote files and then reported
   only the missing one.

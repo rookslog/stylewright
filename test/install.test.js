@@ -267,10 +267,17 @@ test('force replaces a symlink at a recorded path instead of writing through it'
   assert.equal(await fs.readFile(outside, 'utf8'), 'not ours\n', 'and not written through');
 });
 
-test('force clears a DIRECTORY sitting at a retired path', async () => {
+test('a DIRECTORY at a retired path stops nothing, and keeps its contents', async () => {
   // Retirement removed with { force: true } and no recursive flag, so a path
   // that had become a directory threw ERR_FS_EISDIR and took the whole install
   // down. The copy loop had already learned this; the retirement loop had not.
+  //
+  // NARROWED. The first form of this test asserted that --force deleted the
+  // directory, contents and all, and the content it deleted is named "user
+  // content" in the fixture below. That was overspecified: the requirement was
+  // that retirement not throw. --force may destroy what stands in the way of
+  // something it must write, and nothing is written to a retired path, so the
+  // files the manifest never recorded stay. Same rule as uninstall.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
 
@@ -284,8 +291,10 @@ test('force clears a DIRECTORY sitting at a retired path', async () => {
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
   });
-  assert.deepEqual(res.installed, ['demo-craft']);
-  assert.ok(!(await exists(retired)), 'the retired directory must be gone');
+  assert.deepEqual(res.installed, ['demo-craft'], 'the install must complete');
+  assert.equal(
+    await fs.readFile(path.join(retired, 'inside.md'), 'utf8'), 'user content\n',
+    'a file the manifest never recorded must survive the retirement');
 });
 
 test('a user file at a name the skill ships as a DIRECTORY is a collision', async () => {

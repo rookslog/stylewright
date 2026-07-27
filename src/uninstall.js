@@ -4,12 +4,43 @@ import { hashFile, readManifest, writeManifest, MANIFEST_NAME } from './manifest
 import { pruneEmpty, removeAt, destinationState, blockedAncestors } from './tree.js';
 
 /**
- * Recorded paths that no longer hold the file we wrote there.
+ * Recorded paths that hold something other than a file.
+ *
+ * These are separated from the edited ones because **`--force` must not
+ * dispose of them.** `--force` means "remove a file I edited". A directory
+ * standing where a recorded file used to be holds files the manifest never
+ * recorded, and `removeAt` deletes a directory recursively: a recorded
+ * `LICENSE` replaced by `LICENSE/notes.md` lost `notes.md`, which the installer
+ * never wrote and uninstall promises never to touch. The refusal was already
+ * correct without `--force`, and the CLI's own advice was to pass `--force`.
+ */
+async function wrongType(destDir, files) {
+  const bad = [];
+  for (const rel of Object.keys(files)) {
+    const abs = path.join(destDir, rel);
+    const state = await destinationState(abs);
+    if (state === 'absent' || state === 'file') continue;
+    // An EMPTY directory is the exception, and the distinction is the whole
+    // rule: what force must not destroy is content the manifest never
+    // recorded. An empty directory holds none, so removing it destroys
+    // nothing and force may dispose of it below. Anything with contents, and
+    // any symbolic link, stays.
+    if (state === 'directory' && (await fs.readdir(abs)).length === 0) continue;
+    bad.push(rel);
+  }
+  return bad.sort();
+}
+
+/**
+ * Recorded paths holding a file whose content is not the one we wrote.
  *
  * `uninstall` promises to remove only, and all of, what the installer wrote. A
  * file the user has since rewritten is not what the installer wrote, and this
  * is the same rule `install` applies before it overwrites one. Uninstall
  * removed it regardless, so the guarantee held in one direction only.
+ *
+ * This one IS force-able: the user is telling us they know the file is theirs
+ * and want it gone anyway, and one file is what goes.
  */
 async function altered(destDir, files) {
   const bad = [];
@@ -17,6 +48,8 @@ async function altered(destDir, files) {
     const abs = path.join(destDir, rel);
     const state = await destinationState(abs);
     if (state === 'absent') continue; // Already gone. Nothing to refuse.
+    // Not a file, and wrongType let it through, so it is an empty directory:
+    // changed from what we wrote, holding nothing, force-able.
     if (state !== 'file') { bad.push(rel); continue; }
     if (await hashFile(abs) !== expected) bad.push(rel);
   }
@@ -46,13 +79,22 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
     // deletion outside the target tree, and a recorded path that had become a
     // directory threw part-way through the loop, leaving files gone and the
     // manifest still claiming them.
+    // Two refusals with different dispositions. A blocked ancestor and a
+    // recorded path that is no longer a file are refused whether or not you
+    // pass `--force`, because in neither case is a file we wrote the thing that
+    // would be deleted. Only an edited file is force-able, so only that reason
+    // may carry the advice to force. Reporting them under one reason is what
+    // sent the user round the loop twice with nothing left to try.
     const blocked = await blockedAncestors(destDir, rels);
+    const stuck = await wrongType(destDir, entry.files);
     const drifted = force ? [] : await altered(destDir, entry.files);
-    if (blocked.size || drifted.length) {
+    if (blocked.size || stuck.length || drifted.length) {
       skipped.push({
         name,
-        reason: drifted.length ? 'locally-modified' : 'not-ours',
-        files: [...blocked, ...drifted].sort(),
+        reason: (blocked.size || stuck.length) ? 'not-ours' : 'locally-modified',
+        // Deduplicated: the two file checks overlap by design on a path that
+        // is not a file, and a path reported twice reads as two problems.
+        files: [...new Set([...blocked, ...stuck, ...drifted])].sort(),
       });
       continue;
     }

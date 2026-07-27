@@ -476,6 +476,34 @@ test('uninstall that removes nothing does not report success', async () => {
   assert.match(out.text(), /not installed/);
 });
 
+test('uninstall advises --force only where --force is the answer', async () => {
+  // Advice that cannot be taken is worse than none: it sent the user through
+  // the same command a second time with nothing left to try. An edited file is
+  // force-able and says so. A directory holding unrecorded files is refused
+  // whether or not force is passed, and now says only that.
+  const home = await tmp();
+  const opts = { home, cwd: '/c', repoRoot: REPO, now: NOW };
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { ...opts, stdout: capture() });
+  const installed = path.join(home, '.claude', 'skills', 'demo-craft');
+
+  await fs.writeFile(path.join(installed, 'SKILL.md'), 'edited\n');
+  const edited = capture();
+  await run(['uninstall', '--skill', 'demo-craft', '--platform', 'claude'],
+    { ...opts, stdout: edited });
+  assert.match(edited.text(), /locally-modified/);
+  assert.match(edited.text(), /--force/);
+
+  await fs.rm(path.join(installed, 'LICENSE'));
+  await fs.mkdir(path.join(installed, 'LICENSE'));
+  await fs.writeFile(path.join(installed, 'LICENSE', 'notes.md'), 'mine\n');
+  const stuck = capture();
+  await run(['uninstall', '--skill', 'demo-craft', '--platform', 'claude', '--force'],
+    { ...opts, stdout: stuck });
+  assert.match(stuck.text(), /not-ours/);
+  assert.doesNotMatch(stuck.text(), /--force/, stuck.text());
+});
+
 test('install that refused every skill does not report success', async () => {
   // A scripted install that installed nothing was indistinguishable from one
   // that installed everything.

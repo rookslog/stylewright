@@ -88,6 +88,31 @@ test('refuses a recorded path that resolves to the skill directory itself', asyn
   }
 });
 
+test('refuses a recorded path that is not already in normal form', async () => {
+  // Consumers join the RAW key, so a key normalization would change is a key
+  // whose text and whose effect disagree. `a/.` and `a/b/..` resolve to `a`, an
+  // intermediate directory that removeAt deletes recursively. `a//b` and
+  // `a/./b` and `./a` name a file by a path that is not the recorded one.
+  const dir = await tmp();
+  for (const rel of ['a/.', 'a/b/..', 'a//b', 'a/./b', './a']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
+test('an ordinary nested path is still accepted', async () => {
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+    schema: 1,
+    skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { 'references/guide.md': 'a'.repeat(64) } } },
+  }));
+  const mf = await readManifest(dir);
+  assert.ok(mf.skills['demo-craft'].files['references/guide.md']);
+});
+
 test('refuses a manifest whose skill name is not a directory name', async () => {
   // uninstall's name validation was widened to accept any name a manifest
   // records, which is right for a withdrawn skill. The name is then joined as

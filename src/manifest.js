@@ -25,15 +25,27 @@ export function emptyManifest() {
  */
 function contained(rel) {
   if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel)) return false;
+  // **The key must already be in normal form.** Every consumer joins the RAW
+  // key, so a key that normalization would change is a key whose text and whose
+  // effect disagree — and every containment escape found on this pull request
+  // has been an instance of exactly that. `.` and `sub/..` normalize to `.`.
+  // `a/.` and `a/b/..` normalize to `a`, an intermediate DIRECTORY, which
+  // removeAt deletes recursively along with files the manifest never recorded.
+  // `a//b` and `a/./b` name a file by a path that is not the recorded one.
+  //
+  // Four review rounds went into rejecting those one shape at a time, and each
+  // round found another shape. This states the rule instead: the recorded text
+  // is the resolved path, or the manifest is refused.
+  //
+  // It settles the separator question too. Where `path.sep` is `\`, the key
+  // `link/file` is not in normal form, so it is refused rather than read as one
+  // component by a check that splits on `path.sep` and as two by `path.join` —
+  // which would walk a symlinked `link` that no ancestor check had inspected.
   const norm = path.normalize(rel);
+  if (norm !== rel) return false;
+  // Normal form is not by itself containment. `..`, `.` and `a/` are all
+  // already normal, and none of them names a file below this directory.
   if (norm.split(path.sep).includes('..')) return false;
-  // Scanning for `..` is not sufficient, because normalization can consume every
-  // one of them and leave nothing to find. `.` and `sub/..` both normalize to
-  // `.`, and `path.join` then yields the skill directory rather than a file in
-  // it — which `removeAt` deletes whole, taking the files the manifest never
-  // recorded. A trailing separator reaches a directory the same way. The rule
-  // the check is really making is that a recorded path names a file BELOW the
-  // directory, so state that, rather than enumerate the ways to escape it.
   return norm !== '.' && !norm.endsWith(path.sep);
 }
 

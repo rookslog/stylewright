@@ -141,9 +141,18 @@ export async function installSkills({
     //
     // The checks above already proved each retired path is either gone or the
     // unmodified file we wrote, so removing it discards nothing the user made.
-    // Under --force the user asked for the removal whatever it holds.
+    //
+    // Under --force those checks did not run, and --force does not reach this
+    // far. The line it draws: force may destroy what stands in the way of
+    // something it must WRITE, and may not destroy what merely stands where
+    // nothing is going. Nothing is going to a retired path. So a directory the
+    // user built over one keeps its contents, which the manifest never recorded
+    // and this engine never wrote. The same rule uninstall applies, in the
+    // other consumer of removeAt.
     for (const rel of retiredFiles(recorded, rels)) {
       const abs = path.join(destDir, rel);
+      const state = await destinationState(abs);
+      if (state === 'directory' && (await fs.readdir(abs)).length) continue;
       await removeAt(abs);
       await pruneEmpty(path.dirname(abs), destDir);
     }
