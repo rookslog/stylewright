@@ -1,0 +1,4 @@
+interface:
+  display_name: "Simplified Technical English"
+  short_description: "Write clear ASD-STE100 technical content"
+  default_prompt: "Use $simplified-technical-english to revise this technical content for clear international use."

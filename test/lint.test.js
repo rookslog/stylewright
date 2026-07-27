@@ -40,6 +40,19 @@ test('flags a non-imperative ordered-list step', () => {
   assert.deepEqual(lintText('1. Remove the panel.\n'), []);
 });
 
+test('skips blockquotes, which are quoted material and not our prose', () => {
+  assert.deepEqual(lintText('> Do this; then that.\n'), []);
+  assert.deepEqual(lintText(`> ${'word '.repeat(40)}end.\n`), []);
+  // Prose after the quote is still checked.
+  assert.deepEqual(codes(lintText('> quoted text.\nDo this; then that.\n')), ['semicolon']);
+});
+
+test('does not apply the imperative rule to a table-of-contents entry', () => {
+  assert.deepEqual(lintText('9. [Warning and caution](#warning-and-caution)\n'), []);
+  // A real step that happens to start with a link is still checked.
+  assert.deepEqual(codes(lintText('1. Removing the [panel](#p) now.\n')), ['imperative']);
+});
+
 test('reports 1-indexed line numbers', () => {
   const found = lintText('Clean line.\nDo this; then that.\n');
   assert.equal(found[0].line, 2);

@@ -5,6 +5,10 @@ const NON_IMPERATIVE_FIRST = /^(?:the|a|an|this|that|these|those|it|he|she|they|
 
 const PROCEDURAL_HEADING = /procedure|steps|instructions/i;
 const ORDERED_ITEM = /^\s*\d+[.)]\s+(.*)$/;
+// A numbered item whose whole content is one link is navigation, such as a
+// table of contents. It is not an instruction, so the imperative rule is wrong
+// for it. stripNonProse has already blanked the link target by this point.
+const LINK_ONLY_ITEM = /^\s*\[[^\]]*\]\s*$/;
 
 function wordCount(s) {
   return s.trim().split(/\s+/).filter(Boolean).length;
@@ -58,7 +62,7 @@ export function lintText(text, { procedural = false } = {}) {
       }
     }
 
-    if (isStep) {
+    if (isStep && !LINK_ONLY_ITEM.test(ordered[1])) {
       const first = ordered[1].trim().split(/\s+/)[0]?.replace(/[^A-Za-z']/g, '') ?? '';
       if (/ing$/i.test(first) || NON_IMPERATIVE_FIRST.test(first)) {
         findings.push({

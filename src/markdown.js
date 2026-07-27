@@ -10,6 +10,9 @@ export function stripNonProse(text) {
     }
     if (inFence) return blank(line);
     if (/^\s*\|.*\|\s*$/.test(line)) return blank(line);
+    // A blockquote is quoted material, not our prose. Before-and-after guides
+    // quote deliberately bad text, so linting it reports the wrong thing.
+    if (/^\s*>/.test(line)) return blank(line);
     return line
       .replace(/`[^`]*`/g, blank)
       .replace(/\]\([^)]*\)/g, (m) => `]${blank(m.slice(1))}`)
