@@ -1,0 +1,16 @@
+{
+  "name": "stylewright",
+  "version": "0.1.0",
+  "description": "Writing skills for coding agents, distilled from named standards.",
+  "type": "module",
+  "license": "MIT",
+  "bin": { "stylewright": "./bin/stylewright.mjs" },
+  "engines": { "node": ">=20" },
+  "files": ["bin", "src", "skills", "README.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test test/",
+    "lint:docs": "node bin/stylewright.mjs lint README.md docs/",
+    "check:ground": "node bin/stylewright.mjs ground --check --all"
+  },
+  "dependencies": { "@inquirer/prompts": "^7.0.0" }
+}
