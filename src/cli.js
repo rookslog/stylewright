@@ -131,16 +131,37 @@ export async function run(argv, ctx) {
   }
 
   if (command === 'install' || command === 'uninstall') {
-    if (!flags.platform) {
+    const catalog = await loadCatalog(repoRoot);
+
+    // The guided dialogue is the DEFAULT. Any flag that selects targets or
+    // skills opts out of it, so a scripted command stays non-interactive.
+    const flagDriven = Boolean(flags.platform) || Boolean(flags.tier) || flags.skill.length > 0;
+
+    if (!flagDriven) {
       if (!interactive) {
-        say('No --platform given and no interactive terminal. Pass --platform and --scope.');
+        say('stylewright install needs either a terminal or flags.');
+        say('');
+        say('  --platform claude,codex   where to install');
+        say('  --scope user|project      which scope');
+        say('  --tier standards|craft    a whole tier, or');
+        say('  --skill <name>            one skill, repeatable. Run `list` for names.');
         return 2;
       }
-      const { promptTargets } = await import('./prompt.js');
-      Object.assign(flags, await promptTargets());
+      // Injectable so that the guided path is testable without a terminal.
+      const promptTargets = ctx.promptTargets
+        ?? (await import('./prompt.js')).promptTargets;
+      const chosen = await promptTargets({ catalog, home, cwd, stdout });
+      if (!chosen) {
+        say('Cancelled. Nothing was written.');
+        return 0;
+      }
+      Object.assign(flags, chosen);
+    } else if (!flags.platform) {
+      say('Pass --platform when you use --tier or --skill. Omit all flags for the guided install.');
+      return 2;
     }
+
     const scope = flags.scope ?? 'user';
-    const catalog = await loadCatalog(repoRoot);
     let names = flags.skill;
     if (!names.length) {
       const tier = flags.tier ?? 'all';
@@ -148,6 +169,14 @@ export async function run(argv, ctx) {
     }
     if (!names.length) {
       say('No skills selected.');
+      return 2;
+    }
+
+    const known = new Set(catalog.map((s) => s.name));
+    const unknown = names.filter((n) => !known.has(n));
+    if (unknown.length) {
+      say(`Unknown skill: ${unknown.join(', ')}.`);
+      say(`Available: ${[...known].join(', ')}.`);
       return 2;
     }
 

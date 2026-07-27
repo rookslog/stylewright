@@ -43,6 +43,78 @@ test('install refuses to prompt without a TTY', async () => {
   assert.match(out.text(), /--platform/);
 });
 
+test('bare install runs the guided dialogue and honours its selection', async () => {
+  const home = await tmp();
+  const out = capture();
+  let sawCatalog = null;
+  const code = await run(['install'], {
+    home,
+    cwd: '/c',
+    repoRoot: REPO,
+    stdout: out,
+    now: NOW,
+    interactive: true,
+    promptTargets: async ({ catalog }) => {
+      sawCatalog = catalog.map((s) => s.name);
+      // Pick ONE skill out of two, to prove the picker drives the install.
+      return { platform: 'claude', scope: 'user', skill: ['demo-craft'] };
+    },
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(sawCatalog, ['demo-craft', 'demo-standard']);
+  const dir = path.join(home, '.claude', 'skills');
+  await fs.access(path.join(dir, 'demo-craft', 'SKILL.md'));
+  await assert.rejects(() => fs.access(path.join(dir, 'demo-standard')));
+});
+
+test('cancelling the dialogue writes nothing', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['install'], {
+    home,
+    cwd: '/c',
+    repoRoot: REPO,
+    stdout: out,
+    now: NOW,
+    interactive: true,
+    promptTargets: async () => null,
+  });
+  assert.equal(code, 0);
+  assert.match(out.text(), /Cancelled/);
+  await assert.rejects(() => fs.access(path.join(home, '.claude')));
+});
+
+test('any selecting flag opts out of the dialogue', async () => {
+  const home = await tmp();
+  const out = capture();
+  let prompted = false;
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'], {
+    home,
+    cwd: '/c',
+    repoRoot: REPO,
+    stdout: out,
+    now: NOW,
+    interactive: true,
+    promptTargets: async () => {
+      prompted = true;
+      return null;
+    },
+  });
+  assert.equal(code, 0);
+  assert.equal(prompted, false, 'flags must not trigger the dialogue');
+  await fs.access(path.join(home, '.claude', 'skills', 'demo-craft', 'SKILL.md'));
+});
+
+test('reports an unknown skill name instead of throwing', async () => {
+  const out = capture();
+  const code = await run(['install', '--skill', 'nope', '--platform', 'claude'], {
+    home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2);
+  assert.match(out.text(), /Unknown skill: nope/);
+  assert.match(out.text(), /demo-craft/);
+});
+
 test('lint returns 1 and prints the finding', async () => {
   const dir = await tmp();
   const file = path.join(dir, 'bad.md');

@@ -39,18 +39,42 @@ More skills are in progress. See `docs/superpowers/specs/` for the roster.
 
 ### With the installer
 
-Run one command. The installer asks which platforms, which scope, and which
-tier.
+Run one command and answer four questions. You do not need to know the flags,
+the directory layout, or the skill names.
 
 ```
 npx stylewright install
 ```
 
-Drive it with flags instead when you want a repeatable command:
+The dialogue asks:
+
+1. Which skills do you want. Every skill starts selected. Remove the ones you
+   do not want.
+2. Which platforms. The installer looks in your home directory first and
+   pre-selects the agents that it finds.
+3. Which scope, user or project. Each choice shows the directory that it
+   resolves to.
+4. Whether to go ahead. The summary shows every file destination before
+   anything is written.
+
+Answer nothing and press Enter four times to install everything to the agents
+that you already use.
+
+Skills already installed are marked in the list, so a replacement never
+surprises you.
+
+### With flags, for a repeatable command
+
+Any selecting flag turns the dialogue off. Use this in a script or a dotfiles
+repository.
 
 ```
 npx stylewright install --tier standards --platform claude,codex --scope user
+npx stylewright install --skill simplified-technical-english --platform claude
 ```
+
+Repeat `--skill` to select more than one. Run `npx stylewright list` for the
+names.
 
 The installer copies files. It does not create symbolic links. A symbolic link
 breaks when the clone moves.
