@@ -29,6 +29,13 @@ const USAGE = `stylewright ${VERSION}
              [--description "<one sentence>"]
 `;
 
+// Flags that name a set rather than a single value. `--skill a,b` and
+// `--skill a --skill b` mean the same thing, and every consumer reads the same
+// array. Splitting at the point of use instead let each consumer decide, and
+// they decided differently.
+const LIST_FLAGS = new Set(['skill', 'platform', 'scope']);
+const BOOL_FLAGS = new Set(['force', 'check', 'all']);
+
 function splitList(value) {
   return String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 }
@@ -42,22 +49,21 @@ function parseFlags(argv) {
       continue;
     }
     const key = a.slice(2);
-    if (key === 'force' || key === 'check' || key === 'all') {
+    if (BOOL_FLAGS.has(key)) {
       flags[key] = true;
       continue;
     }
     const value = argv[++i];
-    // A flag that takes a value and receives none is a typing mistake, not an
-    // empty selection. `--skill` with nothing after it used to produce an empty
-    // list, which the install path read as "no filter, take the whole tier",
-    // and it silently installed every skill.
-    if (value === undefined || value.startsWith('--')) {
+    // A value flag that receives nothing usable is a typing mistake, not an
+    // empty selection. Both shapes arrive here: no value at all, and a value
+    // that names no entries, such as `--skill ,`. Either one produced an empty
+    // filter, which install reads as "take the whole tier" and uninstall reads
+    // as "every recorded skill". One rule, checked once, before any command
+    // sees the flag.
+    if (value === undefined || value.startsWith('--') || !splitList(value).length) {
       throw new Error(`--${key} needs a value.`);
     }
-    // `--skill a,b` and `--skill a --skill b` mean the same thing. `--platform`
-    // already took a list, and taking a different shape here produced an error
-    // that named the whole string as one unknown skill.
-    if (key === 'skill') flags.skill.push(...splitList(value));
+    if (LIST_FLAGS.has(key)) flags[key] = [...(flags[key] ?? []), ...splitList(value)];
     else flags[key] = value;
   }
   return flags;
@@ -193,8 +199,8 @@ export async function run(argv, ctx) {
     try {
       results = await updateSkills({
         repoRoot, home, cwd, now,
-        platforms: flags.platform ? splitList(flags.platform) : undefined,
-        scopes: flags.scope ? splitList(flags.scope) : undefined,
+        platforms: flags.platform,
+        scopes: flags.scope,
         names: flags.skill.length ? flags.skill : undefined,
         force: Boolean(flags.force),
       });
@@ -250,7 +256,14 @@ export async function run(argv, ctx) {
       return 2;
     }
 
-    const scope = flags.scope ?? 'user';
+    // `update` searches many scopes at once. These two write to one, so a list
+    // here is a request the command cannot carry out, and picking the first
+    // entry would carry out half of it in silence.
+    if (flags.scope?.length > 1) {
+      say(`${command} writes one scope at a time. Run it once per scope.`);
+      return 2;
+    }
+    const scope = flags.scope?.[0] ?? 'user';
     let names = flags.skill;
     if (!names.length) {
       const tier = flags.tier ?? 'all';
@@ -261,7 +274,7 @@ export async function run(argv, ctx) {
       return 2;
     }
 
-    const targetDirs = splitList(flags.platform)
+    const targetDirs = flags.platform
       .map((platform) => [platform, resolveTarget({ platform, scope, home, cwd })]);
 
     const known = new Set(catalog.map((s) => s.name));

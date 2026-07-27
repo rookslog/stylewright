@@ -94,5 +94,8 @@ export async function promptTargets({ catalog, home, cwd, stdout }) {
   const ok = await confirm({ message: 'Install now?', default: true });
   if (!ok) return null;
 
-  return { platform: platforms.join(','), scope, skill };
+  // The same shape `parseFlags` produces for a list flag. Handing back a
+  // comma-joined string made the guided path the one caller whose flags had to
+  // be split a second time, downstream, by whoever remembered.
+  return { platform: platforms, scope: [scope], skill };
 }

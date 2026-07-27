@@ -24,11 +24,17 @@ export async function readManifest(targetDir) {
   }
 }
 
+/**
+ * The stamp names the release that last wrote this file, not the one that
+ * created it. It is applied here rather than by the caller, because a caller
+ * can forget: install stamped the manifest and uninstall did not, so a partial
+ * uninstall left the file claiming a release that had not touched it.
+ */
 export async function writeManifest(targetDir, manifest) {
   await fs.mkdir(targetDir, { recursive: true });
   await fs.writeFile(
     path.join(targetDir, MANIFEST_NAME),
-    `${JSON.stringify(manifest, null, 2)}\n`);
+    `${JSON.stringify({ ...manifest, stylewrightVersion: VERSION }, null, 2)}\n`);
 }
 
 export function recordSkill(manifest, { name, tier, pathway, files, now }) {

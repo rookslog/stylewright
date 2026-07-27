@@ -6,6 +6,7 @@ import path from 'node:path';
 import { installSkills } from '../src/install.js';
 import { uninstallSkills } from '../src/uninstall.js';
 import { readManifest, MANIFEST_NAME } from '../src/manifest.js';
+import { VERSION } from '../src/version.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -86,4 +87,31 @@ test('leaves a directory it never installed into', async () => {
   assert.deepEqual(res.removed, []);
   assert.deepEqual(res.missing, ['demo-craft']);
   assert.ok(await exists(target), 'a directory we never wrote to must survive');
+});
+
+test('an uninstall that removes nothing writes nothing', async () => {
+  // writeManifest creates the directory it writes into. Uninstalling a skill
+  // from a machine that never had one therefore created a skills directory and
+  // an empty manifest: the tool recording its own absence as installed state.
+  const target = path.join(await tmp(), 'skills');
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.deepEqual(res, { removed: [], missing: ['demo-craft'] });
+  assert.ok(!(await exists(target)), 'no directory may be created');
+});
+
+test('a partial uninstall stamps the release that wrote the manifest', async () => {
+  // install stamped it and uninstall did not, so a manifest could name a
+  // release that had not touched it since. The stamp now lives in
+  // writeManifest, where no writer can leave it off.
+  const target = await tmp();
+  await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft', 'demo-standard'], now: NOW,
+  });
+  const stale = await readManifest(target);
+  stale.stylewrightVersion = '0.0.1-old';
+  await fs.writeFile(
+    path.join(target, MANIFEST_NAME), `${JSON.stringify(stale, null, 2)}\n`);
+
+  await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.equal((await readManifest(target)).stylewrightVersion, VERSION);
 });

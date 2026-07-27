@@ -57,7 +57,10 @@ test('bare install runs the guided dialogue and honours its selection', async ()
     promptTargets: async ({ catalog }) => {
       sawCatalog = catalog.map((s) => s.name);
       // Pick ONE skill out of two, to prove the picker drives the install.
-      return { platform: 'claude', scope: 'user', skill: ['demo-craft'] };
+      // List-shaped, as parseFlags produces. This stub asserts nothing about
+      // the real promptTargets, which needs a terminal to run at all. PR #22
+      // makes it injectable, and the shape contract belongs in that test.
+      return { platform: ['claude'], scope: ['user'], skill: ['demo-craft'] };
     },
   });
   assert.equal(code, 0);
@@ -347,4 +350,59 @@ test('update accepts a withdrawn skill name that a manifest records', async () =
   });
   assert.equal(code, 0, out.text());
   assert.match(out.text(), /no longer in this repository: withdrawn/);
+});
+
+test('a list flag whose value names nothing is an error', async () => {
+  // `--skill ,` split to an empty list, which install reads as "take the whole
+  // tier". The missing-value check did not catch it, because a value WAS
+  // present. Round three on the same rule, so the check now lives in
+  // parseFlags and covers every flag that takes a value.
+  for (const argv of [
+    ['install', '--platform', 'claude', '--skill', ','],
+    ['install', '--platform', ' , '],
+    ['uninstall', '--platform', 'claude', '--skill', ','],
+    ['update', '--skill', ','],
+  ]) {
+    const home = await tmp();
+    const out = capture();
+    const code = await run(argv, {
+      home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+    });
+    assert.equal(code, 2, `${argv.join(' ')}: ${out.text()}`);
+    assert.equal(await fs.readdir(home).then((d) => d.length), 0, 'nothing may be written');
+  }
+});
+
+test('update rejects a platform and scope the user named that cannot pair', async () => {
+  // cowork has no project scope. Skipping the pair is right when findInstalls
+  // enumerated it, and wrong when the user typed both sides: the command
+  // reported nothing installed and exited zero on a request it never ran.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--platform', 'cowork', '--scope', 'project'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /cowork/);
+});
+
+test('update still skips an unsupported pair it enumerated itself', async () => {
+  // The other half of the same rule. --platform alone leaves scopes to the
+  // defaults, and agents has no project scope, so the walk must pass over it.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--platform', 'agents'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 0, out.text());
+});
+
+test('install refuses more than one scope rather than writing half the request', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(
+    ['install', '--platform', 'claude', '--skill', 'demo-craft', '--scope', 'user,project'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2, out.text());
+  assert.equal(await fs.readdir(home).then((d) => d.length), 0, 'nothing may be written');
 });

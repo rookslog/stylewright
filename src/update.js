@@ -32,8 +32,13 @@ export async function findInstalls({ home, cwd, platforms, scopes }) {
       let targetDir;
       try {
         targetDir = resolveTarget({ platform, scope, home, cwd });
-      } catch {
-        // Reached only for a valid platform that does not offer this scope.
+      } catch (err) {
+        // Skip only the pairs this loop invented. `agents` supports user scope
+        // only, so walking past it is right when the defaults produced the
+        // pair. When the user named both sides, the pair is theirs and it is
+        // wrong: `--platform cowork --scope project` used to report that
+        // nothing was installed and exit zero.
+        if (platforms && scopes) throw err;
         continue;
       }
       if (seen.has(targetDir)) continue;

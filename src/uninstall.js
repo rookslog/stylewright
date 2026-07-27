@@ -25,13 +25,16 @@ export async function uninstallSkills({ targetDir, names }) {
     removed.push(name);
   }
 
+  // Removing nothing writes nothing. `writeManifest` creates the directory it
+  // writes into, so uninstalling a skill from a machine that never had one
+  // used to leave behind a skills directory and an empty manifest — this tool
+  // reporting its own absence as a state it had installed.
+  if (!removed.length) return { removed, missing };
+
   // The manifest is a file the installer wrote, so a full uninstall must take
   // it too. Leaving it behind with an empty skills map contradicts the promise
   // that uninstall removes only, and all of, what the installer wrote.
-  //
-  // `removed.length` guards it. Without that, uninstalling a skill that was
-  // never here deletes a directory this tool never wrote to.
-  if (removed.length && Object.keys(skills).length === 0) {
+  if (Object.keys(skills).length === 0) {
     await fs.rm(path.join(targetDir, MANIFEST_NAME), { force: true });
     // Only when nothing else is there. A hand-written skill in the same
     // directory keeps it alive, and that is correct.

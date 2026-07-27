@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { installSkills } from '../src/install.js';
-import { readManifest, writeManifest, hashFile } from '../src/manifest.js';
+import { readManifest, writeManifest, hashFile, MANIFEST_NAME } from '../src/manifest.js';
 import { VERSION } from '../src/version.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
@@ -141,9 +141,13 @@ test('removes a file the previous version installed and this one does not', asyn
 test('stamps the manifest with the release that wrote it', async () => {
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  // Written by hand, not through writeManifest: writeManifest is now the thing
+  // that applies the stamp, so it cannot be used to produce a stale one.
   const stale = await readManifest(target);
   stale.stylewrightVersion = '0.0.1-old';
-  await writeManifest(target, stale);
+  await fs.writeFile(
+    path.join(target, MANIFEST_NAME), `${JSON.stringify(stale, null, 2)}\n`);
+  assert.equal((await readManifest(target)).stylewrightVersion, '0.0.1-old');
 
   await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
@@ -220,4 +224,162 @@ test('without force, a directory of user files is refused rather than cleared', 
   });
   assert.deepEqual(res.installed, []);
   assert.equal(await fs.readFile(path.join(inTheWay, 'theirs.md'), 'utf8'), 'mine\n');
+});
+
+test('a symlink at a RECORDED path is refused, like one at an unrecorded path', async () => {
+  // The lstat fix covered untrackedCollisions only. A recorded path skipped
+  // that check by design and went to the hash comparison, which follows the
+  // link and so read a swapped link as merely modified — or, pointing at a
+  // copy of our own file, as unchanged. copyFile then wrote through it, out of
+  // the target tree. Same rule, second call site.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const outside = path.join(await tmp(), 'escaped.md');
+  const recorded = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.copyFile(recorded, outside); // Hashes equal, so only the type gives it away.
+  await fs.rm(recorded);
+  await fs.symlink(outside, recorded);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, []);
+  assert.deepEqual(res.skipped[0].files, ['SKILL.md']);
+  assert.equal(await fs.readFile(outside, 'utf8'), await fs.readFile(outside, 'utf8'));
+  assert.ok((await fs.lstat(recorded)).isSymbolicLink(), 'the link must be left alone');
+});
+
+test('force replaces a symlink at a recorded path instead of writing through it', async () => {
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const outside = path.join(await tmp(), 'escaped.md');
+  await fs.writeFile(outside, 'not ours\n');
+  const recorded = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.rm(recorded);
+  await fs.symlink(outside, recorded);
+
+  await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.ok((await fs.lstat(recorded)).isFile(), 'the link must be replaced by a file');
+  assert.equal(await fs.readFile(outside, 'utf8'), 'not ours\n', 'and not written through');
+});
+
+test('force clears a DIRECTORY sitting at a retired path', async () => {
+  // Retirement removed with { force: true } and no recursive flag, so a path
+  // that had become a directory threw ERR_FS_EISDIR and took the whole install
+  // down. The copy loop had already learned this; the retirement loop had not.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const retired = path.join(target, 'demo-craft', 'references', 'gone.md');
+  await fs.mkdir(retired, { recursive: true });
+  await fs.writeFile(path.join(retired, 'inside.md'), 'user content\n');
+  const m = await readManifest(target);
+  m.skills['demo-craft'].files['references/gone.md'] = 'f'.repeat(64);
+  await writeManifest(target, m);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(res.installed, ['demo-craft']);
+  assert.ok(!(await exists(retired)), 'the retired directory must be gone');
+});
+
+test('a user file at a name the skill ships as a DIRECTORY is a collision', async () => {
+  // lstat on anything below a file component throws ENOTDIR, which reads as
+  // absent, so no check reported it. mkdir then threw EEXIST and took the
+  // install down with a raw filesystem error. The directory components of a
+  // shipped path are part of what the skill claims.
+  const target = await tmp();
+  const mine = path.join(target, 'demo-craft', 'references');
+  await fs.mkdir(path.dirname(mine), { recursive: true });
+  await fs.writeFile(mine, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, []);
+  assert.deepEqual(res.skipped[0].files, ['references']);
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
+});
+
+test('force replaces a file sitting where a shipped directory must go', async () => {
+  const target = await tmp();
+  const mine = path.join(target, 'demo-craft', 'references');
+  await fs.mkdir(path.dirname(mine), { recursive: true });
+  await fs.writeFile(mine, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(res.installed, ['demo-craft']);
+  assert.ok((await fs.lstat(mine)).isDirectory());
+  await fs.access(path.join(mine, 'guide.md'));
+});
+
+test('a file a previous release shipped gives way to a directory of the same name', async () => {
+  // The inverse of the directory-to-file transition, and it failed the same
+  // way: mkdir cannot write over a file. Because the path is recorded, the
+  // install owns it and no --force is needed.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const dir = path.join(target, 'demo-craft', 'references');
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.writeFile(dir, 'from an older release\n');
+  const m = await readManifest(target);
+  delete m.skills['demo-craft'].files['references/guide.md'];
+  m.skills['demo-craft'].files.references = await hashFile(dir);
+  await writeManifest(target, m);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
+  assert.ok((await fs.lstat(dir)).isDirectory(), 'the path must now be a directory');
+  await fs.access(path.join(dir, 'guide.md'));
+});
+
+test('pruning stops at the tree it was given, not at a name that shares its prefix', async () => {
+  // pruneEmpty climbed while the path merely started with the stop directory's
+  // string, so /x/skills-other counted as inside /x/skills.
+  const root = await tmp();
+  const target = path.join(root, 'skills');
+  const sibling = path.join(root, 'skills-other');
+  await fs.mkdir(sibling, { recursive: true });
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const { pruneEmpty } = await import('../src/tree.js');
+  await pruneEmpty(sibling, target);
+  assert.ok(await exists(sibling), 'a sibling directory must survive');
+});
+
+test("a user file at the skill's own directory name is a collision", async () => {
+  // The outermost ancestor, and the one ancestorsOf cannot name: the paths it
+  // walks are relative to this directory. mkdir threw EEXIST here for the same
+  // reason it did one level down.
+  const target = await tmp();
+  const mine = path.join(target, 'demo-craft');
+  await fs.writeFile(mine, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, []);
+  assert.deepEqual(res.skipped[0].files, ['demo-craft']);
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
+});
+
+test("force replaces a file at the skill's own directory name", async () => {
+  const target = await tmp();
+  const mine = path.join(target, 'demo-craft');
+  await fs.writeFile(mine, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(res.installed, ['demo-craft']);
+  assert.ok((await fs.lstat(mine)).isDirectory());
 });

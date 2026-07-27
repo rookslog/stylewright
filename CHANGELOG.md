@@ -31,17 +31,31 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   this version no longer ships. It used to stay on disk unowned, where
   `uninstall` could not reach it and the agent kept loading it.
 - The manifest records the release that last wrote it, rather than the release
-  that created it.
+  that created it. This now holds for `uninstall` as well as `install`.
 - `update` rejects a misspelled `--platform`, `--scope`, or `--skill` instead of
-  reporting that nothing is installed and exiting zero.
-- A flag that takes a value and receives none is an error. `--skill` with
-  nothing after it produced an empty filter, which the install path read as
-  "take the whole tier", so it silently installed every skill.
-- A dangling symbolic link at a path a skill ships is refused. The check
-  followed the link, read the path as free, and then wrote skill content
-  outside the target directory.
-- A release may replace a directory of files with a file of the same name.
-  Retirement now runs before the copy, so that transition completes.
+  reporting that nothing is installed and exiting zero. It also rejects a
+  platform and scope you named together that cannot pair, such as
+  `--platform cowork --scope project`. It still passes over an unsupported
+  pair that it enumerated itself.
+- A flag that takes a value is an error unless the value names something.
+  Neither `--skill` with nothing after it nor `--skill ,` is an empty
+  selection: install read an empty filter as "take the whole tier" and
+  uninstall read it as "every recorded skill".
+- A symbolic link is refused at any path a skill ships, whether or not the
+  manifest records that path. The check followed the link, read the path as
+  free or as merely edited, and then wrote skill content outside the target
+  directory.
+- A release may replace a directory of files with a file of the same name, or
+  a file with a directory of the same name. Neither transition could complete
+  before: `copyFile` cannot write over a directory, and `mkdir` cannot write
+  over a file.
+- A file of yours sitting where a skill ships a directory is reported as a
+  collision. `lstat` below a file component reports the path as absent, so no
+  check saw it and the copy stopped with a raw filesystem error instead.
+- `uninstall` that removes nothing writes nothing. It used to create a skills
+  directory and an empty manifest on a machine that had never installed one.
+- `install` and `uninstall` refuse more than one `--scope` rather than acting
+  on the first and dropping the rest in silence.
 - `uninstall` accepts a skill name that this repository has withdrawn, as long
   as a selected manifest records it. `update` tells you to uninstall such a
   skill, and that advice was impossible to follow.
