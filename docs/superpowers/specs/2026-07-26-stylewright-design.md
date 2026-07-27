@@ -417,10 +417,17 @@ drift.
 1. Verify the two unverified claims in section 5.4. Both concern the plugin
    marketplace pathways, which are not built yet.
 2. Build pathways 2, 3, and 6. Only pathways 1, 4, and 5 work today.
-3. Publish the package to npm. The name is still free, and the registry returned
-   HTTP 404 for it on 2026-07-27. Until then, pathway 5 runs as
-   `npx github:rookslog/stylewright`, which needs no registry account. The
-   README documents that form. Change it to `npx stylewright` after the publish.
+Resolved later on 2026-07-27:
+
+- The repository is public at `github.com/rookslog/stylewright`. Discussions,
+  private vulnerability reporting, and Dependabot security updates are on.
+- `stylewright@0.1.0` is published to npm, so pathway 5 runs as
+  `npx stylewright`. Verified end to end against the registry: the published
+  tarball carries both skills and no grounding matrix.
+- Releases run from a `v*` tag through `.github/workflows/release.yml`. npm
+  authenticates the workflow as a trusted publisher over OIDC, so the repository
+  holds no npm token and each release carries a provenance attestation. The
+  workflow refuses a tag that disagrees with `package.json`.
 
 Resolved on 2026-07-26:
 

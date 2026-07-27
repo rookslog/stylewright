@@ -5,6 +5,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## 0.1.0 — 2026-07-27
+
+First public release.
+
 ### Added
 
 - The `stylewright` engine, with `install`, `update`, `uninstall`, `list`,
@@ -13,6 +17,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   agents on your machine, lets you select skills one by one, and shows every
   destination path before it writes.
 - The `simplified-technical-english` skill, distilled from ASD-STE100 Issue 9.
+- The `plain-language` skill, distilled from the Federal Plain Language
+  Guidelines. It states where the two standards disagree, and why.
 - Grounding matrices, which trace every statement in a skill to a numbered rule.
   A `G` row traces to the source. An `E` row is our own guidance.
 - `stylewright lint`, which checks the part of ASD-STE100 that a program can

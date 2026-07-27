@@ -121,6 +121,24 @@ wrapper over the filesystem, and nothing in `src/` may do these things:
 The command-line layer owns all three. Pass time in as a parameter. This is what
 keeps manifests comparable across install pathways in the conformance suite.
 
+## Cut a release
+
+Only a maintainer does this. Pushing a `v*` tag publishes to npm and opens a
+GitHub Release.
+
+1. Move the `Unreleased` items in `CHANGELOG.md` under a new heading, in the
+   form `## 0.2.0 — 2026-08-01`.
+2. Set the same number in `package.json` and in `src/version.js`.
+3. Run `npm run check`.
+4. Commit, then tag with `git tag v0.2.0` and push both the branch and the tag.
+
+The workflow re-runs every check against the tagged commit, refuses a tag that
+disagrees with `package.json`, publishes over OIDC, and takes the release notes
+from the section that you wrote in step 1.
+
+There is no npm token in this repository. npm trusts the workflow itself, so a
+release needs no secret and carries a provenance attestation.
+
 ## Report a defect in a rule
 
 A wrong rule identifier in a matrix is a real defect. Open an issue with the

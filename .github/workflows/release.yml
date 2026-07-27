@@ -1,0 +1,95 @@
+# Publishes to npm and opens a GitHub Release when you push a `v*` tag.
+#
+# There is no npm token. The `publish` job authenticates to npm over OIDC, as a
+# trusted publisher. Configure the other half of that trust on npmjs.com, under
+# the package settings, and name this file there as `release.yml`.
+#
+# Each job holds the smallest permission set that it needs. Only `publish` can
+# mint an OIDC token, and only `release` can write to the repository.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+jobs:
+  # Never publish an unchecked build. This repeats the CI matrix, because a tag
+  # can point at a commit that CI never saw.
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+  # A tag and a version that disagree would publish the wrong number, and npm
+  # accepts no correction after the fact. Fail before anything is published.
+  guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: check
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p 'require("./package.json").version')"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $pkg"
+            exit 1
+          fi
+          echo "version=$pkg" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: [verify, guard]
+    runs-on: ubuntu-latest
+    permissions:
+      # Mints the OIDC token that npm trades for publish rights.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          # Trusted publishing needs Node 22.14 or later and npm 11.5.1 or
+          # later. Node 24 satisfies both.
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+      - run: npm ci
+      # No NODE_AUTH_TOKEN. npm reads the OIDC token and attaches a provenance
+      # attestation on its own, so `--provenance` is not passed here.
+      - run: npm publish
+
+  release:
+    needs: [publish, guard]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      # Reads the hand written section out of CHANGELOG.md. The script exits
+      # non-zero when that section is absent or empty.
+      - run: node scripts/release-notes.mjs "$VERSION" > release-notes.md
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

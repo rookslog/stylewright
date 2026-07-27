@@ -55,7 +55,7 @@ Run one command and answer four questions. You do not need to know the flags,
 the directory layout, or the skill names.
 
 ```
-npx github:rookslog/stylewright install
+npx stylewright install
 ```
 
 The dialogue asks:
@@ -81,15 +81,15 @@ Any selecting flag turns the dialogue off. Use this in a script or a dotfiles
 repository.
 
 ```
-npx github:rookslog/stylewright install --tier standards --platform claude,codex
-npx github:rookslog/stylewright install --skill simplified-technical-english
+npx stylewright install --tier standards --platform claude,codex --scope user
+npx stylewright install --skill simplified-technical-english --platform claude
 ```
 
-Repeat `--skill` to select more than one. Run `list` for the names.
+Repeat `--skill` to select more than one. Run `npx stylewright list` for the
+names.
 
-The commands above read the package from GitHub, so they need no registry
-account and no clone. `stylewright` is not published to npm yet. When it is, the
-same commands work as `npx stylewright`.
+To run the code on the default branch instead of the last release, use
+`npx github:rookslog/stylewright` in place of `npx stylewright`.
 
 The installer copies files. It does not create symbolic links. A symbolic link
 breaks when the clone moves.
