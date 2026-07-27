@@ -5,6 +5,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Fixed
+
+- The release workflow no longer reports success for a release it did not
+  publish. The first attempt at a tag refuses a version that is already on the
+  registry, and re-running the workflow is how you accept it deliberately. The
+  `v0.1.0` run was green on every job while `npm publish` was skipped, so the
+  trusted-publishing path it exists to exercise had never run. See issue #26.
+
 ### Changed
 
 - Authoring doctrine now permits quoting a source rule beside its identifier. The

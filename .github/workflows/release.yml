@@ -75,8 +75,7 @@ jobs:
 
       # npm refuses to overwrite a published version, so a re-run of this
       # workflow would fail on its second pass. Ask the registry first, and skip
-      # instead. This also lets a tag be cut for a version that was published by
-      # hand.
+      # instead.
       - id: published
         env:
           VERSION: ${{ needs.guard.outputs.version }}
@@ -87,15 +86,55 @@ jobs:
             echo 'exists=false' >> "$GITHUB_OUTPUT"
           fi
 
+      # A skip is right on a re-run and wrong on a first attempt, and until now
+      # the workflow could not tell them apart. The v0.1.0 run was green on
+      # every job and published nothing: the version had been pushed to the
+      # registry by hand beforehand, so this step skipped, and its skip read as
+      # success. The OIDC path it exists to exercise has still never run.
+      #
+      # So the first attempt at a tag REFUSES a version that is already on the
+      # registry. Re-running the workflow is the acknowledgement: attempt two
+      # accepts what attempt one refused. That keeps the escape hatch for a
+      # hand-published version while making its use a deliberate act that
+      # leaves a record, rather than a silent branch nobody reads.
+      - if: steps.published.outputs.exists == 'true' && github.run_attempt == 1
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          echo "::error::stylewright@$VERSION was already on the registry before this workflow ran, so this tag did not publish it. If that is intended, re-run this workflow: the second attempt accepts it."
+          exit 1
+
       # No NODE_AUTH_TOKEN. npm reads the OIDC token and attaches a provenance
       # attestation on its own, so `--provenance` is not passed here.
       - if: steps.published.outputs.exists == 'false'
         run: npm publish
 
-      - if: steps.published.outputs.exists == 'true'
+      # Assert the postcondition, rather than the absence of an error. A job
+      # that reports what did NOT happen is the failure this step prevents.
+      - name: Say what this run actually did
         env:
           VERSION: ${{ needs.guard.outputs.version }}
-        run: echo "::notice::stylewright@$VERSION is already on npm. Nothing was published."
+          DID_PUBLISH: ${{ steps.published.outputs.exists == 'false' }}
+        run: |
+          if ! npm view "stylewright@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::stylewright@$VERSION is not on the registry after the publish job."
+            exit 1
+          fi
+          if [ "$DID_PUBLISH" = 'true' ]; then
+            echo "Published \`stylewright@$VERSION\` from this run." >> "$GITHUB_STEP_SUMMARY"
+            # Trusted publishing attaches provenance. Its absence means npm
+            # accepted the upload by some other route, which is worth saying
+            # out loud and is not worth failing a completed publish over: the
+            # registry read can lag the write.
+            if [ -z "$(npm view "stylewright@$VERSION" dist.attestations 2>/dev/null)" ]; then
+              echo "::warning::Published without a provenance attestation. Trusted publishing may not be in effect."
+              echo "No provenance attestation. Trusted publishing may not be in effect." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Provenance attestation present, so the OIDC trusted-publishing path ran." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "Published nothing. \`stylewright@$VERSION\` was already on the registry, and this re-run accepted that." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   release:
     needs: [publish, guard]
