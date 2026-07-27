@@ -1,0 +1,55 @@
+# Labels a pull request from the paths that it touches.
+#
+# The order does not matter, and a pull request can take several labels. Keep a
+# rule here whenever you add a label that maps to a directory. A label that
+# nobody can reach from a path belongs on the issue forms instead.
+
+engine:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/**'
+          - 'bin/**'
+          # The lint rule below also matches this file. Both labels are correct.
+          - '!src/lint.js'
+
+lint:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/lint.js'
+          - 'src/markdown.js'
+          - 'test/lint.test.js'
+
+grounding:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'grounding/**'
+          - 'src/ground.js'
+          - 'test/ground.test.js'
+
+skill content:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'skills/**'
+
+new skill:
+  - changed-files:
+      # A skill directory that did not exist before. The labeler cannot see
+      # additions specifically, so this stays broad and triage confirms it.
+      - any-glob-to-any-file:
+          - 'skills/*/*/SKILL.md'
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '**/*.md'
+          - 'docs/**'
+          - '!skills/**'
+          - '!grounding/**'
+
+distribution:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - 'package.json'
+          - 'package-lock.json'
+          - 'scripts/**'

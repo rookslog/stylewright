@@ -1,0 +1,24 @@
+# Labels a pull request from the paths that it touches, using .github/labeler.yml.
+#
+# This uses `pull_request_target`, so the job runs with the base repository's
+# configuration rather than the fork's. It never checks out or runs code from
+# the pull request, which is what makes that trigger safe here.
+name: label
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@v6
+        with:
+          # Keep labels that a maintainer added by hand during triage.
+          sync-labels: false
