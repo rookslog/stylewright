@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plain Language"
+  short_description: "Write public content that people can act on"
+  default_prompt: "Use $plain-language to revise this for a general public audience."

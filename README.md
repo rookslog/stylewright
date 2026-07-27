@@ -32,8 +32,20 @@ Install one tier, the other, or both.
 | Skill | Tier | Source | License of the source |
 |---|---|---|---|
 | `simplified-technical-english` | standards | ASD-STE100 Issue 9 (2025) | (c) ASD 2025. All rights reserved. See the skill `SOURCE.md`. |
+| `plain-language` | standards | Federal Plain Language Guidelines | CC0 1.0 Universal. Public domain. |
 
-More skills are in progress. See `docs/superpowers/specs/` for the roster.
+The `craft/` tier is empty today. More skills are in progress. See
+`CONTRIBUTING.md` to add one.
+
+### The standards disagree, and that is the point
+
+`plain-language` tells you to use contractions. `simplified-technical-english`
+tells you not to. Neither is wrong. One writes for a general public reader who
+must act, and the other writes for a technician who follows a procedure.
+
+Pick the standard that matches your reader, and follow one standard in one
+document. The grounding matrix shows you which rule came from where, so you can
+see exactly where two standards part company.
 
 ## Install
 
