@@ -56,3 +56,97 @@ test('recordSkill stores the injected time, not the clock', () => {
   });
   assert.equal(mf.skills.demo.installedAt, '2026-01-01T00:00:00.000Z');
 });
+
+test('refuses a manifest whose recorded path leaves its own directory', async () => {
+  // Retirement turned a recorded path into a delete instruction, executed
+  // verbatim. path.join neutralises a leading separator and does NOT neutralise
+  // `..`, so a matching hash on ../../../victim deleted a file outside the
+  // tree with no --force. A bare `..` took the whole skills directory.
+  const dir = await tmp();
+  for (const rel of ['../../../victim/keep.txt', '..', 'a/../../b']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${rel}`);
+  }
+});
+
+test('refuses a recorded path that resolves to the skill directory itself', async () => {
+  // The `..` scan is not sufficient, because normalization can consume every
+  // `..` and leave nothing to find. `.` and `sub/..` both normalize to `.`, and
+  // path.join then yields the skill directory, which removeAt deletes whole —
+  // including the files the manifest never recorded. `./` and `a/` reach the
+  // same place by a trailing separator rather than by `..`.
+  const dir = await tmp();
+  for (const rel of ['.', 'sub/..', './', 'a/']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
+test('refuses a recorded path that is not already in normal form', async () => {
+  // Consumers join the RAW key, so a key normalization would change is a key
+  // whose text and whose effect disagree. `a/.` and `a/b/..` resolve to `a`, an
+  // intermediate directory that removeAt deletes recursively. `a//b` and
+  // `a/./b` and `./a` name a file by a path that is not the recorded one.
+  const dir = await tmp();
+  for (const rel of ['a/.', 'a/b/..', 'a//b', 'a/./b', './a']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
+test('refuses a component whose Win32 spelling would be trimmed', async () => {
+  // `path.normalize` is not the resolver the filesystem uses. Win32 strips a
+  // trailing space or period from a component, so `.. /victim` is already in
+  // normal form, has no component equal to `..`, and still resolves through the
+  // parent. Ambiguity between our check and the resolver is refused, not read.
+  const dir = await tmp();
+  for (const rel of ['.. /victim', 'a /b', 'a./b', 'refs/guide.md ']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
+test('an ordinary nested path is still accepted', async () => {
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+    schema: 1,
+    skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { 'references/guide.md': 'a'.repeat(64) } } },
+  }));
+  const mf = await readManifest(dir);
+  assert.ok(mf.skills['demo-craft'].files['references/guide.md']);
+});
+
+test('refuses a manifest whose skill name is not a directory name', async () => {
+  // uninstall's name validation was widened to accept any name a manifest
+  // records, which is right for a withdrawn skill. The name is then joined as
+  // a path component, so ../../../victim passed validation BECAUSE it was
+  // recorded, and was then dereferenced.
+  const dir = await tmp();
+  for (const name of ['../../../victim', 'a/b', '..']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1, skills: { [name]: { tier: 'craft', pathway: 'engine', files: {} } },
+    }));
+    await assert.rejects(() => readManifest(dir), /not a directory name/, `must refuse ${name}`);
+  }
+});
+
+test('an absolute recorded path is refused too', async () => {
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+    schema: 1,
+    skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { '/etc/hosts': 'a'.repeat(64) } } },
+  }));
+  await assert.rejects(() => readManifest(dir), /outside/);
+});

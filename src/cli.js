@@ -4,7 +4,9 @@ import { loadCatalog } from './catalog.js';
 import { resolveTarget, PLATFORMS } from './targets.js';
 import { installSkills } from './install.js';
 import { uninstallSkills } from './uninstall.js';
+import { updateSkills } from './update.js';
 import { doctor } from './doctor.js';
+import { readManifest } from './manifest.js';
 import { lintText } from './lint.js';
 import { checkAll } from './ground.js';
 import { scaffoldSkill } from './scaffold.js';
@@ -14,6 +16,9 @@ const USAGE = `stylewright ${VERSION}
 
   install    [--tier standards|craft|all] [--skill <name>]...
              [--platform ${PLATFORMS.join(',')}] [--scope user|project] [--force]
+  update     [--skill <name>]... [--platform ...] [--scope ...] [--force]
+             With no flags, covers user scope plus THIS directory. Installs in
+             other projects are not discoverable, so run it there too.
   uninstall  --skill <name>... [--platform ...] [--scope ...]
   list
   doctor
@@ -24,6 +29,17 @@ const USAGE = `stylewright ${VERSION}
              [--description "<one sentence>"]
 `;
 
+// Flags that name a set rather than a single value. `--skill a,b` and
+// `--skill a --skill b` mean the same thing, and every consumer reads the same
+// array. Splitting at the point of use instead let each consumer decide, and
+// they decided differently.
+const LIST_FLAGS = new Set(['skill', 'platform', 'scope']);
+const BOOL_FLAGS = new Set(['force', 'check', 'all']);
+
+function splitList(value) {
+  return String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 function parseFlags(argv) {
   const flags = { _: [], skill: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -33,12 +49,21 @@ function parseFlags(argv) {
       continue;
     }
     const key = a.slice(2);
-    if (key === 'force' || key === 'check' || key === 'all') {
+    if (BOOL_FLAGS.has(key)) {
       flags[key] = true;
       continue;
     }
     const value = argv[++i];
-    if (key === 'skill') flags.skill.push(value);
+    // A value flag that receives nothing usable is a typing mistake, not an
+    // empty selection. Both shapes arrive here: no value at all, and a value
+    // that names no entries, such as `--skill ,`. Either one produced an empty
+    // filter, which install reads as "take the whole tier" and uninstall reads
+    // as "every recorded skill". One rule, checked once, before any command
+    // sees the flag.
+    if (value === undefined || value.startsWith('--') || !splitList(value).length) {
+      throw new Error(`--${key} needs a value.`);
+    }
+    if (LIST_FLAGS.has(key)) flags[key] = [...(flags[key] ?? []), ...splitList(value)];
     else flags[key] = value;
   }
   return flags;
@@ -62,8 +87,14 @@ async function collectFiles(targets) {
 export async function run(argv, ctx) {
   const { home, cwd, repoRoot, stdout, now, interactive = false } = ctx;
   const [command, ...rest] = argv;
-  const flags = parseFlags(rest);
   const say = (s) => stdout.write(`${s}\n`);
+  let flags;
+  try {
+    flags = parseFlags(rest);
+  } catch (err) {
+    say(err.message);
+    return 2;
+  }
 
   if (!command || command === 'help' || command === '--help') {
     say(USAGE);
@@ -119,6 +150,16 @@ export async function run(argv, ctx) {
       say('ground needs --all or --skill <name>.');
       return 2;
     }
+    // The same rule as `update`'s unmatched names, and this is the instance
+    // that matters most: `ground --check` is a CI gate, and a name it does not
+    // know contributed no findings and reported "Grounding clean." A gate that
+    // fails open on a typo or a renamed skill is worse than no gate.
+    const unknown = names.filter((n) => !(n in all));
+    if (unknown.length) {
+      say(`Unknown skill: ${unknown.join(', ')}.`);
+      say(`Available: ${Object.keys(all).sort().join(', ')}.`);
+      return 2;
+    }
     let failed = 0;
     for (const name of names) {
       for (const f of all[name] ?? []) {
@@ -163,6 +204,54 @@ export async function run(argv, ctx) {
     }
   }
 
+  if (command === 'update') {
+    let update;
+    try {
+      update = await updateSkills({
+        repoRoot, home, cwd, now,
+        platforms: flags.platform,
+        scopes: flags.scope,
+        names: flags.skill.length ? flags.skill : undefined,
+        force: Boolean(flags.force),
+      });
+    } catch (err) {
+      say(err.message);
+      return 2;
+    }
+    if (!update.results.length && !update.unmatched.length) {
+      say('Nothing to update. No installed skills were found.');
+      say('Run `stylewright install` first, or pass --platform to look elsewhere.');
+      return 0;
+    }
+    // Report what happened BEFORE reporting what was not found. Returning early
+    // on `unmatched` skipped this loop, so naming one installed skill and one
+    // uninstalled one rewrote files and then said only that the second was
+    // missing. The exit code covered three outcomes and distinguished none.
+    for (const r of update.results) {
+      for (const n of r.installed) say(`updated ${n} -> ${r.targetDir}`);
+      for (const s of r.skipped) {
+        say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
+      }
+      for (const n of r.orphaned) {
+        say(`no longer in this repository: ${n} in ${r.targetDir}. Uninstall it or keep it as it is.`);
+      }
+    }
+    if (update.unmatched.length) {
+      say(`Not installed anywhere this command looked: ${update.unmatched.join(', ')}.`);
+      say('Run `stylewright install` to add it, or `doctor` to see what is where.');
+      return 2;
+    }
+    // The same rule install and uninstall already carry: an operation that
+    // changed nothing must not report success. `update` was the third consumer
+    // and did not have it, so a scripted update that refused every skill for a
+    // local edit exited zero and said the refresh had happened.
+    if (!update.results.some((r) => r.installed.length)) {
+      say('Nothing was updated.');
+      return 1;
+    }
+    return 0;
+  }
+
   if (command === 'install' || command === 'uninstall') {
     const catalog = await loadCatalog(repoRoot);
 
@@ -194,7 +283,17 @@ export async function run(argv, ctx) {
       return 2;
     }
 
-    const scope = flags.scope ?? 'user';
+    // `update` searches many scopes at once. These two write to one, so a list
+    // here is a request the command cannot carry out, and picking the first
+    // entry would carry out half of it in silence.
+    // Distinct scopes, not occurrences. `--scope user --scope user` names one
+    // scope twice and was rejected as if it named two.
+    const scopes = [...new Set(flags.scope ?? [])];
+    if (scopes.length > 1) {
+      say(`${command} writes one scope at a time. Run it once per scope.`);
+      return 2;
+    }
+    const scope = scopes[0] ?? 'user';
     let names = flags.skill;
     if (!names.length) {
       const tier = flags.tier ?? 'all';
@@ -205,16 +304,34 @@ export async function run(argv, ctx) {
       return 2;
     }
 
+    const targetDirs = flags.platform
+      .map((platform) => [platform, resolveTarget({ platform, scope, home, cwd })]);
+
     const known = new Set(catalog.map((s) => s.name));
+    // A skill this repository withdrew is still installed on the user's
+    // machine, and `update` tells them to uninstall it. Validating uninstall
+    // against the catalog alone made that advice impossible to follow, so
+    // uninstall also accepts any name a selected manifest records.
+    if (command === 'uninstall') {
+      for (const [, dir] of targetDirs) {
+        for (const n of Object.keys((await readManifest(dir)).skills)) known.add(n);
+      }
+    }
     const unknown = names.filter((n) => !known.has(n));
     if (unknown.length) {
       say(`Unknown skill: ${unknown.join(', ')}.`);
-      say(`Available: ${[...known].join(', ')}.`);
+      say(`Available: ${[...known].sort().join(', ')}.`);
       return 2;
     }
 
-    for (const platform of String(flags.platform).split(',')) {
-      const targetDir = resolveTarget({ platform, scope, home, cwd });
+    // One rule, stated once over both commands: an operation that changed
+    // nothing must not report success. `uninstall` exited zero after removing
+    // nothing, while `update` exited 2 for the same skill on the same machine,
+    // and an `install` that refused every skill was indistinguishable from one
+    // that wrote them all.
+    let changed = 0;
+    let refused = 0;
+    for (const [, targetDir] of targetDirs) {
       if (command === 'install') {
         const res = await installSkills({
           repoRoot, targetDir, names, now, force: Boolean(flags.force),
@@ -223,11 +340,32 @@ export async function run(argv, ctx) {
         for (const s of res.skipped) {
           say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
         }
+        changed += res.installed.length;
+        refused += res.skipped.length;
       } else {
-        const res = await uninstallSkills({ targetDir, names });
+        const res = await uninstallSkills({ targetDir, names, force: Boolean(flags.force) });
         for (const n of res.removed) say(`removed ${n} from ${targetDir}`);
         for (const n of res.missing) say(`not installed: ${n} in ${targetDir}`);
+        for (const s of res.skipped) {
+          // Advise `--force` only where `--force` is the answer. A blocked
+          // ancestor, or a directory standing where a recorded file was, is
+          // refused whether or not it is passed — so the unconditional advice
+          // sent the user through the same command twice and left them with
+          // nothing to try. Naming the reason without a remedy is the honest
+          // report when there is no remedy to name.
+          const remedy = s.reason === 'locally-modified'
+            ? ' Use --force to remove it anyway.' : '';
+          say(`kept ${s.name}: ${s.reason} (${s.files.join(', ')}).${remedy}`);
+        }
+        changed += res.removed.length;
+        refused += res.skipped.length;
       }
+    }
+    if (!changed) {
+      say(refused
+        ? `Nothing was ${command === 'install' ? 'installed' : 'removed'}.`
+        : `Nothing to ${command === 'install' ? 'install' : 'remove'}.`);
+      return 1;
     }
     return 0;
   }
