@@ -4,6 +4,7 @@ import { loadCatalog } from './catalog.js';
 import { resolveTarget, PLATFORMS } from './targets.js';
 import { installSkills } from './install.js';
 import { uninstallSkills } from './uninstall.js';
+import { updateSkills } from './update.js';
 import { doctor } from './doctor.js';
 import { lintText } from './lint.js';
 import { checkAll } from './ground.js';
@@ -14,6 +15,8 @@ const USAGE = `stylewright ${VERSION}
 
   install    [--tier standards|craft|all] [--skill <name>]...
              [--platform ${PLATFORMS.join(',')}] [--scope user|project] [--force]
+  update     [--skill <name>]... [--platform ...] [--scope ...] [--force]
+             With no flags, refreshes every skill this tool installed.
   uninstall  --skill <name>... [--platform ...] [--scope ...]
   list
   doctor
@@ -23,6 +26,10 @@ const USAGE = `stylewright ${VERSION}
              [--source "<name>"] [--url <url>] [--license "<license>"]
              [--description "<one sentence>"]
 `;
+
+function splitList(value) {
+  return String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}
 
 function parseFlags(argv) {
   const flags = { _: [], skill: [] };
@@ -38,7 +45,10 @@ function parseFlags(argv) {
       continue;
     }
     const value = argv[++i];
-    if (key === 'skill') flags.skill.push(value);
+    // `--skill a,b` and `--skill a --skill b` mean the same thing. `--platform`
+    // already took a list, and taking a different shape here produced an error
+    // that named the whole string as one unknown skill.
+    if (key === 'skill') flags.skill.push(...splitList(value));
     else flags[key] = value;
   }
   return flags;
@@ -161,6 +171,31 @@ export async function run(argv, ctx) {
       say(err.message);
       return 2;
     }
+  }
+
+  if (command === 'update') {
+    const results = await updateSkills({
+      repoRoot, home, cwd, now,
+      platforms: flags.platform ? splitList(flags.platform) : undefined,
+      scopes: flags.scope ? splitList(flags.scope) : undefined,
+      names: flags.skill.length ? flags.skill : undefined,
+      force: Boolean(flags.force),
+    });
+    if (!results.length) {
+      say('Nothing to update. No installed skills were found.');
+      say('Run `stylewright install` first, or pass --platform to look elsewhere.');
+      return 0;
+    }
+    for (const r of results) {
+      for (const n of r.installed) say(`updated ${n} -> ${r.targetDir}`);
+      for (const s of r.skipped) {
+        say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
+      }
+      for (const n of r.orphaned) {
+        say(`no longer in this repository: ${n} in ${r.targetDir}. Uninstall it or keep it as it is.`);
+      }
+    }
+    return 0;
   }
 
   if (command === 'install' || command === 'uninstall') {

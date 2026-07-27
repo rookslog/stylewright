@@ -1,16 +1,22 @@
-import { PLATFORMS, resolveTarget, describeTarget } from './targets.js';
+import { PLATFORMS, SCOPES, resolveTarget, describeTarget } from './targets.js';
 import { readManifest } from './manifest.js';
 
-const SCOPES = ['user', 'project'];
-
-// Several platform and scope pairs can resolve to ONE directory. `cowork/user`
-// is always the same path as `claude/user`, and `user` equals `project` when
-// the process runs in the home directory. Duplicate detection therefore counts
-// distinct PATHS, never labels. Counting labels reports a duplicate for every
-// ordinary Claude install.
-function uniqueTargets({ home, cwd }) {
-  const byPath = new Map();
+// A duplicate is a problem only when ONE agent would load two copies of the
+// same skill name at once. Grouping by directory instead of by agent reports
+// the README's own `--platform claude,codex` example as a fault, because that
+// writes two directories on purpose and each agent reads one of them.
+//
+// Within one agent the scopes still collide. Claude reads user scope and
+// project scope together, so a skill present in both is a real conflict.
+//
+// Distinct paths still matter inside a group. `cowork/user` resolves to the
+// same path as `claude/user`, and `user` equals `project` when the process runs
+// in the home directory. Counting labels rather than paths would report a
+// duplicate for every ordinary install.
+function targetsByAgent({ home, cwd }) {
+  const byAgent = new Map();
   for (const platform of PLATFORMS) {
+    const byPath = new Map();
     for (const scope of SCOPES) {
       let dir;
       try {
@@ -21,31 +27,32 @@ function uniqueTargets({ home, cwd }) {
       if (!byPath.has(dir)) byPath.set(dir, []);
       byPath.get(dir).push(describeTarget({ platform, scope }));
     }
+    byAgent.set(platform, byPath);
   }
-  return byPath;
+  return byAgent;
 }
 
 export async function doctor({ home, cwd }) {
-  const seen = new Map();
-
-  for (const [dir, labels] of uniqueTargets({ home, cwd })) {
-    const manifest = await readManifest(dir);
-    for (const name of Object.keys(manifest.skills)) {
-      if (!seen.has(name)) seen.set(name, new Map());
-      seen.get(name).set(dir, labels);
-    }
-  }
-
   const findings = [];
-  for (const [name, places] of seen) {
-    if (places.size > 1) {
+
+  for (const [platform, byPath] of targetsByAgent({ home, cwd })) {
+    const seen = new Map();
+    for (const [dir, labels] of byPath) {
+      const manifest = await readManifest(dir);
+      for (const name of Object.keys(manifest.skills)) {
+        if (!seen.has(name)) seen.set(name, new Map());
+        seen.get(name).set(dir, labels);
+      }
+    }
+    for (const [name, places] of seen) {
+      if (places.size < 2) continue;
       const where = [...places.entries()]
         .map(([dir, labels]) => `${dir} (${labels.join(', ')})`)
         .sort();
       findings.push({
         level: 'error',
         code: 'duplicate-install',
-        message: `Skill "${name}" is installed in ${places.size} directories: ${where.join('; ')}. Two copies declare the same skill name.`,
+        message: `Skill "${name}" is installed in ${places.size} directories that ${platform} reads at once: ${where.join('; ')}. Remove one copy.`,
       });
     }
   }

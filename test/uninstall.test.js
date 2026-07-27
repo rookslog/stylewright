@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { installSkills } from '../src/install.js';
 import { uninstallSkills } from '../src/uninstall.js';
-import { readManifest } from '../src/manifest.js';
+import { readManifest, MANIFEST_NAME } from '../src/manifest.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -37,4 +37,40 @@ test('removes the skill directory when it becomes empty', async () => {
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
   await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
   assert.ok(!(await exists(path.join(target, 'demo-craft'))));
+});
+
+test('removes its own manifest once the last skill is gone', async () => {
+  // README promises uninstall removes only the files the installer wrote. The
+  // manifest is a file the installer wrote. Leaving it behind with an empty
+  // skills map contradicts that. See issue #16.
+  const parent = await tmp();
+  const target = path.join(parent, '.claude', 'skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.ok(!(await exists(path.join(target, MANIFEST_NAME))), 'manifest must be gone');
+  assert.ok(!(await exists(target)), 'the empty skills directory must be gone');
+});
+
+test('keeps the manifest while another skill remains', async () => {
+  const target = await tmp();
+  await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft', 'demo-standard'], now: NOW,
+  });
+  await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.ok(await exists(path.join(target, MANIFEST_NAME)));
+  assert.deepEqual(Object.keys((await readManifest(target)).skills), ['demo-standard']);
+});
+
+test('leaves a directory that holds a file it did not write', async () => {
+  const parent = await tmp();
+  const target = path.join(parent, '.claude', 'skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const foreign = path.join(target, 'hand-written', 'SKILL.md');
+  await fs.mkdir(path.dirname(foreign), { recursive: true });
+  await fs.writeFile(foreign, 'not ours\n');
+
+  await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.ok(await exists(foreign), 'must not delete a skill it did not install');
+  assert.ok(!(await exists(path.join(target, MANIFEST_NAME))), 'manifest still goes');
+  assert.ok(await exists(target), 'the directory stays because it is not empty');
 });

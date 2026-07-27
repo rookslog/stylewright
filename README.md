@@ -145,14 +145,23 @@ Cowork reads the Claude directory. The two names resolve to one path.
 
 ### Update is safe
 
+Run `update` with no flags. It reads the manifests that the installer wrote, so
+it already knows which agents and scopes hold your skills.
+
 The installer records a hash of each file that it writes. `update` compares the
 hash first. When you have edited an installed skill, `update` stops and tells
 you which files changed. Add `--force` to overwrite.
+
+Narrow it with `--skill`, `--platform`, or `--scope`. A skill that this
+repository no longer ships is reported and left alone.
 
 ### Uninstall is exact
 
 `uninstall` removes the recorded files and nothing else. A note that you added
 to a skill directory stays.
+
+When the last skill goes, the manifest goes with it, and the empty `skills`
+directory goes too. The agent's own directory stays, because the agent owns it.
 
 ## The lint
 

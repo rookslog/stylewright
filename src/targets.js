@@ -8,6 +8,7 @@ const LAYOUT = {
 };
 
 export const PLATFORMS = Object.keys(LAYOUT);
+export const SCOPES = ['user', 'project'];
 
 export function resolveTarget({ platform, scope, home, cwd }) {
   const entry = LAYOUT[platform];

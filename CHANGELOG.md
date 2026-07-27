@@ -5,6 +5,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- The `update` command. It was documented in the README and in `--help` from the
+  first release, and the dispatcher did not know it. With no flags it reads the
+  installer's own manifests and refreshes every skill it finds.
+
+### Fixed
+
+- `doctor` no longer reports a duplicate for the README's own install example.
+  It groups by agent rather than by directory, because `--platform claude,codex`
+  writes two directories on purpose and each agent reads one of them. Two copies
+  that a single agent would load at once are still an error.
+- `--skill` accepts a comma-separated list, as `--platform` always did. The
+  earlier error named the whole string as one unknown skill and then listed its
+  parts as available.
+- `uninstall` removes its own manifest when the last skill goes, and removes the
+  empty `skills` directory. The agent's own directory stays.
+
 ### Changed
 
 - Authoring doctrine now permits quoting a source rule beside its identifier. The

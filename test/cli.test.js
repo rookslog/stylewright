@@ -143,3 +143,87 @@ test('unknown command returns 2', async () => {
   });
   assert.equal(code, 2);
 });
+
+test('--skill accepts a comma-separated list, as --platform does', async () => {
+  // The two flags took different shapes, and the error named the whole string
+  // as one unknown skill while listing its parts as available. See issue #15.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(
+    ['install', '--skill', 'demo-standard,demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  await fs.access(path.join(home, '.claude', 'skills', 'demo-standard', 'SKILL.md'));
+  await fs.access(path.join(home, '.claude', 'skills', 'demo-craft', 'SKILL.md'));
+});
+
+test('--skill still accepts the repeated form', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(
+    ['install', '--skill', 'demo-standard', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  await fs.access(path.join(home, '.claude', 'skills', 'demo-craft', 'SKILL.md'));
+});
+
+test('an unknown skill is still rejected, and is named accurately', async () => {
+  const out = capture();
+  const code = await run(
+    ['install', '--skill', 'demo-craft,nonesuch', '--platform', 'claude'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /Unknown skill: nonesuch\./);
+});
+
+test('update refreshes an installed skill', async () => {
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const skillFile = path.join(target, 'demo-craft', 'SKILL.md');
+  const original = await fs.readFile(skillFile, 'utf8');
+  await fs.writeFile(skillFile, 'stale\n');
+
+  const out = capture();
+  const code = await run(['update', '--force'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 0, out.text());
+  assert.equal(await fs.readFile(skillFile, 'utf8'), original);
+});
+
+test('update needs no flags, and finds its targets from the manifests', async () => {
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude,codex'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /\.claude/);
+  assert.match(out.text(), /\.codex/);
+});
+
+test('update refuses to overwrite an edited file without --force', async () => {
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const skillFile = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.writeFile(skillFile, 'my edit\n');
+
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.equal(await fs.readFile(skillFile, 'utf8'), 'my edit\n');
+  assert.match(out.text(), /--force/);
+});
+
+test('update says so when nothing is installed', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0);
+  assert.match(out.text(), /[Nn]othing/);
+});

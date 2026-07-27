@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { readManifest, writeManifest } from './manifest.js';
+import { readManifest, writeManifest, MANIFEST_NAME } from './manifest.js';
 
 async function pruneEmpty(dir, stopAt) {
   let current = dir;
@@ -39,6 +39,16 @@ export async function uninstallSkills({ targetDir, names }) {
     removed.push(name);
   }
 
-  await writeManifest(targetDir, { ...manifest, skills });
+  // The manifest is a file the installer wrote, so a full uninstall must take
+  // it too. Leaving it behind with an empty skills map contradicts the promise
+  // that uninstall removes only, and all of, what the installer wrote.
+  if (Object.keys(skills).length === 0) {
+    await fs.rm(path.join(targetDir, MANIFEST_NAME), { force: true });
+    // Only when nothing else is there. A hand-written skill in the same
+    // directory keeps it alive, and that is correct.
+    await fs.rmdir(targetDir).catch(() => {});
+  } else {
+    await writeManifest(targetDir, { ...manifest, skills });
+  }
   return { removed, missing };
 }
