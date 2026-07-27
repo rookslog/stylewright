@@ -12,7 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: ['20', '22', '24']
+        # Test the versions we ADVERTISE, not the newest of each major.
+        # `engines` says >=20.11.0, so 20.11.0 and 22.0.0 are both versions a
+        # user may legitimately run. Writing '20' here resolves to the newest
+        # Node 20, which hides any dependency that needs more than our floor.
+        node: ['20.11.0', '22.0.0', '24']
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
