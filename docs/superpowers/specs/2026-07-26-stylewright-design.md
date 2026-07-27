@@ -252,6 +252,11 @@ stylewright/
   plugins/
     standards/.codex-plugin/plugin.json
     craft/.codex-plugin/plugin.json
+    # UNRESOLVED: the Codex marketplace file. §5.2 records it as reported at
+    # `.agents/plugins/marketplace.json`, from a sample spec that contradicts
+    # itself elsewhere. It is not placed here, because an unverified path in an
+    # approved tree is worse than a gap someone has to close. Pathway 3 is
+    # blocked on verifying it — see issue #3.
   bin/stylewright.mjs
   src/
   test/
@@ -322,10 +327,11 @@ plugins under one marketplace name, list them all in a single
   directory holding `.claude-plugin/`, not against `.claude-plugin/` itself.
   `metadata.pluginRoot` sets a prefix so entries can name a bare directory.
 - The Codex marketplace manifest is reported to live at
-  `.agents/plugins/marketplace.json`, not under `.codex-plugin/`. Section 4
-  shows no Codex marketplace file at all. **Reported, not verified** — the
-  source is a sample spec in the `openai/codex` repository, which also
-  contradicts itself on whether `hooks` is a supported field.
+  `.agents/plugins/marketplace.json`, not under `.codex-plugin/`. **Reported,
+  not verified** — the source is a sample spec in the `openai/codex`
+  repository, which also contradicts itself on whether `hooks` is a supported
+  field. Section 4 now marks the file unresolved rather than placing it, so
+  pathway 3 cannot be built from an unverified path.
 
 A per-plugin `.claude-plugin/plugin.json` is optional, and where present only
 `name` is required.
@@ -359,7 +365,10 @@ The manifest makes three operations possible:
 
 - `update` compares the hash and detects a local edit before it overwrites.
 - `uninstall` removes what the engine wrote, and nothing else.
-- `doctor` detects a double install.
+- `doctor` detects a double install **that the engine itself wrote**, which is
+  the only kind it can see. Narrowed 2026-07-27 by the amendment below. The
+  earlier wording promised the plugin-plus-engine case. That case is both
+  invisible to the manifest and not a conflict.
 
 **Double install.** A user can install the same skill through a plugin and through
 the engine. Both copies declare the same `name` in frontmatter.
