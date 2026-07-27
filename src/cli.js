@@ -218,20 +218,15 @@ export async function run(argv, ctx) {
       say(err.message);
       return 2;
     }
-    // Name what was asked for and not found, before reporting what was done.
-    // A skill this repository ships but nothing has installed used to be
-    // filtered out in silence, and a scripted `update --skill x` exited zero
-    // having done nothing.
-    if (update.unmatched.length) {
-      say(`Not installed anywhere this command looked: ${update.unmatched.join(', ')}.`);
-      say('Run `stylewright install` to add it, or `doctor` to see what is where.');
-      return 2;
-    }
-    if (!update.results.length) {
+    if (!update.results.length && !update.unmatched.length) {
       say('Nothing to update. No installed skills were found.');
       say('Run `stylewright install` first, or pass --platform to look elsewhere.');
       return 0;
     }
+    // Report what happened BEFORE reporting what was not found. Returning early
+    // on `unmatched` skipped this loop, so naming one installed skill and one
+    // uninstalled one rewrote files and then said only that the second was
+    // missing. The exit code covered three outcomes and distinguished none.
     for (const r of update.results) {
       for (const n of r.installed) say(`updated ${n} -> ${r.targetDir}`);
       for (const s of r.skipped) {
@@ -240,6 +235,11 @@ export async function run(argv, ctx) {
       for (const n of r.orphaned) {
         say(`no longer in this repository: ${n} in ${r.targetDir}. Uninstall it or keep it as it is.`);
       }
+    }
+    if (update.unmatched.length) {
+      say(`Not installed anywhere this command looked: ${update.unmatched.join(', ')}.`);
+      say('Run `stylewright install` to add it, or `doctor` to see what is where.');
+      return 2;
     }
     return 0;
   }
@@ -278,11 +278,14 @@ export async function run(argv, ctx) {
     // `update` searches many scopes at once. These two write to one, so a list
     // here is a request the command cannot carry out, and picking the first
     // entry would carry out half of it in silence.
-    if (flags.scope?.length > 1) {
+    // Distinct scopes, not occurrences. `--scope user --scope user` names one
+    // scope twice and was rejected as if it named two.
+    const scopes = [...new Set(flags.scope ?? [])];
+    if (scopes.length > 1) {
       say(`${command} writes one scope at a time. Run it once per scope.`);
       return 2;
     }
-    const scope = flags.scope?.[0] ?? 'user';
+    const scope = scopes[0] ?? 'user';
     let names = flags.skill;
     if (!names.length) {
       const tier = flags.tier ?? 'all';

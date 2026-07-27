@@ -492,3 +492,32 @@ test('install that refused every skill does not report success', async () => {
   assert.notEqual(code, 0, out.text());
   assert.match(out.text(), /skipped demo-craft/);
 });
+
+test('update reports what it changed before it reports what it could not find', async () => {
+  // The unmatched branch returned before the results loop, so naming one
+  // installed skill and one uninstalled one rewrote files and then said only
+  // that the second was missing. Exit 2 covered updated, refused, and
+  // not-found at once.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.rm(path.join(home, '.claude', 'skills', 'demo-craft', 'references', 'guide.md'));
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'demo-craft', '--skill', 'demo-standard'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /updated demo-craft/, 'must say what it did');
+  assert.match(out.text(), /demo-standard/, 'and what it could not find');
+});
+
+test('the same scope named twice is one scope', async () => {
+  // The guard counted occurrences rather than distinct scopes.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(
+    ['install', '--skill', 'demo-craft', '--platform', 'claude', '--scope', 'user', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+});

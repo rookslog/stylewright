@@ -14,10 +14,56 @@ export function emptyManifest() {
   return { schema: 1, stylewrightVersion: VERSION, skills: {} };
 }
 
+/**
+ * A path from the manifest that stays inside the directory it belongs to.
+ *
+ * `path.join` neutralises a leading separator and does not neutralise `..`, so
+ * a recorded key of `../../../victim` resolves outside the tree. That was
+ * harmless while the manifest was only a hint: the worst a bad entry could do
+ * was cause a skip. Retirement made it a delete instruction, executed
+ * verbatim, and a recorded `..` took the whole skills directory.
+ */
+function contained(rel) {
+  if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel)) return false;
+  return !path.normalize(rel).split(path.sep).includes('..');
+}
+
+/** A skill name is one path segment, because it is joined as one. */
+function nameContained(name) {
+  return contained(name) && !name.includes('/') && !name.includes(path.sep)
+    && name !== '.';
+}
+
+/**
+ * The manifest is a plain file that anyone can edit, and every path in it is
+ * dereferenced by install, update, uninstall and doctor. Checking it here means
+ * those four inherit the check rather than each restating it — and one of them
+ * restating it wrongly is the defect this whole pull request keeps finding.
+ *
+ * It refuses rather than dropping the bad entries. A manifest naming a path
+ * outside its own directory is not a manifest with one bad row; it is a file we
+ * should not act on at all.
+ */
+function checkContained(manifest, targetDir) {
+  for (const [name, entry] of Object.entries(manifest?.skills ?? {})) {
+    if (!nameContained(name)) {
+      throw new Error(
+        `Manifest in ${targetDir} records a skill name that is not a directory name: "${name}".`);
+    }
+    for (const rel of Object.keys(entry?.files ?? {})) {
+      if (!contained(rel)) {
+        throw new Error(
+          `Manifest in ${targetDir} records a path outside "${name}": "${rel}".`);
+      }
+    }
+  }
+  return manifest;
+}
+
 export async function readManifest(targetDir) {
   try {
     const raw = await fs.readFile(path.join(targetDir, MANIFEST_NAME), 'utf8');
-    return JSON.parse(raw);
+    return checkContained(JSON.parse(raw), targetDir);
   } catch (err) {
     if (err.code === 'ENOENT') return emptyManifest();
     throw err;

@@ -57,7 +57,11 @@ export async function doctor({ home, cwd }) {
       findings.push({
         level: 'error',
         code: 'duplicate-install',
-        message: `Skill "${name}" is installed in ${places.size} directories that ${platform} reads at once: ${where.join('; ')}. Remove one copy.`,
+        // "Remove one copy" was wrong once `agents` joined every group: the
+        // cross-agent copy appears in more than one finding, and removing it
+        // resolves all of them. Name the copies and leave the choice, rather
+        // than assert a count that depends on findings not shown here.
+        message: `Skill "${name}" is installed in ${places.size} directories that ${platform} reads at once: ${where.join('; ')}. Keep one.`,
       });
     }
   }

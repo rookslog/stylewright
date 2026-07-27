@@ -56,3 +56,41 @@ test('recordSkill stores the injected time, not the clock', () => {
   });
   assert.equal(mf.skills.demo.installedAt, '2026-01-01T00:00:00.000Z');
 });
+
+test('refuses a manifest whose recorded path leaves its own directory', async () => {
+  // Retirement turned a recorded path into a delete instruction, executed
+  // verbatim. path.join neutralises a leading separator and does NOT neutralise
+  // `..`, so a matching hash on ../../../victim deleted a file outside the
+  // tree with no --force. A bare `..` took the whole skills directory.
+  const dir = await tmp();
+  for (const rel of ['../../../victim/keep.txt', '..', 'a/../../b']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${rel}`);
+  }
+});
+
+test('refuses a manifest whose skill name is not a directory name', async () => {
+  // uninstall's name validation was widened to accept any name a manifest
+  // records, which is right for a withdrawn skill. The name is then joined as
+  // a path component, so ../../../victim passed validation BECAUSE it was
+  // recorded, and was then dereferenced.
+  const dir = await tmp();
+  for (const name of ['../../../victim', 'a/b', '..']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1, skills: { [name]: { tier: 'craft', pathway: 'engine', files: {} } },
+    }));
+    await assert.rejects(() => readManifest(dir), /not a directory name/, `must refuse ${name}`);
+  }
+});
+
+test('an absolute recorded path is refused too', async () => {
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+    schema: 1,
+    skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { '/etc/hosts': 'a'.repeat(64) } } },
+  }));
+  await assert.rejects(() => readManifest(dir), /outside/);
+});

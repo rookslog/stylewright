@@ -77,6 +77,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that refused every skill was indistinguishable from one that wrote them all.
 - A filesystem error the engine cannot interpret prints a message rather than a
   stack trace.
+- **A manifest may not name a path outside the directory it belongs to.** The
+  manifest is a plain file that anyone can edit, and retirement turned a
+  recorded path into a delete instruction. A recorded `../../../victim` with a
+  matching hash removed that file with no `--force`, and a recorded `..` took
+  the whole skills directory. A skill name must likewise be one directory name,
+  because it is joined as one.
+- `update` says what it changed before it says what it could not find. Naming
+  one installed skill and one uninstalled one rewrote files and then reported
+  only the missing one.
+- `--scope user --scope user` names one scope, not two.
 
 ### Changed
 
