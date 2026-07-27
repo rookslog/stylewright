@@ -3,6 +3,20 @@
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- The `compressed-deliberation` skill, in the craft tier. It corrects one
+  model's documented output defaults, and `SOURCE.md` beside it pins the model
+  build and the date the skill expires. The seven statements that trace to
+  Anthropic's own documentation describe the model. Every rule is ours.
+- `bench/`, a protocol for measuring what a style skill does. Fixed scenarios,
+  five runs each, and a scorer that counts structure rather than length. Its
+  first rule is that a run with no guidance is mandatory, because this
+  repository's own first baseline came back clean and moved the work off the
+  model and onto the instruction stack above it.
+
 ## 0.2.0 — 2026-07-27
 
 ### Added
