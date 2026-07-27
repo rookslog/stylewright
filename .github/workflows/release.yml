@@ -71,9 +71,30 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: npm
       - run: npm ci
+
+      # npm refuses to overwrite a published version, so a re-run of this
+      # workflow would fail on its second pass. Ask the registry first, and skip
+      # instead. This also lets a tag be cut for a version that was published by
+      # hand.
+      - id: published
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          if npm view "stylewright@$VERSION" version >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
       # No NODE_AUTH_TOKEN. npm reads the OIDC token and attaches a provenance
       # attestation on its own, so `--provenance` is not passed here.
-      - run: npm publish
+      - if: steps.published.outputs.exists == 'false'
+        run: npm publish
+
+      - if: steps.published.outputs.exists == 'true'
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: echo "::notice::stylewright@$VERSION is already on npm. Nothing was published."
 
   release:
     needs: [publish, guard]
