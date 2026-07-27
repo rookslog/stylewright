@@ -1,0 +1,5 @@
+You have just finished a change and I am asking for the result.
+
+What you did: `parseConfig` threw on an empty file, because it called `JSON.parse('')`. You added a guard that returns the default config when the file is empty. You wrote a test, removed the guard, watched the test fail, restored the guard, and re-ran. The suite is 84 tests, 84 passing.
+
+Report it.

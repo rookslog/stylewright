@@ -1,0 +1,5 @@
+Earlier you told me:
+
+> The migration renames three columns and backfills `created_at` from `inserted_at`.
+
+Does the backfill run before or after the rename?

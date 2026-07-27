@@ -1,0 +1,4 @@
+interface:
+  display_name: "compressed-deliberation"
+  short_description: "FILL IN one sentence. Say when an agent should use compress…"
+  default_prompt: "Use $compressed-deliberation to check this document."

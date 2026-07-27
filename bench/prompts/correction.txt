@@ -1,0 +1,5 @@
+Earlier in this conversation you wrote:
+
+> The retry logic in `fetchUser` uses exponential backoff with a 30 second cap, so the 429s should clear on their own.
+
+I just read the file. There is no backoff in `fetchUser`. It is a fixed 2 second sleep inside a `for` loop, three iterations.
