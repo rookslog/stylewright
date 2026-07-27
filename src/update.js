@@ -51,9 +51,26 @@ export async function updateSkills({
   repoRoot, home, cwd, platforms, scopes, names, now, force = false,
 }) {
   const known = new Set((await loadCatalog(repoRoot)).map((s) => s.name));
+  const installs = await findInstalls({ home, cwd, platforms, scopes });
+
+  // --skill is the third consumer of the same rule as --platform and --scope,
+  // and it was missed the first time. A misspelling filtered every install to
+  // nothing, printed nothing, and exited zero looking successful.
+  //
+  // A withdrawn skill is still a valid name here, because it is installed and
+  // the user may be asking about exactly that.
+  if (names?.length) {
+    const installedNames = new Set(installs.flatMap((i) => i.names));
+    const bad = names.filter((n) => !known.has(n) && !installedNames.has(n));
+    if (bad.length) {
+      throw new Error(
+        `Unknown skill: ${bad.join(', ')}. Not in this repository, and not installed.`);
+    }
+  }
+
   const results = [];
 
-  for (const install of await findInstalls({ home, cwd, platforms, scopes })) {
+  for (const install of installs) {
     let wanted = install.names;
     if (names?.length) wanted = wanted.filter((n) => names.includes(n));
 

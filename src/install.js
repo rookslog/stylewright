@@ -32,12 +32,28 @@ async function untrackedCollisions(destDir, sourceRels, recorded) {
   const hits = [];
   for (const rel of sourceRels) {
     if (known.has(rel)) continue;
+    const abs = path.join(destDir, rel);
+
+    // `lstat`, never `access`. `access` follows a symbolic link, so a dangling
+    // link read as absent. The copy then followed it and wrote skill content
+    // outside the target tree entirely.
+    let st;
     try {
-      await fs.access(path.join(destDir, rel));
-      hits.push(rel);
+      st = await fs.lstat(abs);
     } catch {
-      // Absent is the normal case. Nothing is in the way.
+      continue; // Absent. Nothing is in the way.
     }
+
+    // A directory holding only files we recorded is ours, not the user's.
+    // Those are retired files, and the retirement pass clears them so this
+    // path can become a file. Refusing here would make that release
+    // transition impossible to complete, even with --force.
+    if (st.isDirectory()) {
+      const under = await walk(abs);
+      if (under.length && under.every((sub) => known.has(path.join(rel, sub)))) continue;
+    }
+
+    hits.push(rel);
   }
   return hits.sort();
 }
@@ -84,22 +100,33 @@ export async function installSkills({
       }
     }
 
-    const files = {};
-    for (const rel of rels) {
-      const from = path.join(skill.dir, rel);
-      const to = path.join(destDir, rel);
-      await fs.mkdir(path.dirname(to), { recursive: true });
-      await fs.copyFile(from, to);
-      files[rel] = await hashFile(to);
-    }
-
-    // Every remaining recorded path is one this release dropped. The drift
-    // check above already proved each is unmodified, so removing it discards
-    // nothing the user wrote.
+    // Retire BEFORE copying, not after. A release can replace a directory of
+    // files with a single file of the same name, and `copyFile` cannot write
+    // over a directory. Retiring afterwards made that transition impossible to
+    // complete, with or without --force.
+    //
+    // The drift check above already proved each retired file is unmodified, so
+    // removing it discards nothing the user wrote.
     for (const rel of retiredFiles(recorded, rels)) {
       const abs = path.join(destDir, rel);
       await fs.rm(abs, { force: true });
       await pruneEmpty(path.dirname(abs), destDir);
+    }
+
+    const files = {};
+    for (const rel of rels) {
+      const from = path.join(skill.dir, rel);
+      const to = path.join(destDir, rel);
+      // A directory can still sit where a file must go. Without --force the
+      // collision check refused anything with content in it, and retirement
+      // pruned the directories it emptied, so only an empty one reaches here.
+      // With --force the user asked to overwrite, and `rmdir` would throw
+      // ENOTEMPTY on a directory holding their files rather than obeying.
+      const sitting = await fs.lstat(to).catch(() => null);
+      if (sitting?.isDirectory()) await fs.rm(to, { recursive: true, force: true });
+      await fs.mkdir(path.dirname(to), { recursive: true });
+      await fs.copyFile(from, to);
+      files[rel] = await hashFile(to);
     }
 
     manifest = recordSkill(manifest, { name, tier: skill.tier, pathway, files, now });

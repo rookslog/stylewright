@@ -32,8 +32,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `uninstall` could not reach it and the agent kept loading it.
 - The manifest records the release that last wrote it, rather than the release
   that created it.
-- `update` rejects a misspelled `--platform` or `--scope` instead of reporting
-  that nothing is installed and exiting zero.
+- `update` rejects a misspelled `--platform`, `--scope`, or `--skill` instead of
+  reporting that nothing is installed and exiting zero.
+- A flag that takes a value and receives none is an error. `--skill` with
+  nothing after it produced an empty filter, which the install path read as
+  "take the whole tier", so it silently installed every skill.
+- A dangling symbolic link at a path a skill ships is refused. The check
+  followed the link, read the path as free, and then wrote skill content
+  outside the target directory.
+- A release may replace a directory of files with a file of the same name.
+  Retirement now runs before the copy, so that transition completes.
 - `uninstall` accepts a skill name that this repository has withdrawn, as long
   as a selected manifest records it. `update` tells you to uninstall such a
   skill, and that advice was impossible to follow.

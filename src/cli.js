@@ -47,6 +47,13 @@ function parseFlags(argv) {
       continue;
     }
     const value = argv[++i];
+    // A flag that takes a value and receives none is a typing mistake, not an
+    // empty selection. `--skill` with nothing after it used to produce an empty
+    // list, which the install path read as "no filter, take the whole tier",
+    // and it silently installed every skill.
+    if (value === undefined || value.startsWith('--')) {
+      throw new Error(`--${key} needs a value.`);
+    }
     // `--skill a,b` and `--skill a --skill b` mean the same thing. `--platform`
     // already took a list, and taking a different shape here produced an error
     // that named the whole string as one unknown skill.
@@ -74,8 +81,14 @@ async function collectFiles(targets) {
 export async function run(argv, ctx) {
   const { home, cwd, repoRoot, stdout, now, interactive = false } = ctx;
   const [command, ...rest] = argv;
-  const flags = parseFlags(rest);
   const say = (s) => stdout.write(`${s}\n`);
+  let flags;
+  try {
+    flags = parseFlags(rest);
+  } catch (err) {
+    say(err.message);
+    return 2;
+  }
 
   if (!command || command === 'help' || command === '--help') {
     say(USAGE);

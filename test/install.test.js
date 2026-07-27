@@ -150,3 +150,74 @@ test('stamps the manifest with the release that wrote it', async () => {
   });
   assert.equal((await readManifest(target)).stylewrightVersion, VERSION);
 });
+
+test('a dangling symlink at a shipping path is a collision, not an absence', async () => {
+  // fs.access follows the link and throws ENOENT, so the path looked free.
+  // copyFile then follows it and writes skill content OUTSIDE the target tree.
+  const target = await tmp();
+  const outside = path.join(await tmp(), 'escaped.md');
+  const link = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(link), { recursive: true });
+  await fs.symlink(outside, link);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, []);
+  assert.equal(res.skipped.length, 1);
+  assert.ok(!(await exists(outside)), 'must not write through the link');
+});
+
+test('a directory of retired files gives way to a file of the same name', async () => {
+  // An old release shipped guide/part.md. The new one ships a file named
+  // guide. The collision check saw a directory it had not recorded and
+  // refused, and --force could not recover because the copy hit the directory
+  // before the retirement loop ran.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const dir = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.rm(dir, { force: true });
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'part.md'), 'from an older release\n');
+  const m = await readManifest(target);
+  delete m.skills['demo-craft'].files['SKILL.md'];
+  m.skills['demo-craft'].files['SKILL.md/part.md'] =
+    await hashFile(path.join(dir, 'part.md'));
+  await writeManifest(target, m);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
+  const stat = await fs.stat(path.join(target, 'demo-craft', 'SKILL.md'));
+  assert.ok(stat.isFile(), 'the path must now be a file');
+});
+
+test('force clears a directory of the user files sitting where a file must go', async () => {
+  // Without --force this is refused as a collision. With --force the user
+  // asked to overwrite, and rmdir would have thrown ENOTEMPTY instead.
+  const target = await tmp();
+  const inTheWay = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(inTheWay, { recursive: true });
+  await fs.writeFile(path.join(inTheWay, 'theirs.md'), 'mine\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(res.installed, ['demo-craft']);
+  assert.ok((await fs.stat(inTheWay)).isFile());
+});
+
+test('without force, a directory of user files is refused rather than cleared', async () => {
+  const target = await tmp();
+  const inTheWay = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(inTheWay, { recursive: true });
+  await fs.writeFile(path.join(inTheWay, 'theirs.md'), 'mine\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, []);
+  assert.equal(await fs.readFile(path.join(inTheWay, 'theirs.md'), 'utf8'), 'mine\n');
+});

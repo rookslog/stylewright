@@ -291,3 +291,60 @@ test('an unknown skill is still rejected on install', async () => {
   assert.equal(code, 2);
   assert.match(out.text(), /Unknown skill: nonesuch/);
 });
+
+test('a --skill flag with no value is an error, not "select everything"', async () => {
+  // splitList(undefined) returned an empty list, which the install path reads
+  // as "no skill filter, take the whole tier". So a trailing --skill silently
+  // installed the entire catalogue. Introduced by the comma-list fix.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['install', '--platform', 'claude', '--skill'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /--skill/);
+  assert.equal(await fs.readdir(home).then((d) => d.length), 0, 'nothing may be written');
+});
+
+test('any flag that takes a value rejects a missing one', async () => {
+  const out = capture();
+  const code = await run(['install', '--platform'], {
+    home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2);
+  assert.match(out.text(), /--platform/);
+});
+
+test('update rejects a skill name that is neither shipped nor installed', async () => {
+  // Round one validated --platform and --scope. --skill was the third consumer
+  // of the same rule and was missed, so a misspelling filtered everything out
+  // and exited zero looking successful.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const out = capture();
+  const code = await run(['update', '--skill', 'demo-crafts'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /demo-crafts/);
+});
+
+test('update accepts a withdrawn skill name that a manifest records', async () => {
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const { readManifest, writeManifest } = await import('../src/manifest.js');
+  const m = await readManifest(target);
+  m.skills.withdrawn = m.skills['demo-craft'];
+  delete m.skills['demo-craft'];
+  await writeManifest(target, m);
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'withdrawn'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /no longer in this repository: withdrawn/);
+});
