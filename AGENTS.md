@@ -141,6 +141,23 @@ Two consequences for a change you propose here:
 - `LICENSE` must stay unmodified MIT text. Appending a note to it stops GitHub
   detecting the license. Scope statements belong in README, under Licensing.
 
+## Say as much as the disposition needs, and no more
+
+Accepting a reviewer finding takes a verdict block and one line. The commit is
+the argument. Restating why the fix is right repeats what the diff already
+shows, and it buries the replies that do carry a decision.
+
+Write at length only where you changed something:
+
+- **Pushback.** Name what the finding misses. Point at the code or the test that
+  settles it.
+- **Accept with revisions.** Say what you changed, whether it was the fix, the
+  framing of the finding, or both.
+
+The same economy governs issues. A fix that needs no deliberation needs no
+written case. Open an issue when the decision is open, or when the work must
+wait, and not to record a change you are about to make anyway.
+
 ## Writing style for documents in this repository
 
 Prose in `README.md`, `CONTRIBUTING.md`, and `docs/` is linted by
