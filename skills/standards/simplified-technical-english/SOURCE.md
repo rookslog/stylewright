@@ -9,7 +9,11 @@
 - Trademark: European Union registered trademark 017966390
 - Verified: 2026-07-26, read from the copyright page of the official PDF
 - Transformation: an operational digest in our own words, plus a navigation map.
-  No rule text. No dictionary entries.
+  No dictionary definitions. As of 2026-07-27 the repository permits quoting an
+  individual rule beside its identifier, and permits a lint dictionary of
+  approved and non-approved word pairs. This skill does not yet use either. See
+  section 3.2 of the design document for the limit, which is substitution rather
+  than quotation.
 
 ## How to re-check this record
 

@@ -94,8 +94,9 @@ For strict compliance, check every general word against the official dictionary 
 
 ## Source and boundary
 
-This skill is an operational digest written in our own words. It reproduces no
-rule text and no dictionary entries. It does not replace the official standard.
+This skill is an operational digest. It states the rules in our own words, and it
+carries no part of the standard large enough to replace it. Read the official
+document for the complete rule, its explanation, and its dictionary entries.
 
 Standard: [ASD-STE100 Simplified Technical English, Issue 9 (2025)](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf)
 

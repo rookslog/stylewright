@@ -15,8 +15,10 @@ The check fails when a quote here no longer appears in `SKILL.md`, when a quote
 sits under a different heading, or when a statement in `SKILL.md` has no row.
 
 **Provenance of the rule identifiers.** Read from the official PDF on 2026-07-26.
-This file cites rule numbers and section locations only. It reproduces no rule
-text. See `SOURCE.md` in the skill directory for the extraction command.
+This file cites rule numbers and section locations. It carries no quoted rule
+text yet. Adding the quoted rule beside each identifier would make a `G` row
+checkable without opening the PDF, and the repository permits that as of
+2026-07-27. See `SOURCE.md` in the skill directory for the extraction command.
 
 | ID | Our guidance | Our anchor | Source rule | Source location |
 |---|---|---|---|---|

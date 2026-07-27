@@ -12,8 +12,9 @@
 
 ## If you added or changed a skill
 
-- [ ] Every rule is written in our own words. No sentence is copied from the source.
-- [ ] No dictionary entries or word lists are reproduced.
+- [ ] Every quotation carries the rule identifier beside it.
+- [ ] A reader could not use this skill instead of reading the source.
+- [ ] No vocabulary definitions or usage notes are reproduced in bulk.
 - [ ] Every statement in `SKILL.md` has a row in the grounding matrix.
 - [ ] Each `G` row cites a real rule identifier that I checked against the source.
 - [ ] Each `E` row is honestly ours, and cites no rule.

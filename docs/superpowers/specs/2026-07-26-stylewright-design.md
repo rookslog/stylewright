@@ -28,14 +28,23 @@ The tiers are separately installable.
 ## 2. Authoring doctrine
 
 This doctrine governs the `standards/` tier. It exists for two reasons. The first
-reason is that the repository must be public without reproducing copyrighted rule
-text. The second reason is that a reader must be able to audit every claim back to
-the standard that supports it.
+reason is that the repository must be public without becoming a substitute for
+the standard that it cites. The second reason is that a reader must be able to
+audit every claim back to the standard that supports it.
+
+**Amended 2026-07-27.** The original doctrine forbade every reproduced sentence.
+That was too broad, and it worked against the second reason. A reviewer checking
+a `G` row against a paraphrase must compare our wording to a memory of the rule.
+A reviewer checking a quoted rule can see the answer. The rule now targets
+wholesale reproduction, which is the risk, rather than quotation, which is
+ordinary citation practice. See section 3.2.
 
 Each `standards/` skill contains these parts:
 
-1. **A digest, in our own words.** State each rule in our own language. Do not copy
-   sentences from the source. Do not reproduce dictionary entries.
+1. **A digest, in our own words, and quotation where quotation is clearer.**
+   State each rule in our own language when a paraphrase serves the reader. Quote
+   the rule, with its identifier, when the exact wording is what the reader needs
+   to check. Do not assemble enough quoted material to replace the source.
 2. **A navigation map.** Map a question to a rule identifier and a search string,
    so that the reader can find the rule in the official document. State that the
    topic labels are paraphrases.
@@ -150,20 +159,35 @@ among them.
 `ASD-STE100` and `Simplified Technical English` are European Union registered
 trademarks owned by ASD, number 017966390.
 
-**Decision.** Ship the skill. The skill states writing rules in our own words. It
-reproduces no rule text and no dictionary entries. Rules and procedures are
-methods rather than expression. Naming a standard in order to discuss it is
-ordinary descriptive use.
+**Decision.** Ship the skill. Rules and procedures are methods rather than
+expression. Naming a standard in order to discuss it is ordinary descriptive use.
+Quoting a rule in order to state and check it is ordinary citation.
 
 **Required controls.**
 
-1. No reproduced sentences from the standard, in `SKILL.md` or in any reference.
-2. No dictionary entries.
-3. A non-affiliation and trademark notice, per section 2.4.
-4. A grounding matrix that cites rule identifiers only, per section 2.2.
+1. Quote a rule only with its identifier next to it, so a reader can check the
+   quotation against the source.
+2. Do not assemble a quoted set large enough to serve as the standard. The test
+   is substitution: could a reader use our skill instead of buying or reading the
+   source?
+3. The controlled vocabulary splits in two. The approved and non-approved word
+   pairs are method, and a lint dictionary may carry them. The definitions and
+   usage notes attached to each entry are expression, and we do not reproduce
+   them in bulk.
+4. A non-affiliation and trademark notice, per section 2.4.
+5. A grounding matrix that cites rule identifiers, per section 2.2. A matrix may
+   also carry the quoted rule, which is what makes a `G` row checkable.
+
+**Amended 2026-07-27.** Controls 1 to 3 replace two earlier controls that banned
+every reproduced sentence and every dictionary entry. The earlier version applied
+one category rule to two different acts. Quoting a rule to discuss it is not the
+same act as shipping the rule set. The dictionary was treated as a single object
+when its word pairs and its definitions carry different weight, and the word
+pairs are the part with practical value for `stylewright lint`.
 
 **This analysis is not legal advice.** It records the reasoning behind an accepted
-risk. The operator accepted this risk on 2026-07-26.
+risk. The operator accepted the original risk on 2026-07-26, and the amended
+version on 2026-07-27.
 
 ### 3.3 RFC 2119 analysis
 

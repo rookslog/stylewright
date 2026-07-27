@@ -5,6 +5,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Changed
+
+- Authoring doctrine now permits quoting a source rule beside its identifier. The
+  earlier doctrine banned every reproduced sentence, which was broader than the
+  risk it managed and made every grounding matrix harder to audit. The limit is
+  now substitution: a skill must not carry enough of a standard to replace it.
+- A controlled vocabulary is treated as two things. The approved and non-approved
+  word pairs are method, and a lint dictionary may carry them. The definitions
+  and usage notes are expression, and we do not reproduce them in bulk.
+- A skill may include a word list. The earlier prohibition ruled out the only
+  part of a skill that `stylewright lint` can enforce. A list must give a reason
+  per entry, warn rather than error, and not be the whole skill.
+
 ## 0.1.0 — 2026-07-27
 
 First public release.

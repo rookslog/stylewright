@@ -36,14 +36,27 @@ ship. It borrows authority the source never granted. Flag it as critical.
 A `G` row that cites a rule which does not say that is the same defect in a
 quieter form.
 
-### Reproduced source text
+### A skill that substitutes for its source
 
-No skill may reproduce rule text or dictionary entries from a standard. ASD
-grants reproduction rights to eight enumerated organizations, and this
-repository is not one of them. Every skill states the rules in our own words.
+A skill may quote a rule. A quotation with its identifier beside it is ordinary
+citation, and it usually makes a `G` row easier to check than a paraphrase does.
 
-If a pull request adds a sentence that reads as if it were copied from a source,
-say so. The repository's ability to stay public depends on this.
+The defect is a skill that carries enough of the source to replace it. Apply one
+test: could a reader use the skill instead of reading the standard? A skill that
+quotes forty rules in full has stopped citing and started republishing.
+
+Two specific cases:
+
+- **Bulk vocabulary definitions.** The approved and non-approved word pairs in a
+  controlled vocabulary are method, and a lint dictionary may carry them. The
+  definitions and usage notes attached to each entry are expression. Reproducing
+  those in bulk is the defect.
+- **An unchecked license.** Some sources restrict reproduction beyond ordinary
+  quotation, and ASD is one of them. `SOURCE.md` must record what was checked and
+  when. A quotation added without checking the source record is worth flagging.
+
+Amended 2026-07-27. The earlier rule banned every reproduced sentence, which was
+broader than the risk and made every matrix harder to audit.
 
 ### A grounding matrix that installs
 

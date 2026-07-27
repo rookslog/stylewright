@@ -89,8 +89,9 @@ English. The reader decides which standard wins.
 
 ## Source and boundary
 
-This skill is an operational digest written in our own words. It reproduces no
-text from the source. It does not replace the official guidelines.
+This skill is an operational digest written in our own words. The source is
+public domain under CC0, so it places no limit on quotation. This digest does not
+replace the official guidelines, which carry the examples and the rationale.
 
 Standard: [Federal Plain Language Guidelines](https://github.com/GSA/plainlanguage.gov)
 

@@ -209,8 +209,9 @@ owner of the standard that it cites.
 trademarks owned by the Aerospace, Security and Defence Industries Association of
 Europe, number 017966390.
 
-No skill reproduces rule text or dictionary entries from a standard. Each skill
-states the rules in our own words and links to the official source.
+A skill states the rules in our own words, quotes the source where the exact
+wording is what you need to check, and links to the official document. No skill
+carries enough of a standard to replace it.
 
 ## Contributing
 

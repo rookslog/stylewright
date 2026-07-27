@@ -87,12 +87,26 @@ Some sources forbid derivative work. The IETF Trust Legal Provisions do, for
 example. A skill from such a source ships our own applied guidance and a pointer,
 and no digest. Every row in its matrix is an `E` row.
 
-### Never reproduce source text
+### Quote the source, but never replace it
 
-Write each rule in your own words. Do not copy sentences. Do not copy dictionary
-entries or word lists. The matrix cites rule identifiers, never rule text.
+You may quote a rule. Put its identifier beside the quotation, so a reader can
+check the quotation against the source. A quoted rule often makes a `G` row
+easier to audit than a paraphrase, because the reader compares two texts instead
+of comparing our wording against a memory of the rule.
 
-This is what lets the repository be public. Treat it as the hard limit.
+The limit is substitution, not quotation. Ask one question: could a reader use
+this skill instead of reading the source? If yes, you quoted too much.
+
+Two specific limits:
+
+- Do not reproduce the definitions and usage notes from a controlled vocabulary
+  in bulk. The approved and non-approved word pairs are different. Those are
+  method, and a lint dictionary may carry them.
+- Check the license first. Some sources forbid derivative work, and a source may
+  restrict reproduction beyond what quotation practice allows. Record what you
+  found in `SOURCE.md`.
+
+This limit is what lets the repository be public.
 
 ## Write the grounding matrix
 
