@@ -1,5 +1,9 @@
 # stylewright
 
+[![ci](https://github.com/rookslog/stylewright/actions/workflows/ci.yml/badge.svg)](https://github.com/rookslog/stylewright/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/stylewright)](https://www.npmjs.com/package/stylewright)
+[![license](https://img.shields.io/github/license/rookslog/stylewright)](LICENSE)
+
 Writing skills for coding agents, distilled from named standards.
 
 Install them into Claude Code, Claude Cowork, and Codex, at user scope or

@@ -1,0 +1,59 @@
+name: Request a change
+description: Propose a change to the engine, the lint, or an install pathway.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        To propose a new **skill**, use the skill form instead. To ask whether
+        something is a good idea, open a discussion first. This form is for a
+        change you can already describe in terms of behaviour.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - installer (install, update, uninstall, doctor)
+        - lint
+        - grounding check
+        - an install pathway
+        - the scaffold
+        - documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What does not work today
+      description: >
+        Describe the situation you hit, not the solution you want. A request
+        that starts from a solution hides the problem it was meant to solve.
+      placeholder: |
+        I install skills into a project, and every clone of that project has to
+        repeat the command. Nothing records what the project expects.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: Optional. Leave this empty if you only want to report the problem.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you already tried or ruled out
+      description: >
+        Optional, and useful. An approach you rejected tells us as much as the
+        one you chose.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Before you send this
+      options:
+        - label: This is not a request to add a banned-word list to a skill.
+        - label: I searched the open issues for the same request.

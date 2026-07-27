@@ -1,0 +1,24 @@
+# Keeps the action versions and the one runtime dependency current.
+#
+# The schedule is monthly on purpose. This repository has a single runtime
+# dependency, so a weekly cadence would produce noise rather than signal.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: monthly
+    labels:
+      - distribution
+    groups:
+      # One pull request for all action bumps. They are reviewed together and
+      # CI either passes for the set or it does not.
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: monthly
+    labels:
+      - distribution

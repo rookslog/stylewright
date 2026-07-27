@@ -13,6 +13,20 @@ The grounding matrix in `grounding/` is where that trace lives. A reviewer reads
 it to answer one question: does this instruction carry the authority of a
 standard, or only ours?
 
+## Find something to work on
+
+- [Issues marked `good first issue`](https://github.com/rookslog/stylewright/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+  need no context beyond this document.
+- [Issues marked `help wanted`](https://github.com/rookslog/stylewright/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+  are open questions rather than settled work.
+- [Milestones](https://github.com/rookslog/stylewright/milestones) show what
+  each release is waiting on.
+
+Say so on the issue before you start, so two people do not write the same skill.
+
+Open a [discussion](https://github.com/rookslog/stylewright/discussions) when you
+want to argue about a rule rather than propose one.
+
 ## Start here
 
 ```
