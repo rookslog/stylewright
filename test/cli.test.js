@@ -218,7 +218,11 @@ test('update refuses to overwrite an edited file without --force', async () => {
 
   const out = capture();
   const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
-  assert.equal(code, 0, out.text());
+  // Non-zero, and this assertion was 0 until round 8. `install` and `uninstall`
+  // already refused to report success for an operation that changed nothing,
+  // and `update` was the third consumer of that rule without it. A scripted
+  // update that refreshed no file said the refresh had happened.
+  assert.notEqual(code, 0, out.text());
   assert.equal(await fs.readFile(skillFile, 'utf8'), 'my edit\n');
   assert.match(out.text(), /--force/);
 });
@@ -348,7 +352,11 @@ test('update accepts a withdrawn skill name that a manifest records', async () =
   const code = await run(['update', '--skill', 'withdrawn'], {
     home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
   });
-  assert.equal(code, 0, out.text());
+  // The name is ACCEPTED — that is what this test is for, and the message
+  // proves it. The exit code is non-zero because nothing was refreshed, which
+  // is a different question from whether the name was valid. Round 8 made
+  // `update` carry the rule install and uninstall already had.
+  assert.notEqual(code, 0, out.text());
   assert.match(out.text(), /no longer in this repository: withdrawn/);
 });
 

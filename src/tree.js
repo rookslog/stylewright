@@ -52,9 +52,28 @@ export async function removeAt(abs) {
  * the copy, and a release that turned a shipped file into a directory could
  * not complete at all.
  */
+/**
+ * Is `p` strictly below `stopAt`?
+ *
+ * Two steps, and both were got wrong once. `path.relative` first, because a
+ * string prefix on the absolute paths treats `/x/skills-other` as living under
+ * `/x/skills`. Then SEGMENTS on the result, not a prefix on that either: a
+ * directory legitimately named `..cache` yields a relative path of `..cache`,
+ * which `startsWith('..')` reads as an escape, so it is never pruned and keeps
+ * its parents alive after the manifest entry is gone.
+ *
+ * The second mistake was made twice, in two functions, the second of them under
+ * a comment warning about the first. That is why it is a named predicate now.
+ */
+export function isBelow(stopAt, p) {
+  const rel = path.relative(stopAt, p);
+  if (rel === '' || path.isAbsolute(rel)) return false;
+  return !rel.split(path.sep).includes('..');
+}
+
 export async function ensureDir(dir, stopAt) {
   const rel = path.relative(stopAt, dir);
-  if (!rel.startsWith('..')) {
+  if (isBelow(stopAt, dir)) {
     let current = stopAt;
     for (const part of rel.split(path.sep).filter((p) => p && p !== '.')) {
       current = path.join(current, part);
@@ -121,9 +140,7 @@ export async function walk(dir, base = '') {
  */
 export async function pruneEmpty(dir, stopAt) {
   let current = dir;
-  // `path.relative`, not a string prefix. `startsWith` treats /x/skills-other
-  // as living under /x/skills, and would climb out of the tree it was given.
-  while (current !== stopAt && !path.relative(stopAt, current).startsWith('..')) {
+  while (current !== stopAt && isBelow(stopAt, current)) {
     let entries;
     try {
       entries = await fs.readdir(current);

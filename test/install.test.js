@@ -423,6 +423,27 @@ test('a symlink above a RETIRED path is refused, and nothing is deleted through 
   assert.equal(await fs.readFile(outsideFile, 'utf8'), 'not ours\n');
 });
 
+test('force keeps an EDITED file at a retired path', async () => {
+  // --force skips alteredFiles, and retirement then removed the edit although
+  // nothing replaces it. The likely path is forcing an overwrite of some other,
+  // still-shipping file and losing this one on the way past.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const retired = path.join(target, 'demo-craft', 'notes.md');
+  await fs.writeFile(retired, 'my edit\n');
+  const m = await readManifest(target);
+  m.skills['demo-craft'].files['notes.md'] = 'f'.repeat(64); // recorded, and not this content
+  await writeManifest(target, m);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
+  assert.equal(await fs.readFile(retired, 'utf8'), 'my edit\n',
+    'a retired leaf goes only if it is still the file we wrote');
+});
+
 test('force keeps a user file blocking only a retired path', async () => {
   // The blocked set ranged over shipped AND retired paths, and --force cleared
   // all of it. An ancestor reached only by a retired path stands in the way of

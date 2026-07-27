@@ -241,6 +241,14 @@ export async function run(argv, ctx) {
       say('Run `stylewright install` to add it, or `doctor` to see what is where.');
       return 2;
     }
+    // The same rule install and uninstall already carry: an operation that
+    // changed nothing must not report success. `update` was the third consumer
+    // and did not have it, so a scripted update that refused every skill for a
+    // local edit exited zero and said the refresh had happened.
+    if (!update.results.some((r) => r.installed.length)) {
+      say('Nothing was updated.');
+      return 1;
+    }
     return 0;
   }
 

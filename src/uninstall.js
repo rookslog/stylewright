@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { hashFile, readManifest, writeManifest, MANIFEST_NAME } from './manifest.js';
-import { pruneEmpty, removeAt, destinationState, blockedAncestors } from './tree.js';
+import { pruneEmpty, removeAt, destinationState, blockedAncestors, ancestorsOf } from './tree.js';
 
 /**
  * Recorded paths that hold something other than a file.
@@ -86,8 +86,16 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
     // may carry the advice to force. Reporting them under one reason is what
     // sent the user round the loop twice with nothing left to try.
     const blocked = await blockedAncestors(destDir, rels);
-    const stuck = await wrongType(destDir, entry.files);
-    const drifted = force ? [] : await altered(destDir, entry.files);
+    // A leaf beneath a known blocker is not inspected. Once the ancestor has
+    // been found, the skill is refused whatever the leaf turns out to be, and
+    // reaching for it is a syscall through the very thing we just refused to
+    // trust: a self-referential symlink at `references` made `lstat` on
+    // `references/guide.md` throw ELOOP instead of reporting `not-ours`, and a
+    // FIFO would hang the hash read rather than throw at all.
+    const reachable = Object.fromEntries(Object.entries(entry.files)
+      .filter(([rel]) => !ancestorsOf(rel).some((dir) => blocked.has(dir))));
+    const stuck = await wrongType(destDir, reachable);
+    const drifted = force ? [] : await altered(destDir, reachable);
     if (blocked.size || stuck.length || drifted.length) {
       skipped.push({
         name,

@@ -169,7 +169,19 @@ export async function installSkills({
       if (ancestorsOf(rel).some((dir) => blockedRetire.has(dir))) continue;
       const abs = path.join(destDir, rel);
       const state = await destinationState(abs);
-      if (state === 'directory' && (await fs.readdir(abs)).length) continue;
+      // Nothing is written here, so the boundary decides the whole question: a
+      // retired leaf goes only if it is still the thing we wrote. Without
+      // --force `alteredFiles` refused the skill outright, and WITH --force
+      // that check was skipped, so an edit at a retired path was deleted while
+      // the user was forcing an overwrite of some other, still-shipping file.
+      // An empty directory still goes, because removing it destroys nothing.
+      if (state === 'directory') {
+        if ((await fs.readdir(abs)).length) continue;
+      } else if (state === 'file') {
+        if (await hashFile(abs) !== recorded?.[rel]) continue;
+      } else if (state !== 'absent') {
+        continue; // A link. Nothing is written through it either.
+      }
       await removeAt(abs);
       await pruneEmpty(path.dirname(abs), destDir);
     }

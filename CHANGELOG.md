@@ -73,8 +73,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `ground --check --skill` rejects a name it does not know. It contributed no
   findings and reported "Grounding clean.", so a typo turned a CI gate into a
   no-op that reported pass.
-- `install` and `uninstall` exit non-zero when they changed nothing. An install
-  that refused every skill was indistinguishable from one that wrote them all.
+- `install`, `uninstall` and `update` exit non-zero when they changed nothing.
+  An install that refused every skill was indistinguishable from one that wrote
+  them all, and a scripted `update` that refreshed no file reported success.
+- A directory whose name begins with two periods is removed when it empties.
+  The check compared a relative path with `startsWith("..")`, so `..cache` read
+  as an escape from the tree and kept its parents alive after the manifest
+  entry had gone.
+- `uninstall` reports a blocked ancestor rather than reading through it. Once
+  the blocker is found the skill is refused whatever the file below turns out
+  to be, and a self-referential link made the check throw instead of report.
 - A filesystem error the engine cannot interpret prints a message rather than a
   stack trace.
 - **A manifest may not name a path outside the directory it belongs to.** The

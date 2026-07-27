@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { installSkills } from '../src/install.js';
 import { uninstallSkills } from '../src/uninstall.js';
-import { readManifest, MANIFEST_NAME } from '../src/manifest.js';
+import { readManifest, writeManifest, hashFile, MANIFEST_NAME } from '../src/manifest.js';
 import { VERSION } from '../src/version.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
@@ -153,6 +153,42 @@ test('a recorded path that became a directory does not throw part-way', async ()
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'], force: true });
   assert.deepEqual(res.removed, ['demo-craft']);
   assert.ok(!(await exists(swapped)));
+});
+
+test('a self-referential link at an ancestor is reported, not followed', async () => {
+  // Once blockedAncestors has found the blocker the skill is refused whatever
+  // the leaf turns out to be, so reaching for the leaf is a syscall through the
+  // thing we just refused to trust. lstat on references/guide.md threw ELOOP
+  // out of uninstall instead of returning the not-ours skip.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const refs = path.join(target, 'demo-craft', 'references');
+  await fs.rm(refs, { recursive: true, force: true });
+  await fs.symlink(refs, refs); // points at itself
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.deepEqual(res.removed, []);
+  assert.equal(res.skipped[0].reason, 'not-ours');
+  assert.ok(res.skipped[0].files.includes('references'), JSON.stringify(res.skipped));
+});
+
+test('a directory whose name begins with two periods is pruned', async () => {
+  // pruneEmpty tested path.relative's result with startsWith('..'), so a child
+  // legitimately named `..cache` read as an escape and was never pruned, which
+  // also kept the skill directory alive after the manifest entry went.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const odd = path.join(target, 'demo-craft', '..cache');
+  await fs.mkdir(odd);
+  await fs.writeFile(path.join(odd, 'file.md'), 'x\n');
+  const m = await readManifest(target);
+  m.skills['demo-craft'].files['..cache/file.md'] = await hashFile(path.join(odd, 'file.md'));
+  await writeManifest(target, m);
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.deepEqual(res.removed, ['demo-craft'], JSON.stringify(res.skipped));
+  assert.ok(!(await exists(odd)), 'the ..cache directory must be pruned');
+  assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'and so must its parent');
 });
 
 test('--force does not empty a directory standing where a recorded file was', async () => {
