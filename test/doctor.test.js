@@ -16,7 +16,11 @@ test('reports nothing on a clean machine', async () => {
   assert.deepEqual(await doctor({ repoRoot: REPO, home, cwd }), []);
 });
 
-test('detects the same skill installed in two targets', async () => {
+test('installing for two agents is not a duplicate', async () => {
+  // This is the README's own example: `--platform claude,codex`. Each agent
+  // reads its own directory and sees one copy. An earlier version of this test
+  // asserted a finding here, which made `doctor` fail on the documented
+  // command. See issue #14.
   const home = await tmp();
   const cwd = await tmp();
   for (const dir of ['.claude/skills', '.codex/skills']) {
@@ -27,11 +31,41 @@ test('detects the same skill installed in two targets', async () => {
       now: NOW,
     });
   }
+  assert.deepEqual(await doctor({ repoRoot: REPO, home, cwd }), []);
+});
+
+test('detects two copies that one agent would load at once', async () => {
+  // Claude reads user scope and project scope together, so two copies of the
+  // same skill name really do collide. This is the case the check exists for.
+  const home = await tmp();
+  const cwd = await tmp();
+  await installSkills({
+    repoRoot: REPO, targetDir: path.join(home, '.claude/skills'),
+    names: ['demo-standard'], now: NOW,
+  });
+  await installSkills({
+    repoRoot: REPO, targetDir: path.join(cwd, '.claude/skills'),
+    names: ['demo-standard'], now: NOW,
+  });
   const found = await doctor({ repoRoot: REPO, home, cwd });
   const dup = found.find((f) => f.code === 'duplicate-install');
   assert.ok(dup, 'expected a duplicate-install finding');
   assert.match(dup.message, /demo-standard/);
-  assert.match(dup.message, /2 directories/);
+  assert.match(dup.message, /claude/);
+});
+
+test('one agent with two copies does not implicate a second agent', async () => {
+  // codex has one copy. The finding must name claude only, or the user goes
+  // looking in the wrong directory.
+  const home = await tmp();
+  const cwd = await tmp();
+  for (const dir of [path.join(home, '.claude/skills'), path.join(cwd, '.claude/skills'),
+    path.join(home, '.codex/skills')]) {
+    await installSkills({ repoRoot: REPO, targetDir: dir, names: ['demo-standard'], now: NOW });
+  }
+  const found = await doctor({ repoRoot: REPO, home, cwd });
+  assert.equal(found.length, 1);
+  assert.doesNotMatch(found[0].message, /codex/);
 });
 
 test('a single claude install is not a duplicate, despite the cowork alias', async () => {

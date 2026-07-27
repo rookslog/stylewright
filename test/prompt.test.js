@@ -11,6 +11,7 @@ import {
   skillChoices, platformChoices, scopeChoices, summarize, promptTargets,
 } from '../src/prompt.js';
 import { installSkills } from '../src/install.js';
+import { run } from '../src/cli.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -109,22 +110,38 @@ test('cancelling at the confirmation returns null', async () => {
   assert.equal(result, null);
 });
 
-test('confirming returns the flags the command layer expects', async () => {
+test('the command layer installs what the dialogue returns', async () => {
+  // The dialogue's answer is assigned straight onto the parsed flags, so its
+  // shape is a contract with `run` and nothing in either module states it. A
+  // stub on the command side cannot hold that contract: it asserts the shape
+  // the test author believed. This runs the real dialogue and hands its real
+  // answer to the real command.
+  const home = await tmp();
   const out = capture();
   const ask = fakeAsk({
     checkbox: [['demo-craft', 'demo-standard'], ['claude', 'codex']],
-    select: ['project'],
+    select: ['user'],
     confirm: [true],
   });
-  const result = await promptTargets({
-    catalog: CATALOG, home: '/h', cwd: '/c', stdout: out, ask,
+  const chosen = await promptTargets({
+    catalog: CATALOG, home, cwd: '/c', stdout: out, ask,
   });
-  // `--platform` takes a comma list, so the dialogue must produce that shape.
-  assert.deepEqual(result, {
-    platform: 'claude,codex',
-    scope: 'project',
+  assert.deepEqual(chosen, {
+    platform: ['claude', 'codex'],
+    scope: ['user'],
     skill: ['demo-craft', 'demo-standard'],
   });
+
+  const code = await run(['install'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW,
+    interactive: true, promptTargets: async () => chosen,
+  });
+  assert.equal(code, 0);
+  for (const agent of ['.claude', '.codex']) {
+    for (const name of ['demo-craft', 'demo-standard']) {
+      await fs.access(path.join(home, agent, 'skills', name, 'SKILL.md'));
+    }
+  }
 });
 
 test('warns before it replaces a skill that is already installed', async () => {

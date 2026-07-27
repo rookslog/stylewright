@@ -57,7 +57,11 @@ test('bare install runs the guided dialogue and honours its selection', async ()
     promptTargets: async ({ catalog }) => {
       sawCatalog = catalog.map((s) => s.name);
       // Pick ONE skill out of two, to prove the picker drives the install.
-      return { platform: 'claude', scope: 'user', skill: ['demo-craft'] };
+      // List-shaped, as parseFlags produces. This stub asserts nothing about
+      // the real promptTargets. The shape contract between the two lives in
+      // `the command layer installs what the dialogue returns`, in
+      // test/prompt.test.js, which runs both sides for real.
+      return { platform: ['claude'], scope: ['user'], skill: ['demo-craft'] };
     },
   });
   assert.equal(code, 0);
@@ -142,4 +146,415 @@ test('unknown command returns 2', async () => {
     home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
   });
   assert.equal(code, 2);
+});
+
+test('--skill accepts a comma-separated list, as --platform does', async () => {
+  // The two flags took different shapes, and the error named the whole string
+  // as one unknown skill while listing its parts as available. See issue #15.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(
+    ['install', '--skill', 'demo-standard,demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  await fs.access(path.join(home, '.claude', 'skills', 'demo-standard', 'SKILL.md'));
+  await fs.access(path.join(home, '.claude', 'skills', 'demo-craft', 'SKILL.md'));
+});
+
+test('--skill still accepts the repeated form', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(
+    ['install', '--skill', 'demo-standard', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  await fs.access(path.join(home, '.claude', 'skills', 'demo-craft', 'SKILL.md'));
+});
+
+test('an unknown skill is still rejected, and is named accurately', async () => {
+  const out = capture();
+  const code = await run(
+    ['install', '--skill', 'demo-craft,nonesuch', '--platform', 'claude'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /Unknown skill: nonesuch\./);
+});
+
+test('update refreshes an installed skill', async () => {
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const skillFile = path.join(target, 'demo-craft', 'SKILL.md');
+  const original = await fs.readFile(skillFile, 'utf8');
+  await fs.writeFile(skillFile, 'stale\n');
+
+  const out = capture();
+  const code = await run(['update', '--force'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 0, out.text());
+  assert.equal(await fs.readFile(skillFile, 'utf8'), original);
+});
+
+test('update needs no flags, and finds its targets from the manifests', async () => {
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude,codex'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /\.claude/);
+  assert.match(out.text(), /\.codex/);
+});
+
+test('update refuses to overwrite an edited file without --force', async () => {
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const skillFile = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.writeFile(skillFile, 'my edit\n');
+
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  // Non-zero, and this assertion was 0 until round 8. `install` and `uninstall`
+  // already refused to report success for an operation that changed nothing,
+  // and `update` was the third consumer of that rule without it. A scripted
+  // update that refreshed no file said the refresh had happened.
+  assert.notEqual(code, 0, out.text());
+  assert.equal(await fs.readFile(skillFile, 'utf8'), 'my edit\n');
+  assert.match(out.text(), /--force/);
+});
+
+test('update says so when nothing is installed', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0);
+  assert.match(out.text(), /[Nn]othing/);
+});
+
+test('update rejects a misspelled platform instead of reporting nothing found', async () => {
+  // A blanket catch turned an invalid filter into an empty search, so a
+  // scripted update exited 0 while doing nothing.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--platform', 'cluade'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /cluade/);
+});
+
+test('update rejects a misspelled scope', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--scope', 'globl'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+});
+
+test('update still skips a platform that does not support the given scope', async () => {
+  // agents supports user scope only. Asking for project scope across every
+  // platform must not fail, because that combination is a normal gap rather
+  // than a typing mistake.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--scope', 'project'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 0, out.text());
+});
+
+test('uninstall accepts a skill this repository no longer ships', async () => {
+  // update tells the user to uninstall an orphan. uninstall validated the name
+  // against the catalog first and refused, so the advice could not be followed.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  // Rename the recorded entry to a skill the catalog does not know.
+  const { readManifest, writeManifest } = await import('../src/manifest.js');
+  const m = await readManifest(target);
+  m.skills.withdrawn = m.skills['demo-craft'];
+  delete m.skills['demo-craft'];
+  await writeManifest(target, m);
+  await fs.rename(path.join(target, 'demo-craft'), path.join(target, 'withdrawn'));
+
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'withdrawn', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /removed withdrawn/);
+});
+
+test('an unknown skill is still rejected on install', async () => {
+  const out = capture();
+  const code = await run(['install', '--skill', 'nonesuch', '--platform', 'claude'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /Unknown skill: nonesuch/);
+});
+
+test('a --skill flag with no value is an error, not "select everything"', async () => {
+  // splitList(undefined) returned an empty list, which the install path reads
+  // as "no skill filter, take the whole tier". So a trailing --skill silently
+  // installed the entire catalogue. Introduced by the comma-list fix.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['install', '--platform', 'claude', '--skill'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /--skill/);
+  assert.equal(await fs.readdir(home).then((d) => d.length), 0, 'nothing may be written');
+});
+
+test('any flag that takes a value rejects a missing one', async () => {
+  const out = capture();
+  const code = await run(['install', '--platform'], {
+    home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2);
+  assert.match(out.text(), /--platform/);
+});
+
+test('update rejects a skill name that is neither shipped nor installed', async () => {
+  // Round one validated --platform and --scope. --skill was the third consumer
+  // of the same rule and was missed, so a misspelling filtered everything out
+  // and exited zero looking successful.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const out = capture();
+  const code = await run(['update', '--skill', 'demo-crafts'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /demo-crafts/);
+});
+
+test('update accepts a withdrawn skill name that a manifest records', async () => {
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const { readManifest, writeManifest } = await import('../src/manifest.js');
+  const m = await readManifest(target);
+  m.skills.withdrawn = m.skills['demo-craft'];
+  delete m.skills['demo-craft'];
+  await writeManifest(target, m);
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'withdrawn'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  // The name is ACCEPTED — that is what this test is for, and the message
+  // proves it. The exit code is non-zero because nothing was refreshed, which
+  // is a different question from whether the name was valid. Round 8 made
+  // `update` carry the rule install and uninstall already had.
+  assert.notEqual(code, 0, out.text());
+  assert.match(out.text(), /no longer in this repository: withdrawn/);
+});
+
+test('a list flag whose value names nothing is an error', async () => {
+  // `--skill ,` split to an empty list, which install reads as "take the whole
+  // tier". The missing-value check did not catch it, because a value WAS
+  // present. Round three on the same rule, so the check now lives in
+  // parseFlags and covers every flag that takes a value.
+  for (const argv of [
+    ['install', '--platform', 'claude', '--skill', ','],
+    ['install', '--platform', ' , '],
+    ['uninstall', '--platform', 'claude', '--skill', ','],
+    ['update', '--skill', ','],
+  ]) {
+    const home = await tmp();
+    const out = capture();
+    const code = await run(argv, {
+      home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+    });
+    assert.equal(code, 2, `${argv.join(' ')}: ${out.text()}`);
+    assert.equal(await fs.readdir(home).then((d) => d.length), 0, 'nothing may be written');
+  }
+});
+
+test('update rejects a platform and scope the user named that cannot pair', async () => {
+  // cowork has no project scope. Skipping the pair is right when findInstalls
+  // enumerated it, and wrong when the user typed both sides: the command
+  // reported nothing installed and exited zero on a request it never ran.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--platform', 'cowork', '--scope', 'project'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /cowork/);
+});
+
+test('update still skips an unsupported pair it enumerated itself', async () => {
+  // The other half of the same rule. --platform alone leaves scopes to the
+  // defaults, and agents has no project scope, so the walk must pass over it.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['update', '--platform', 'agents'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 0, out.text());
+});
+
+test('install refuses more than one scope rather than writing half the request', async () => {
+  const home = await tmp();
+  const out = capture();
+  const code = await run(
+    ['install', '--platform', 'claude', '--skill', 'demo-craft', '--scope', 'user,project'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2, out.text());
+  assert.equal(await fs.readdir(home).then((d) => d.length), 0, 'nothing may be written');
+});
+
+test('update names a skill that is installed nowhere it looked', async () => {
+  // The name passes validation, because the catalogue ships it. It then matched
+  // no install, was filtered to nothing, and still pushed a result, so the
+  // "Nothing to update" branch was skipped and a scripted update printed
+  // nothing and exited zero having done nothing.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'demo-standard'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /demo-standard/);
+});
+
+test('doctor sees the cross-agent directory as part of each agent that reads it', async () => {
+  // ~/.agents/skills is a convention shared between agents, not an agent of its
+  // own. Grouping by platform key gave it a group to itself, so a skill in both
+  // ~/.agents/skills and ~/.codex/skills drew no finding, though codex loads
+  // both at once.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'codex,agents'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const out = capture();
+  const code = await run(['doctor'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 1, out.text());
+  assert.match(out.text(), /demo-craft/);
+  assert.match(out.text(), /\.agents/);
+});
+
+test('the README install example still draws no finding', async () => {
+  // The regression guard for the fix above. --platform claude,codex writes two
+  // directories on purpose, and no single agent reads both.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude,codex'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const out = capture();
+  const code = await run(['doctor'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+});
+
+test('ground --check refuses a skill name it does not know', async () => {
+  // The name yielded undefined, coalesced to an empty finding list, added
+  // nothing, and printed "Grounding clean." `ground --check` is a CI gate, so a
+  // typo or a renamed skill turned the gate into a no-op that reported pass.
+  const out = capture();
+  const code = await run(['ground', '--check', '--skill', 'totally-not-a-skill'], {
+    home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /totally-not-a-skill/);
+  assert.doesNotMatch(out.text(), /Grounding clean/);
+});
+
+test('uninstall that removes nothing does not report success', async () => {
+  // update exited 2 for the same skill on the same machine. One rule, two
+  // commands, opposite answers.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'demo-craft', '--platform', 'claude'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.notEqual(code, 0, out.text());
+  assert.match(out.text(), /not installed/);
+});
+
+test('uninstall advises --force only where --force is the answer', async () => {
+  // Advice that cannot be taken is worse than none: it sent the user through
+  // the same command a second time with nothing left to try. An edited file is
+  // force-able and says so. A directory holding unrecorded files is refused
+  // whether or not force is passed, and now says only that.
+  const home = await tmp();
+  const opts = { home, cwd: '/c', repoRoot: REPO, now: NOW };
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { ...opts, stdout: capture() });
+  const installed = path.join(home, '.claude', 'skills', 'demo-craft');
+
+  await fs.writeFile(path.join(installed, 'SKILL.md'), 'edited\n');
+  const edited = capture();
+  await run(['uninstall', '--skill', 'demo-craft', '--platform', 'claude'],
+    { ...opts, stdout: edited });
+  assert.match(edited.text(), /locally-modified/);
+  assert.match(edited.text(), /--force/);
+
+  await fs.rm(path.join(installed, 'LICENSE'));
+  await fs.mkdir(path.join(installed, 'LICENSE'));
+  await fs.writeFile(path.join(installed, 'LICENSE', 'notes.md'), 'mine\n');
+  const stuck = capture();
+  await run(['uninstall', '--skill', 'demo-craft', '--platform', 'claude', '--force'],
+    { ...opts, stdout: stuck });
+  assert.match(stuck.text(), /not-ours/);
+  assert.doesNotMatch(stuck.text(), /--force/, stuck.text());
+});
+
+test('install that refused every skill does not report success', async () => {
+  // A scripted install that installed nothing was indistinguishable from one
+  // that installed everything.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.writeFile(
+    path.join(home, '.claude', 'skills', 'demo-craft', 'SKILL.md'), 'edited\n');
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.notEqual(code, 0, out.text());
+  assert.match(out.text(), /skipped demo-craft/);
+});
+
+test('update reports what it changed before it reports what it could not find', async () => {
+  // The unmatched branch returned before the results loop, so naming one
+  // installed skill and one uninstalled one rewrote files and then said only
+  // that the second was missing. Exit 2 covered updated, refused, and
+  // not-found at once.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.rm(path.join(home, '.claude', 'skills', 'demo-craft', 'references', 'guide.md'));
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'demo-craft', '--skill', 'demo-standard'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /updated demo-craft/, 'must say what it did');
+  assert.match(out.text(), /demo-standard/, 'and what it could not find');
+});
+
+test('the same scope named twice is one scope', async () => {
+  // The guard counted occurrences rather than distinct scopes.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(
+    ['install', '--skill', 'demo-craft', '--platform', 'claude', '--scope', 'user', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
 });

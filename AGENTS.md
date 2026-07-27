@@ -128,8 +128,15 @@ Two consequences for a change you propose here:
 
 - Install works by **copy**, never by symbolic link. A link breaks when the
   clone moves, and it is unsafe across the Cowork host and sandbox boundary.
-- `update` refuses to overwrite a file the user edited, unless `--force` is set.
-- `uninstall` removes only what the manifest records.
+- `install` and `update` refuse to overwrite two kinds of file, unless `--force`
+  is set: one the user edited, and one at a shipping path that the manifest
+  never recorded. The second is the user's file, and the first version of this
+  check missed it entirely.
+- `install` and `update` delete a recorded file that the current version no
+  longer ships. An orphaned file is worse than a stale one, because `uninstall`
+  cannot reach it.
+- `uninstall` removes only what the manifest records, and accepts a withdrawn
+  skill name that a manifest still records.
 - Add a skill with the scaffold, never by hand:
   `node bin/stylewright.mjs new-skill <name> --tier <standards|craft>`.
 - Do not put a `!` pattern inside `any-glob-to-any-file` in
@@ -137,6 +144,23 @@ Two consequences for a change you propose here:
   labels nearly every pull request.
 - `LICENSE` must stay unmodified MIT text. Appending a note to it stops GitHub
   detecting the license. Scope statements belong in README, under Licensing.
+
+## Say as much as the disposition needs, and no more
+
+Accepting a reviewer finding takes a verdict block and one line. The commit is
+the argument. Restating why the fix is right repeats what the diff already
+shows, and it buries the replies that do carry a decision.
+
+Write at length only where you changed something:
+
+- **Pushback.** Name what the finding misses. Point at the code or the test that
+  settles it.
+- **Accept with revisions.** Say what you changed, whether it was the fix, the
+  framing of the finding, or both.
+
+The same economy governs issues. A fix that needs no deliberation needs no
+written case. Open an issue when the decision is open, or when the work must
+wait, and not to record a change you are about to make anyway.
 
 ## Writing style for documents in this repository
 
