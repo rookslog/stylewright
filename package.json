@@ -1,6 +1,6 @@
 {
   "name": "stylewright",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Writing skills for coding agents, distilled from named standards. Installs into Claude Code, Claude Cowork, and Codex.",
   "keywords": [
     "claude-code",
