@@ -9,7 +9,7 @@
   "files": ["bin", "src", "skills", "README.md", "LICENSE"],
   "scripts": {
     "test": "node --test",
-    "lint:docs": "node bin/stylewright.mjs lint README.md docs/",
+    "lint:docs": "node bin/stylewright.mjs lint README.md docs/ skills/",
     "check:ground": "node bin/stylewright.mjs ground --check --all"
   },
   "dependencies": { "@inquirer/prompts": "^7.0.0" }

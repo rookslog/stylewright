@@ -35,8 +35,13 @@ export function lintText(text, { procedural = false } = {}) {
     if (/^\s*#{1,6}\s/.test(rawLine)) return;
 
     const ordered = ORDERED_ITEM.exec(rawLine);
-    const isStep = Boolean(ordered);
-    const limit = (procedural || isStep || proceduralZone.has(line)) ? 20 : 25;
+    // Rules 5.1 and 5.3 sit in Section 5, "Procedures". They govern
+    // instructions. A numbered list in a requirements or reference section is
+    // not a procedure, so the 20-word cap and the imperative rule do not reach
+    // it. Section 6 governs descriptive text at 25 words.
+    const inProcedure = procedural || proceduralZone.has(line);
+    const isStep = Boolean(ordered) && inProcedure;
+    const limit = inProcedure ? 20 : 25;
 
     if (rawLine.includes(';')) {
       findings.push({ line, rule: 'semicolon', message: 'Do not use semicolons.' });

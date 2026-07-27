@@ -1,0 +1,30 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+
+      - name: Unit and conformance tests
+        run: npm test
+
+      # The repository checks its own documentation with its own tool.
+      - name: Lint the documentation
+        run: npm run lint:docs
+
+      # Fails when a skill changes and its grounding matrix does not.
+      - name: Check every grounding matrix
+        run: npm run check:ground

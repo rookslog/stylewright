@@ -34,10 +34,20 @@ test('applies 20 words inside a procedure section', () => {
   assert.deepEqual(lintText(`## Overview\n\n${body}`), []);
 });
 
-test('flags a non-imperative ordered-list step', () => {
-  assert.deepEqual(codes(lintText('1. Removing the panel.\n')), ['imperative']);
-  assert.deepEqual(codes(lintText('1. The panel comes off.\n')), ['imperative']);
-  assert.deepEqual(lintText('1. Remove the panel.\n'), []);
+test('flags a non-imperative step inside a procedure section', () => {
+  const p = (s) => `## Procedure\n\n${s}`;
+  assert.deepEqual(codes(lintText(p('1. Removing the panel.\n'))), ['imperative']);
+  assert.deepEqual(codes(lintText(p('1. The panel comes off.\n'))), ['imperative']);
+  assert.deepEqual(lintText(p('1. Remove the panel.\n')), []);
+});
+
+test('the imperative rule does not reach a numbered list outside a procedure', () => {
+  // Rule 5.3 governs instructions. A numbered requirements list is not one.
+  assert.deepEqual(lintText('## Requirements\n\n1. A source with a public URL.\n'), []);
+  // The explicit option still forces procedural treatment.
+  assert.deepEqual(
+    codes(lintText('1. A source with a public URL.\n', { procedural: true })),
+    ['imperative']);
 });
 
 test('skips blockquotes, which are quoted material and not our prose', () => {
@@ -48,9 +58,13 @@ test('skips blockquotes, which are quoted material and not our prose', () => {
 });
 
 test('does not apply the imperative rule to a table-of-contents entry', () => {
-  assert.deepEqual(lintText('9. [Warning and caution](#warning-and-caution)\n'), []);
-  // A real step that happens to start with a link is still checked.
-  assert.deepEqual(codes(lintText('1. Removing the [panel](#p) now.\n')), ['imperative']);
+  // A numbered link inside a procedure section is still navigation, not a step.
+  assert.deepEqual(
+    lintText('## Procedure\n\n9. [Warning and caution](#warning-and-caution)\n'), []);
+  // A real step that merely contains a link is still checked.
+  assert.deepEqual(
+    codes(lintText('## Procedure\n\n1. Removing the [panel](#p) now.\n')),
+    ['imperative']);
 });
 
 test('reports 1-indexed line numbers', () => {

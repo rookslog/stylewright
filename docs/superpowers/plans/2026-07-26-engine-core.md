@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the `stylewright` CLI engine and prove it end-to-end against one real skill, so that `npx stylewright install` places skills on disk for Claude and Codex at user or project scope, with drift-safe updates, an exact uninstall, an ASD-STE100 mechanical lint, and a checked grounding matrix.
+**Goal:** Build the `stylewright` CLI engine and prove it end-to-end against one real skill. `npx stylewright install` must place skills on disk for Claude and Codex, at user or project scope. The engine must also supply drift-safe updates, an exact uninstall, an ASD-STE100 mechanical lint, and a checked grounding matrix.
 
 **Architecture:** Pure-function core modules under `src/`, each with one responsibility, wrapped by a thin CLI in `bin/stylewright.mjs` that owns all prompting and all process exit codes. Core modules never prompt and never call `process.exit`, so every behavior is testable without a TTY. Filesystem side effects funnel through `install.js`, `uninstall.js`, and `manifest.js`. Time is injected, never read from a global, so manifests compare byte-for-byte across pathways in the conformance suite.
 
@@ -2045,7 +2045,15 @@ git commit -m "feat: port the ASD-STE100 skill with its grounding matrix"
 
 - [ ] **Step 1: Write the README**
 
-Cover, in this order: what `stylewright` is, the two tiers, the skill table with a license column, install by every available pathway, the manual copy instructions, the command reference, the authoring doctrine in brief, the grounding matrix and how to read a `G` row against an `E` row, per-skill licensing, and the non-affiliation notices.
+Cover these topics, in this order:
+
+1. What `stylewright` is, and the two tiers.
+2. The skill table, with a license column.
+3. Install by every available pathway, including the manual copy.
+4. The command reference.
+5. The authoring doctrine, in brief.
+6. The grounding matrix. Explain how to read a `G` row against an `E` row.
+7. Per-skill licensing, and the non-affiliation notices.
 
 Write it under Simplified Technical English. No semicolons. No contractions. Sentences of 25 words or fewer, and 20 words or fewer in the install procedure.
 
