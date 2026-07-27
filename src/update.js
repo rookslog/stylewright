@@ -73,11 +73,23 @@ export async function updateSkills({
     }
   }
 
+  // A name this repository ships but no manifest records passes the check
+  // above and then matches nothing. Saying so is the same rule that made an
+  // unsupported platform-and-scope pair an error: a request that selected
+  // nothing must not report success. This is its third instance, so it is
+  // stated once here over everything the caller named.
+  const unmatched = (names ?? [])
+    .filter((n) => !installs.some((i) => i.names.includes(n))).sort();
+
   const results = [];
 
   for (const install of installs) {
     let wanted = install.names;
     if (names?.length) wanted = wanted.filter((n) => names.includes(n));
+    // An install this request does not touch is not a result. Pushing one made
+    // the caller skip its "Nothing to update" branch, so a targeted update that
+    // matched nothing printed nothing and exited zero, looking like success.
+    if (!wanted.length) continue;
 
     // A skill can be renamed or withdrawn between releases. Its files stay on
     // disk and its manifest row stays valid, so report it rather than throwing.
@@ -90,5 +102,5 @@ export async function updateSkills({
 
     results.push({ ...install, ...res, orphaned });
   }
-  return results;
+  return { results, unmatched };
 }

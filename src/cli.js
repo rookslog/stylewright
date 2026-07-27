@@ -195,9 +195,9 @@ export async function run(argv, ctx) {
   }
 
   if (command === 'update') {
-    let results;
+    let update;
     try {
-      results = await updateSkills({
+      update = await updateSkills({
         repoRoot, home, cwd, now,
         platforms: flags.platform,
         scopes: flags.scope,
@@ -208,12 +208,21 @@ export async function run(argv, ctx) {
       say(err.message);
       return 2;
     }
-    if (!results.length) {
+    // Name what was asked for and not found, before reporting what was done.
+    // A skill this repository ships but nothing has installed used to be
+    // filtered out in silence, and a scripted `update --skill x` exited zero
+    // having done nothing.
+    if (update.unmatched.length) {
+      say(`Not installed anywhere this command looked: ${update.unmatched.join(', ')}.`);
+      say('Run `stylewright install` to add it, or `doctor` to see what is where.');
+      return 2;
+    }
+    if (!update.results.length) {
       say('Nothing to update. No installed skills were found.');
       say('Run `stylewright install` first, or pass --platform to look elsewhere.');
       return 0;
     }
-    for (const r of results) {
+    for (const r of update.results) {
       for (const n of r.installed) say(`updated ${n} -> ${r.targetDir}`);
       for (const s of r.skipped) {
         say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);

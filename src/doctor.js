@@ -1,4 +1,4 @@
-import { PLATFORMS, SCOPES, resolveTarget, describeTarget } from './targets.js';
+import { CONSUMERS, SCOPES, resolveTarget, describeTarget } from './targets.js';
 import { readManifest } from './manifest.js';
 
 // A duplicate is a problem only when ONE agent would load two copies of the
@@ -13,21 +13,26 @@ import { readManifest } from './manifest.js';
 // same path as `claude/user`, and `user` equals `project` when the process runs
 // in the home directory. Counting labels rather than paths would report a
 // duplicate for every ordinary install.
+// A group is the set of directories ONE agent reads, which is not the same as
+// the set a platform key names. `targets.js` owns that relation, because the
+// layout it describes is what makes it true.
 function targetsByAgent({ home, cwd }) {
   const byAgent = new Map();
-  for (const platform of PLATFORMS) {
+  for (const [agent, platforms] of Object.entries(CONSUMERS)) {
     const byPath = new Map();
-    for (const scope of SCOPES) {
-      let dir;
-      try {
-        dir = resolveTarget({ platform, scope, home, cwd });
-      } catch {
-        continue;
+    for (const platform of platforms) {
+      for (const scope of SCOPES) {
+        let dir;
+        try {
+          dir = resolveTarget({ platform, scope, home, cwd });
+        } catch {
+          continue;
+        }
+        if (!byPath.has(dir)) byPath.set(dir, []);
+        byPath.get(dir).push(describeTarget({ platform, scope }));
       }
-      if (!byPath.has(dir)) byPath.set(dir, []);
-      byPath.get(dir).push(describeTarget({ platform, scope }));
     }
-    byAgent.set(platform, byPath);
+    byAgent.set(agent, byPath);
   }
   return byAgent;
 }

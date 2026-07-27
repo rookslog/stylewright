@@ -37,22 +37,46 @@ async function alteredFiles(destDir, recorded) {
  * hash to compare. A collision on an unrecorded path is drift, and it is the
  * more dangerous kind.
  */
+/**
+ * Directory components that hold something we cannot write through or descend
+ * into, across EVERY path this install touches — the ones it ships AND the
+ * ones it retires.
+ *
+ * Walking the shipping paths alone was not enough, and the gap was the same
+ * mistake as the one it was written to fix. A release that drops the last file
+ * beneath a directory leaves that directory in the manifest and in no source
+ * path, so nothing inspected it. Where the user had replaced it with a
+ * symbolic link, the recorded child still hashed correctly THROUGH the link,
+ * so the drift check passed it, and retirement then deleted the target file
+ * outside the tree.
+ *
+ * A rule about paths has to range over every path the operation will touch.
+ * Stating it over the ones that happened to be convenient is how it comes back.
+ */
+async function blockedAncestors(destDir, sourceRels, recorded) {
+  const known = new Set(Object.keys(recorded ?? {}));
+  const hits = new Set();
+  const seen = new Set();
+  for (const rel of [...sourceRels, ...known]) {
+    for (const dir of ancestorsOf(rel)) {
+      if (seen.has(dir)) continue;
+      seen.add(dir);
+      const state = await destinationState(path.join(destDir, dir));
+      if (state === 'absent' || state === 'directory') continue;
+      // A recorded ancestor that is still a plain file is the file-to-directory
+      // release transition, and retirement completes it. Anything else there,
+      // a link most of all, is not ours to write through or delete beneath.
+      if (state === 'file' && known.has(dir)) continue;
+      hits.add(dir);
+    }
+  }
+  return hits;
+}
+
 async function untrackedCollisions(destDir, sourceRels, recorded) {
   const known = new Set(Object.keys(recorded ?? {}));
   const hits = new Set();
   for (const rel of sourceRels) {
-    // The directory components count too. A user file named `references`
-    // blocks every path under it, and `lstat` on those paths returns ENOTDIR,
-    // which reads as absent. So the collision went unreported and the copy
-    // crashed on `mkdir` instead. A recorded ancestor is ours, and retirement
-    // clears it before the copy, which is how a shipped file becomes a
-    // directory in a later release.
-    for (const dir of ancestorsOf(rel)) {
-      if (known.has(dir)) continue;
-      const state = await destinationState(path.join(destDir, dir));
-      if (state !== 'absent' && state !== 'directory') hits.add(dir);
-    }
-
     if (known.has(rel)) continue; // A recorded path is `alteredFiles`'s to judge.
     const abs = path.join(destDir, rel);
     const state = await destinationState(abs);
@@ -107,20 +131,27 @@ export async function installSkills({
     // level up, where it crashed the copy instead of being reported.
     const destState = await destinationState(destDir);
     const destBlocked = destState !== 'absent' && destState !== 'directory';
+    const blocked = await blockedAncestors(destDir, rels, recorded);
 
     if (!force) {
       const drifted = await alteredFiles(destDir, recorded);
       const untracked = await untrackedCollisions(destDir, rels, recorded);
-      if (destBlocked || drifted.length || untracked.length) {
+      if (destBlocked || blocked.size || drifted.length || untracked.length) {
         skipped.push({
           name,
           reason: drifted.length ? 'locally-modified' : 'not-ours',
-          files: [...(destBlocked ? [name] : []), ...drifted, ...untracked].sort(),
+          files: [
+            ...(destBlocked ? [name] : []), ...blocked, ...drifted, ...untracked,
+          ].sort(),
         });
         continue;
       }
-    } else if (destBlocked) {
-      await removeAt(destDir);
+    } else {
+      // Outermost first, so removing a directory takes its descendants and the
+      // inner entries become absent rather than stale. Clearing these BEFORE
+      // retirement is what stops a delete from travelling through a link.
+      if (destBlocked) await removeAt(destDir);
+      for (const dir of [...blocked].sort()) await removeAt(path.join(destDir, dir));
     }
 
     // Retire BEFORE copying, not after. A release can replace a directory of

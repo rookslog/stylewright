@@ -383,3 +383,54 @@ test("force replaces a file at the skill's own directory name", async () => {
   assert.deepEqual(res.installed, ['demo-craft']);
   assert.ok((await fs.lstat(mine)).isDirectory());
 });
+
+test('a symlink above a RETIRED path is refused, and nothing is deleted through it', async () => {
+  // The ancestor check walked the paths the release ships. A release that drops
+  // the last file beneath a directory leaves that directory in the manifest and
+  // in no source path, so nothing inspected it. The recorded child still hashed
+  // correctly THROUGH the link, so the drift check passed it too, and
+  // retirement then deleted a file outside the target tree.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const outsideDir = await tmp();
+  const outsideFile = path.join(outsideDir, 'gone.md');
+  await fs.writeFile(outsideFile, 'not ours\n');
+
+  const link = path.join(target, 'demo-craft', 'extra');
+  await fs.symlink(outsideDir, link);
+
+  // An older release shipped extra/gone.md. This one does not.
+  const m = await readManifest(target);
+  m.skills['demo-craft'].files['extra/gone.md'] = await hashFile(outsideFile);
+  await writeManifest(target, m);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, []);
+  assert.ok(res.skipped[0].files.includes('extra'), JSON.stringify(res.skipped));
+  assert.ok(await exists(outsideFile), 'must not delete outside the target tree');
+  assert.equal(await fs.readFile(outsideFile, 'utf8'), 'not ours\n');
+});
+
+test('force removes the link above a retired path, not what it points at', async () => {
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const outsideDir = await tmp();
+  const outsideFile = path.join(outsideDir, 'gone.md');
+  await fs.writeFile(outsideFile, 'not ours\n');
+  const link = path.join(target, 'demo-craft', 'extra');
+  await fs.symlink(outsideDir, link);
+  const m = await readManifest(target);
+  m.skills['demo-craft'].files['extra/gone.md'] = await hashFile(outsideFile);
+  await writeManifest(target, m);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
+  assert.ok(await exists(outsideFile), 'the target of the link must survive --force');
+  assert.ok(!(await exists(link)), 'the link itself must be gone');
+});

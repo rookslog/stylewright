@@ -406,3 +406,47 @@ test('install refuses more than one scope rather than writing half the request',
   assert.equal(code, 2, out.text());
   assert.equal(await fs.readdir(home).then((d) => d.length), 0, 'nothing may be written');
 });
+
+test('update names a skill that is installed nowhere it looked', async () => {
+  // The name passes validation, because the catalogue ships it. It then matched
+  // no install, was filtered to nothing, and still pushed a result, so the
+  // "Nothing to update" branch was skipped and a scripted update printed
+  // nothing and exited zero having done nothing.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'demo-standard'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /demo-standard/);
+});
+
+test('doctor sees the cross-agent directory as part of each agent that reads it', async () => {
+  // ~/.agents/skills is a convention shared between agents, not an agent of its
+  // own. Grouping by platform key gave it a group to itself, so a skill in both
+  // ~/.agents/skills and ~/.codex/skills drew no finding, though codex loads
+  // both at once.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'codex,agents'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const out = capture();
+  const code = await run(['doctor'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 1, out.text());
+  assert.match(out.text(), /demo-craft/);
+  assert.match(out.text(), /\.agents/);
+});
+
+test('the README install example still draws no finding', async () => {
+  // The regression guard for the fix above. --platform claude,codex writes two
+  // directories on purpose, and no single agent reads both.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude,codex'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const out = capture();
+  const code = await run(['doctor'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+});
