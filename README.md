@@ -55,7 +55,7 @@ Run one command and answer four questions. You do not need to know the flags,
 the directory layout, or the skill names.
 
 ```
-npx stylewright install
+npx github:rookslog/stylewright install
 ```
 
 The dialogue asks:
@@ -81,12 +81,15 @@ Any selecting flag turns the dialogue off. Use this in a script or a dotfiles
 repository.
 
 ```
-npx stylewright install --tier standards --platform claude,codex --scope user
-npx stylewright install --skill simplified-technical-english --platform claude
+npx github:rookslog/stylewright install --tier standards --platform claude,codex
+npx github:rookslog/stylewright install --skill simplified-technical-english
 ```
 
-Repeat `--skill` to select more than one. Run `npx stylewright list` for the
-names.
+Repeat `--skill` to select more than one. Run `list` for the names.
+
+The commands above read the package from GitHub, so they need no registry
+account and no clone. `stylewright` is not published to npm yet. When it is, the
+same commands work as `npx stylewright`.
 
 The installer copies files. It does not create symbolic links. A symbolic link
 breaks when the clone moves.
@@ -214,7 +217,7 @@ Do not create skill files by hand. The scaffold puts them in the right places
 and starts green on both checks.
 
 ```
-npx stylewright new-skill plain-language --tier standards \
+node bin/stylewright.mjs new-skill plain-language --tier standards \
   --source "Federal Plain Language Guidelines" \
   --url "https://digital.gov/guides/plain-language" \
   --license "CC0 1.0"

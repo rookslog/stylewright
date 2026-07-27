@@ -417,6 +417,10 @@ drift.
 1. Verify the two unverified claims in section 5.4. Both concern the plugin
    marketplace pathways, which are not built yet.
 2. Build pathways 2, 3, and 6. Only pathways 1, 4, and 5 work today.
+3. Publish the package to npm. The name is still free, and the registry returned
+   HTTP 404 for it on 2026-07-27. Until then, pathway 5 runs as
+   `npx github:rookslog/stylewright`, which needs no registry account. The
+   README documents that form. Change it to `npx stylewright` after the publish.
 
 Resolved on 2026-07-26:
 
