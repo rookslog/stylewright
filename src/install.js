@@ -4,6 +4,7 @@ import { loadCatalog } from './catalog.js';
 import { hashFile, readManifest, writeManifest, recordSkill } from './manifest.js';
 import {
   walk, pruneEmpty, destinationState, removeAt, ensureDir, blockedAncestors,
+  ancestorsOf,
 } from './tree.js';
 
 /**
@@ -107,11 +108,19 @@ export async function installSkills({
     const destState = await destinationState(destDir);
     const destBlocked = destState !== 'absent' && destState !== 'directory';
     const known = new Set(Object.keys(recorded ?? {}));
-    const blocked = await blockedAncestors(
-      destDir, pathsTouched(rels, recorded),
-      // A recorded ancestor that is still a plain file is the file-to-directory
-      // release transition, and retirement completes it.
-      (dir, state) => state === 'file' && known.has(dir));
+    // A recorded ancestor that is still a plain file is the file-to-directory
+    // release transition, and retirement completes it.
+    const exempt = (dir, state) => state === 'file' && known.has(dir);
+    const retired = retiredFiles(recorded, rels);
+    // Two sets, because `--force` disposes of one and not the other. An
+    // ancestor of a path we SHIP stands in the way of a write, and force clears
+    // it. An ancestor reached only by a RETIRED path stands in the way of a
+    // deletion, and nothing is written through it, so the round-six rule holds:
+    // force may clear what blocks a write, and not what blocks nothing. Ranging
+    // one set over the union deleted a user file through the retired half.
+    const blockedWrite = await blockedAncestors(destDir, rels, exempt);
+    const blockedRetire = await blockedAncestors(destDir, retired, exempt);
+    const blocked = new Set([...blockedWrite, ...blockedRetire]);
 
     if (!force) {
       const drifted = await alteredFiles(destDir, recorded);
@@ -131,7 +140,11 @@ export async function installSkills({
       // inner entries become absent rather than stale. Clearing these BEFORE
       // retirement is what stops a delete from travelling through a link.
       if (destBlocked) await removeAt(destDir);
-      for (const dir of [...blocked].sort()) await removeAt(path.join(destDir, dir));
+      for (const dir of [...blockedWrite].sort()) {
+        await removeAt(path.join(destDir, dir));
+        // Cleared, so it no longer blocks the retirement below either.
+        blockedRetire.delete(dir);
+      }
     }
 
     // Retire BEFORE copying, not after. A release can replace a directory of
@@ -149,7 +162,11 @@ export async function installSkills({
     // user built over one keeps its contents, which the manifest never recorded
     // and this engine never wrote. The same rule uninstall applies, in the
     // other consumer of removeAt.
-    for (const rel of retiredFiles(recorded, rels)) {
+    for (const rel of retired) {
+      // Whose ancestors force did not clear, because it had no reason to. A
+      // deletion through a symbolic link is the defect this whole pull request
+      // opened on, and the retired half is the last place it could still reach.
+      if (ancestorsOf(rel).some((dir) => blockedRetire.has(dir))) continue;
       const abs = path.join(destDir, rel);
       const state = await destinationState(abs);
       if (state === 'directory' && (await fs.readdir(abs)).length) continue;

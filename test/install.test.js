@@ -423,7 +423,36 @@ test('a symlink above a RETIRED path is refused, and nothing is deleted through 
   assert.equal(await fs.readFile(outsideFile, 'utf8'), 'not ours\n');
 });
 
-test('force removes the link above a retired path, not what it points at', async () => {
+test('force keeps a user file blocking only a retired path', async () => {
+  // The blocked set ranged over shipped AND retired paths, and --force cleared
+  // all of it. An ancestor reached only by a retired path stands in the way of
+  // a deletion, and nothing is written through it, so clearing it destroys a
+  // file for no reason. Reported with the ancestor as a user file, which is the
+  // form that loses data rather than a link.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const mine = path.join(target, 'demo-craft', 'extra');
+  await fs.writeFile(mine, 'my own file\n');
+  const m = await readManifest(target);
+  m.skills['demo-craft'].files['extra/gone.md'] = 'f'.repeat(64);
+  await writeManifest(target, m);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own file\n',
+    'a file blocking only a retired path is not in the way of any write');
+});
+
+test('force does not delete through OR clear a link above a retired path', async () => {
+  // NARROWED, for the reason the retired-directory test above was narrowed.
+  // The requirement is that the deletion not travel through the link. The
+  // first form also asserted that --force removed the link, and force has no
+  // reason to: nothing is written through `extra/`, and a directory at a
+  // retired path is already left alone. Same rule, same place, so the same
+  // answer. The link stays, unowned, and drops out of the manifest.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
 
@@ -441,5 +470,10 @@ test('force removes the link above a retired path, not what it points at', async
   });
   assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
   assert.ok(await exists(outsideFile), 'the target of the link must survive --force');
-  assert.ok(!(await exists(link)), 'the link itself must be gone');
+  assert.equal(await fs.readFile(outsideFile, 'utf8'), 'not ours\n');
+  assert.equal((await fs.lstat(link)).isSymbolicLink(), true,
+    'force clears what blocks a write, and nothing is written through this link');
+  const after = await readManifest(target);
+  assert.ok(!('extra/gone.md' in after.skills['demo-craft'].files),
+    'the retired path leaves the manifest whether or not it left the disk');
 });

@@ -46,7 +46,16 @@ function contained(rel) {
   // Normal form is not by itself containment. `..`, `.` and `a/` are all
   // already normal, and none of them names a file below this directory.
   if (norm.split(path.sep).includes('..')) return false;
-  return norm !== '.' && !norm.endsWith(path.sep);
+  if (norm === '.' || norm.endsWith(path.sep)) return false;
+  // Normal form is not enough for a second reason: `path.normalize` is not the
+  // resolver the filesystem uses. Win32 strips trailing spaces and periods from
+  // a path component and `path.normalize` keeps them, so a key of `.. \victim`
+  // is already normal, has no component equal to `..`, and is still resolved
+  // through the parent directory. Any component whose spelling would be trimmed
+  // is ambiguous between our check and the resolver, so it is refused rather
+  // than interpreted. [REPORTED — the Win32 trimming rule is documented
+  // behaviour; this repository has never run its tests on Windows.]
+  return !norm.split(path.sep).some((part) => /[ .]+$/.test(part));
 }
 
 /** A skill name is one path segment, because it is joined as one. */

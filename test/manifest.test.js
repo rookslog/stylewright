@@ -103,6 +103,21 @@ test('refuses a recorded path that is not already in normal form', async () => {
   }
 });
 
+test('refuses a component whose Win32 spelling would be trimmed', async () => {
+  // `path.normalize` is not the resolver the filesystem uses. Win32 strips a
+  // trailing space or period from a component, so `.. /victim` is already in
+  // normal form, has no component equal to `..`, and still resolves through the
+  // parent. Ambiguity between our check and the resolver is refused, not read.
+  const dir = await tmp();
+  for (const rel of ['.. /victim', 'a /b', 'a./b', 'refs/guide.md ']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
 test('an ordinary nested path is still accepted', async () => {
   const dir = await tmp();
   await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
