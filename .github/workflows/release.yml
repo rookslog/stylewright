@@ -147,17 +147,33 @@ jobs:
           # four-character string `null` and an emptiness test on it reports
           # provenance that is not there. npm marks that output path
           # `TODO(BREAKING_CHANGE)` besides. Absent and null are both absent.
-          attested="$(npm view "stylewright@$VERSION" --json 2>/dev/null | node -pe '
-            let d = null;
-            try { d = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch {}
-            const v = Array.isArray(d) ? d[d.length - 1] : d;
-            v && v.dist && v.dist.attestations ? "yes" : ""
-          ')"
-          if [ -z "$attested" ]; then
-            echo "::warning::Published without a provenance attestation. Trusted publishing may not be in effect."
-            echo "No provenance attestation. Trusted publishing may not be in effect." >> "$GITHUB_STEP_SUMMARY"
+          # This report runs AFTER an irreversible upload, so it must not be
+          # able to fail the job. A lookup that errors is tolerated explicitly
+          # rather than by whichever shell template happens to apply: the
+          # default is `bash -e {0}` and carries no pipefail, so the pipeline
+          # takes node's exit status today, but `shell: bash` or a
+          # `defaults.run.shell` anywhere adds `-o pipefail` and would make a
+          # transient registry error abort the step and skip the release.
+          #
+          # A failed lookup is reported as unknown and not as absent. Saying
+          # "no attestation" when we did not manage to look is the same class
+          # of false statement this workflow exists to stop making.
+          if raw="$(npm view "stylewright@$VERSION" --json 2>/dev/null)"; then
+            attested="$(printf '%s' "$raw" | node -pe '
+              let d = null;
+              try { d = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch {}
+              const v = Array.isArray(d) ? d[d.length - 1] : d;
+              v && v.dist && v.dist.attestations ? "yes" : ""
+            ')" || attested=''
+            if [ -z "$attested" ]; then
+              echo "::warning::Published without a provenance attestation. Trusted publishing may not be in effect."
+              echo "No provenance attestation. Trusted publishing may not be in effect." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Provenance attestation present, so the OIDC trusted-publishing path ran." >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
-            echo "Provenance attestation present, so the OIDC trusted-publishing path ran." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Could not read registry metadata, so provenance is unknown. The publish itself succeeded."
+            echo "Provenance unknown. The registry metadata could not be read." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   release:
