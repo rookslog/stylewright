@@ -11,6 +11,10 @@
 ## Global Constraints
 
 - Node 20 or later. ESM only (`"type": "module"`). No CommonJS.
+- Run the suite as bare `node --test`, which auto-discovers test files. Do NOT
+  pass a directory such as `node --test test/`. Node 26 treats a positional
+  directory as a module path and fails with `Cannot find module`. Observed on
+  Node v26.5.0 during Task 11. Single files still work: `node --test test/x.test.js`.
 - Exactly one runtime dependency: `@inquirer/prompts`. Any further dependency needs a recorded decision.
 - Skill directory paths MUST stay stable: `skills/<tier>/<name>/`. Pathway 1 addresses skills by GitHub path.
 - Grounding matrices live at `grounding/<tier>/<name>.md`. They MUST NOT appear inside any skill directory, and MUST NOT appear in any installed tree.
