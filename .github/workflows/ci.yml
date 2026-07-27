@@ -18,8 +18,8 @@ jobs:
         # Node 20, which hides any dependency that needs more than our floor.
         node: ['20.11.0', '22.0.0', '24']
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
