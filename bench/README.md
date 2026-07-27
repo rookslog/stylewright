@@ -31,8 +31,22 @@ matters as much as the middle: when guidance binds, runs converge on one shape.
 Five readings of five different shapes means the wording is not binding yet, and
 more words will not fix that.
 
-**Change one thing per arm.** An arm is a configuration, not a hypothesis. Name
-it for what it holds.
+**Change one thing per arm, and change nothing while an arm is running.** An arm
+is a configuration, not a hypothesis. Name it for what it holds. Both halves of
+this rule were broken in the first study run here, and both broke a conclusion:
+one arm carried two edited rule files rather than one, and a rule file was
+rewritten 6 seconds into a five-run cell, so its last two runs measured the text
+the cell existed to compare against. `run.sh` now writes a `.meta` file beside
+every sample with a hash of both the injected system prompt and the operator
+rule set. Differing hashes inside one arm mean that cell is contaminated. Check
+them before believing a comparison.
+
+**Score stdout, never stderr.** An early runner used `2>&1`, so a 26-word CLI
+warning landed inside the word counts of two arms and no others. It reversed the
+direction of the comparison those arms existed to make. `run.sh` now writes
+stderr to a sibling `.err` file, and `score.mjs` strips known harness noise from
+older samples and reports how many words it removed. A non-zero `noise` column
+means that arm may not be comparable to one scored at zero.
 
 **Read the samples.** Every number here is a proxy. Score to find which arm to
 read and which sample inside it, then read that sample and say what changed. A
@@ -80,17 +94,30 @@ median row.
 
 | Metric | What it counts | Read it as |
 |---|---|---|
-| `words` | Visible words. | The symptom, not the defect. Never the target on its own. |
-| `scaffold` | Headings, and standalone bold labels that act as headings. | The defect. Structure the reader did not ask for. |
+| `words` | Visible words. | The only metric that has separated every arm. Still the symptom, not the defect. |
+| `scaffold` | Headings, and standalone bold labels that act as headings. | Structure the reader did not ask for. Specific, and insensitive. See below. |
 | `bullets`, `longestList` | Bullets in total, and the longest single run. | A long run means items of unequal weight presented as equals. |
 | `hedges` | Phrases that flag something unverified. | One is often load-bearing. Four means the load-bearing one is buried. |
 | `menus` | Offers of a choice the reader did not request. | Each one is a decision handed back rather than made. |
 | `echo` | Share of the reply's word pairs that appear in the prompt. | See the warning below. Not a restatement measure. |
 
-`scaffold` leads the table on purpose. In the baseline, length followed
-structure rather than the other way round, and the worst sample was not the
-longest one. It was the one that put a real bug at item one of four, under the
-third heading.
+### Only `words` separates every arm, and that was a surprise
+
+An earlier version of this file told you to lead with `scaffold`, on the
+strength of one vivid sample that buried a real bug at item one of four under
+the third heading. A cross-vendor review checked that against the collected
+arms and it does not hold. Scored across six arms spanning 59 to 269 median
+words, `scaffold` reads zero in five of them and fires only on the worst.
+
+So the structural metrics are **specific and insensitive**. When `scaffold` or a
+long `bullets` run fires, the sample is bad and you should read it. When they
+read zero, that is not evidence the sample is fine — `green-control` scores
+zero scaffold at 173 words against `green-skill`'s zero at 59.
+
+`words` is the only metric here that has separated every pair we have measured.
+It is still the symptom rather than the defect, which is why the reading rule
+above is not optional. The numbers tell you which sample to open. The reason a
+reply is bad is always in the text.
 
 ### `echo` runs backwards, and here is the measurement
 

@@ -33,13 +33,42 @@ shapes rather than lengths. We carry the counterevidence rather than omit it.
 ## Baseline
 
 These rules answer a measured baseline rather than an impression. It is recorded
-on issue #23 and reproducible from `bench/` in this repository. Three scenarios,
+on issue #23 and reproducible from `bench/` in this repository. Four scenarios,
 five runs each, fresh context, median visible words.
 
-The stock model did not produce the failure. An operator instruction stack did,
-at up to five times the control. Rewriting those instructions from a mandate
-with exemptions into a positive recipe recovered most of the difference. That
-result is why this skill is written as a recipe.
+**What survived review.** One result. The stock model did not produce the
+failure and an operator instruction stack did: on the reporting scenario, 37 to
+65 words with no instructions against 192 to 303 with them, ranges disjoint.
+Separately, this skill's own text cuts that scenario to 59 median words against
+173 with no guidance, while all five runs still report a bug seeded in the
+prompt.
+
+**What did not survive.** Two adversarial reviews on 2026-07-27 struck more of
+this record than they left.
+
+- *Structure drives length, so measure `scaffold`.* Struck. Five of six arms
+  score zero scaffold across 59 to 269 words.
+- *A positive recipe generalises where a mandate with exemptions does not.*
+  Struck, and it was this skill's stated reason for its own form. The
+  comparison had 26 words of harness noise inside one arm's word counts, the
+  rule text was edited while that arm was still running, the comparison arm was
+  never run on the scenario that carried the generalisation, and the arm
+  credited to the recipe contained a second, unattributed edit that was itself a
+  mandate with an exemption. Decontaminated, the two forms are
+  indistinguishable. The skill is still written as a recipe. That is now a
+  choice, not a finding.
+- *Cost fell without cutting findings.* Weakened. Detection of the seeded bug
+  is five of five in every arm, but the skill's samples raise one distinct issue
+  where the unguided samples raise two or three. What it drops is secondary and
+  arguably out of scope under `E-09`. That judgment was made after seeing the
+  divergence, so it is not evidence.
+- *One rule carried most of the cost.* Holds for the largest contributor only.
+  The ordering among the remaining five rules is one draw from overlapping
+  distributions and should not be read as an attribution.
+
+Five runs per cell, medians with no dispersion statistic, four prompts written
+by the person who wrote the rules, one seeded bug in one scenario. Nothing here
+is a controlled trial, and no `E` row should be read as one.
 
 | ID | Our guidance | Our anchor | Source rule | Source location |
 |---|---|---|---|---|

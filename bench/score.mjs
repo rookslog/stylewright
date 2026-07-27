@@ -6,9 +6,10 @@
 // judgment half is a human reading the samples, which `bench/README.md`
 // describes and which no number replaces.
 //
-// The metric that matters most is not `words`. It is `scaffold`, because the
-// baseline behind skills/craft/compressed-deliberation showed length following
-// structure rather than the other way round.
+// `words` is the only metric here that separates every arm we have collected.
+// The others are specific and insensitive: they identify a bad sample when they
+// fire, and they stay silent on most bad samples. Read them as evidence for a
+// finding, never as evidence against one. `bench/README.md` carries the counts.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -84,9 +85,13 @@ function bigrams(text) {
 }
 
 /**
- * How much of the reply is the prompt handed back. A reply that restates the
- * request before answering it scores high here, and that is the one number a
- * reader can act on without opening the sample.
+ * Share of the reply's word pairs that also appear in the prompt.
+ *
+ * This was built to catch a reply that hands the request back before answering
+ * it, and it does the opposite, because it is a share. A short on-topic answer
+ * reuses the reader's nouns and little else, so it scores high. A long one
+ * dilutes the same reuse. Measured 2026-07-27: the tight control scored 0.375
+ * and the bloated arm 0.091. A rising `echo` is not a finding.
  */
 function echo(text, prompt) {
   if (!prompt) return null;
@@ -96,8 +101,37 @@ function echo(text, prompt) {
   return Number((r.filter((b) => p.has(b)).length / r.length).toFixed(3));
 }
 
-export function score(text, prompt) {
+/**
+ * Lines that are the harness talking, not the model. They reached samples once,
+ * through a `2>&1` in an early runner, and 26 words of CLI warning inside two
+ * arms and nowhere else was enough to reverse the comparison those arms were
+ * built to make. `run.sh` now sends stderr elsewhere. This strips it from
+ * samples collected before that, and reports what it removed rather than
+ * silently cleaning, because a sample that needed cleaning is a sample whose
+ * arm may not be comparable.
+ */
+const NOISE = [
+  /^Warning: no stdin data received.*$/gm,
+  /^Error: Input must be provided.*$/gm,
+  /^cat: .*No such file or directory$/gm,
+  /^hook: .*$/gm,
+];
+
+export function denoise(text) {
+  let out = text;
+  for (const re of NOISE) out = out.replace(re, '');
+  return out.trim();
+}
+
+export function score(raw, prompt) {
+  const text = denoise(raw);
+  const removed = words(raw) - words(text);
+  if (removed > 0) {
+    process.stderr.write(
+      `warning: stripped ${removed} words of harness noise. That arm may not be comparable.\n`);
+  }
   return {
+    noise: removed,
     words: words(text),
     scaffold: scaffold(text),
     ...lists(text),
@@ -134,7 +168,7 @@ async function main(argv) {
     rows.push({ file: path.basename(f), ...score(await fs.readFile(f, 'utf8'), prompt) });
   }
 
-  const keys = ['words', 'scaffold', 'bullets', 'longestList', 'hedges', 'menus', 'echo'];
+  const keys = ['noise', 'words', 'scaffold', 'bullets', 'longestList', 'hedges', 'menus', 'echo'];
   process.stdout.write(`file\t${keys.join('\t')}\n`);
   for (const r of rows) {
     process.stdout.write(`${r.file}\t${keys.map((k) => r[k] ?? '').join('\t')}\n`);
