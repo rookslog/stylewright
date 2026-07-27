@@ -68,14 +68,28 @@ Rules here govern structure and commitment, not vocabulary.
 
 ## Known blind spots in the test suite
 
-Do not read a green pipeline as coverage of these. Both are tracked.
+Do not read a green pipeline as coverage of this one.
 
 - **`src/prompt.js` is never imported by a test.** Every test injects a fake
   through `ctx`, so the sole consumer of `@inquirer/prompts` has no coverage.
-  See issue #10.
-- **The declared Node floor is never exercised.** `engines` names 20.11.0, and
-  the matrix entry `20` resolves to the newest Node 20. A dependency requiring
-  more than the floor passes. See issue #11.
+  A dependency bump that changes the prompt API passes CI. See issue #10.
+
+## The Node floor is enforced, and how
+
+`engines` names the floor. The CI matrix tests the exact versions we advertise,
+`20.11.0` and `22.0.0`, rather than `20` and `22`, which resolve to the newest
+release of each major and hide the floor. `.npmrc` sets `engine-strict`, so a
+dependency needing more than the floor fails `npm ci` instead of printing a
+warning.
+
+Two consequences for a change you propose here:
+
+- Adding a dependency that requires more Node than `engines` allows will fail,
+  and that is correct. Raise the floor deliberately, in `package.json` and in
+  both workflow matrices together, or choose a compatible version.
+- Changing the matrix versions renames the CI jobs. The branch ruleset requires
+  those job names as status checks, so update the ruleset in the same pass or
+  every pull request blocks on checks that no longer run.
 
 ## Conventions worth knowing before you suggest a change
 
