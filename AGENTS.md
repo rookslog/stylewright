@@ -55,10 +55,15 @@ A matrix inside `skills/` is a defect, even when every row is correct.
 
 ### Impurity in `src/`
 
-Nothing in `src/` may call `process.exit`, prompt the user, or read the wall
-clock. The command-line layer owns all three, and time is passed in as a
-parameter. This is what keeps manifests comparable across install pathways in
-the conformance suite.
+No module in `src/` may call `process.exit`, read the wall clock, or import a
+prompt library. Time is passed in as a parameter. This is what keeps manifests
+comparable across install pathways in the conformance suite.
+
+`src/prompt.js` is the single exception for prompting. It owns the dialogue so
+that nothing else has to, and the command-line layer injects it.
+
+`test/purity.test.js` enforces this. If you propose a change here, the test is
+the authority and not this paragraph.
 
 ### A banned-word list
 

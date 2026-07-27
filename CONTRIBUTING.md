@@ -126,14 +126,21 @@ editing it to satisfy our linter would change a text that people recognize.
 ## Change the engine
 
 Write the test first. Every module under `src/` is a pure function or a thin
-wrapper over the filesystem, and nothing in `src/` may do these things:
+wrapper over the filesystem, and no module in `src/` may do these things:
 
 - Call `process.exit`.
-- Prompt the user.
 - Read the wall clock.
+- Reach for a terminal prompt.
 
-The command-line layer owns all three. Pass time in as a parameter. This is what
+The command-line layer owns the first. Pass time in as a parameter. This is what
 keeps manifests comparable across install pathways in the conformance suite.
+
+`src/prompt.js` is the one exception to the third rule, and it exists so that the
+exception has exactly one address. It owns the dialogue, the command-line layer
+injects it, and every other test replaces it. No other module in `src/` may
+import a prompt library.
+
+`test/purity.test.js` enforces all three. The rule is checked, not advisory.
 
 ## Cut a release
 
