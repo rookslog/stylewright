@@ -55,5 +55,4 @@ body:
     attributes:
       label: Before you send this
       options:
-        - label: This is not a request to add a banned-word list to a skill.
         - label: I searched the open issues for the same request.

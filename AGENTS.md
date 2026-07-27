@@ -65,11 +65,22 @@ that nothing else has to, and the command-line layer injects it.
 `test/purity.test.js` enforces this. If you propose a change here, the test is
 the authority and not this paragraph.
 
-### A banned-word list
+### A word list without rationale or a severity
 
-A skill that forbids specific words is out of scope. Such a list dates fast, it
-fires on correct usage, and it teaches an agent to swap one tell for another.
-Rules here govern structure and commitment, not vocabulary.
+A skill may forbid specific words. A word list is the only part of a skill that
+`stylewright lint` can check mechanically, so it carries real weight that a
+structural rule does not.
+
+Hold it to three conditions:
+
+- Each entry states why it is listed. An entry with no reason cannot be argued
+  with, and it cannot be removed later on evidence.
+- The list warns by default. Any word is correct somewhere, and an error stops a
+  build over a judgment call.
+- The list is not the whole skill. A skill that only bans words teaches an agent
+  to swap one tell for another.
+
+Flag a list that fails these. Do not flag a list for existing.
 
 ## Known blind spots in the test suite
 
