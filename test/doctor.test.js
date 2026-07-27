@@ -31,4 +31,32 @@ test('detects the same skill installed in two targets', async () => {
   const dup = found.find((f) => f.code === 'duplicate-install');
   assert.ok(dup, 'expected a duplicate-install finding');
   assert.match(dup.message, /demo-standard/);
+  assert.match(dup.message, /2 directories/);
+});
+
+test('a single claude install is not a duplicate, despite the cowork alias', async () => {
+  // cowork/user resolves to the same path as claude/user. Counting labels
+  // instead of paths would report a duplicate for every ordinary install.
+  const home = await tmp();
+  const cwd = await tmp();
+  await installSkills({
+    repoRoot: REPO,
+    targetDir: path.join(home, '.claude/skills'),
+    names: ['demo-standard'],
+    now: NOW,
+  });
+  assert.deepEqual(await doctor({ repoRoot: REPO, home, cwd }), []);
+});
+
+test('does not report a duplicate when cwd equals home', async () => {
+  // user scope and project scope collapse to one path when the process runs
+  // in the home directory.
+  const home = await tmp();
+  await installSkills({
+    repoRoot: REPO,
+    targetDir: path.join(home, '.claude/skills'),
+    names: ['demo-standard'],
+    now: NOW,
+  });
+  assert.deepEqual(await doctor({ repoRoot: REPO, home, cwd: home }), []);
 });
