@@ -8,10 +8,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - The release workflow no longer reports success for a release it did not
-  publish. The first attempt at a tag refuses a version that is already on the
-  registry, and re-running the workflow is how you accept it deliberately. The
-  `v0.1.0` run was green on every job while `npm publish` was skipped, so the
-  trusted-publishing path it exists to exercise had never run. See issue #26.
+  publish. A tag whose version is already on the registry now fails, with no
+  way to accept it, because the branch that skipped the publish reported the
+  skip as success. The `v0.1.0` run was green on every job while `npm publish`
+  was skipped, so the trusted-publishing path it exists to exercise had never
+  run. A release for a version that is already published is one `gh release
+  create` by hand.
+- The release workflow retries the registry before it calls a completed publish
+  absent. The check ran immediately after an irreversible upload, and a
+  registry read that lagged the write would have failed the job and taken the
+  GitHub Release with it.
 
 ### Changed
 
