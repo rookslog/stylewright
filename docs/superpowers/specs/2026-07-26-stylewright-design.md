@@ -414,11 +414,26 @@ drift.
 
 ## 8. Open items before v1
 
-1. Verify the two unverified claims in section 5.4.
-2. Confirm the GitHub organization or account that will own the repository.
+1. Verify the two unverified claims in section 5.4. Both concern the plugin
+   marketplace pathways, which are not built yet.
+2. Build pathways 2, 3, and 6. Only pathways 1, 4, and 5 work today.
 
 Resolved on 2026-07-26:
 
 - All five source licenses verified. Results in section 3.1.
 - The name `stylewright` is free. The npm registry returns HTTP 404 for it, and a
   GitHub search returns no matching project.
+
+Resolved on 2026-07-27:
+
+- The repository owner is the GitHub account `rookslog`. The account was
+  confirmed free on 2026-07-27, and the operator will rename `loganrooks` to
+  `rookslog` before the first push.
+- The Code of Conduct contact is `logansrooks+conduct@gmail.com`.
+- Two skills now ship: `simplified-technical-english` and `plain-language`.
+- The `plain-language` canonical URL moved. `plainlanguage.gov` returns HTTP 301
+  to `digital.gov`, which carries a curated subset and states no license. The
+  source of record is the archived repository `GSA/plainlanguage.gov`.
+- Contributor surfaces added: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
+  `SECURITY.md`, `CHANGELOG.md`, issue and pull request templates, and the
+  `new-skill` scaffold.

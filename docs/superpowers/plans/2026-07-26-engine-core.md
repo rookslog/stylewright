@@ -1950,7 +1950,7 @@ This skill is a paraphrased operational digest. It reproduces no rule text and n
 dictionary entries. It does not replace the official standard.
 
 - Standard: [ASD-STE100 Issue 9 (2025)](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf)
-- Grounding matrix: [grounding/standards/simplified-technical-english.md](https://github.com/OWNER/stylewright/blob/main/grounding/standards/simplified-technical-english.md)
+- Grounding matrix: [grounding/standards/simplified-technical-english.md](https://github.com/rookslog/stylewright/blob/main/grounding/standards/simplified-technical-english.md)
 
 ## Notice
 
@@ -1960,7 +1960,7 @@ by the Aerospace, Security and Defence Industries Association of Europe, number
 017966390.
 ```
 
-Replace `OWNER` with the account chosen in Open Item 2 of the spec.
+Replace `rookslog` with the account chosen in Open Item 2 of the spec.
 
 Create `LICENSE` in the skill directory:
 
@@ -2167,6 +2167,6 @@ git commit -m "ci: run tests, doc lint, and grounding checks on every push"
 
 **Deferred to Plan 2, deliberately:** roster rows for the other six skills (spec 3.1 and 3.4), pathways 1, 2, 3, and 6 with their marketplace manifests (spec 5.1, 5.2), and the two unverified plugin claims (spec 5.4). Plan 1 ships working software without them.
 
-**Placeholder scan.** One intentional placeholder remains: `OWNER` in the Task 12 GitHub URL. It resolves when spec Open Item 2 resolves. Task 12 Step 2 names it explicitly.
+**Placeholder scan.** One intentional placeholder remains: `rookslog` in the Task 12 GitHub URL. It resolves when spec Open Item 2 resolves. Task 12 Step 2 names it explicitly.
 
 **Type consistency.** `installSkills` returns `{ installed, skipped }` in Tasks 6, 10, and 11. `uninstallSkills` returns `{ removed, missing }` in Tasks 7 and 10. `lintText` returns `{ line, rule, message }` in Tasks 8 and 10. `checkSkill` returns `{ level, code, message }` in Tasks 9 and 10. `doctor` returns `{ level, code, message }` in Tasks 7 and 10. `treeOf` returns `{ rel, sha256 }` in Task 11 and is imported by Plan 2.

@@ -97,7 +97,7 @@ Codex ships a skill installer. Give it a path in this repository:
 
 ```
 scripts/install-skill-from-github.py \
-  --repo OWNER/stylewright \
+  --repo rookslog/stylewright \
   --path skills/standards/simplified-technical-english
 ```
 
@@ -106,7 +106,7 @@ scripts/install-skill-from-github.py \
 Copy the directory. This always works.
 
 ```
-git clone https://github.com/OWNER/stylewright
+git clone https://github.com/rookslog/stylewright
 cp -R stylewright/skills/standards/simplified-technical-english ~/.claude/skills/
 ```
 

@@ -98,7 +98,7 @@ The original site at `plainlanguage.gov` now redirects to `digital.gov`. The
 archived guidelines in the repository above are the source of record.
 
 Every statement above is traced to a named guideline. The trace lives in the
-stylewright repository at `grounding/standards/plain-language.md`. It is not
+[stylewright repository](https://github.com/rookslog/stylewright/blob/main/grounding/standards/plain-language.md). It is not
 installed with this skill.
 
 ## Notice
