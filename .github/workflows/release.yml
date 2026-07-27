@@ -55,8 +55,57 @@ jobs:
           fi
           echo "version=$pkg" >> "$GITHUB_OUTPUT"
 
+  # A skip is right on a re-run and wrong on a first attempt, and until now the
+  # workflow could not tell them apart. The v0.1.0 run was green on every job
+  # and published nothing: the version had been pushed to the registry by hand
+  # beforehand, so the publish step skipped, and its skip read as success. The
+  # OIDC path it exists to exercise has still never run.
+  #
+  # So the first attempt at a tag REFUSES a version that is already on the
+  # registry. Re-running the workflow is the acknowledgement: attempt two
+  # accepts what attempt one refused. That keeps the escape hatch for a
+  # hand-published version while making its use a deliberate act that leaves a
+  # record, rather than a silent branch nobody reads.
+  #
+  # `needs:` is absent HERE ON PURPOSE, and adding one breaks the argument. A
+  # re-run means "I saw the refusal" only if the refusal was reached. Behind a
+  # prerequisite, a flaky `verify` consumes attempt one on its own, and then
+  # attempt two accepts a refusal that was never printed — a green run that
+  # published nothing, which is the whole defect. This job depends on nothing,
+  # so attempt one always reaches it.
+  #
+  # It reads the version from the tag rather than from `guard`, for the same
+  # reason. `guard` still asserts that the tag and package.json agree; a
+  # disagreement fails the run there, before `publish` needs either.
+  precheck:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      exists: ${{ steps.published.outputs.exists }}
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - id: published
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if npm view "stylewright@$version" version >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+      # One window stays open: a run cancelled before this step finishes leaves
+      # attempt two free to accept a refusal nobody saw. Closing it needs the
+      # attempt-1 job conclusion from the Actions API, which is more machinery
+      # than a workflow that runs a handful of times a year is worth. Cancelling
+      # your own release and then re-running it is a deliberate act either way.
+      - if: steps.published.outputs.exists == 'true' && github.run_attempt == 1
+        run: |
+          echo "::error::stylewright@${GITHUB_REF_NAME#v} was already on the registry before this workflow ran, so this tag did not publish it. If that is intended, re-run this workflow: the second attempt accepts it."
+          exit 1
+
   publish:
-    needs: [verify, guard]
+    needs: [verify, guard, precheck]
     runs-on: ubuntu-latest
     permissions:
       # Mints the OIDC token that npm trades for publish rights.
@@ -73,40 +122,9 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # npm refuses to overwrite a published version, so a re-run of this
-      # workflow would fail on its second pass. Ask the registry first, and skip
-      # instead.
-      - id: published
-        env:
-          VERSION: ${{ needs.guard.outputs.version }}
-        run: |
-          if npm view "stylewright@$VERSION" version >/dev/null 2>&1; then
-            echo 'exists=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'exists=false' >> "$GITHUB_OUTPUT"
-          fi
-
-      # A skip is right on a re-run and wrong on a first attempt, and until now
-      # the workflow could not tell them apart. The v0.1.0 run was green on
-      # every job and published nothing: the version had been pushed to the
-      # registry by hand beforehand, so this step skipped, and its skip read as
-      # success. The OIDC path it exists to exercise has still never run.
-      #
-      # So the first attempt at a tag REFUSES a version that is already on the
-      # registry. Re-running the workflow is the acknowledgement: attempt two
-      # accepts what attempt one refused. That keeps the escape hatch for a
-      # hand-published version while making its use a deliberate act that
-      # leaves a record, rather than a silent branch nobody reads.
-      - if: steps.published.outputs.exists == 'true' && github.run_attempt == 1
-        env:
-          VERSION: ${{ needs.guard.outputs.version }}
-        run: |
-          echo "::error::stylewright@$VERSION was already on the registry before this workflow ran, so this tag did not publish it. If that is intended, re-run this workflow: the second attempt accepts it."
-          exit 1
-
       # No NODE_AUTH_TOKEN. npm reads the OIDC token and attaches a provenance
       # attestation on its own, so `--provenance` is not passed here.
-      - if: steps.published.outputs.exists == 'false'
+      - if: needs.precheck.outputs.exists == 'false'
         run: npm publish
 
       # Assert the postcondition, rather than the absence of an error. A job
@@ -114,7 +132,7 @@ jobs:
       - name: Say what this run actually did
         env:
           VERSION: ${{ needs.guard.outputs.version }}
-          DID_PUBLISH: ${{ steps.published.outputs.exists == 'false' }}
+          DID_PUBLISH: ${{ needs.precheck.outputs.exists == 'false' }}
         run: |
           if ! npm view "stylewright@$VERSION" version >/dev/null 2>&1; then
             echo "::error::stylewright@$VERSION is not on the registry after the publish job."
@@ -126,7 +144,20 @@ jobs:
             # accepted the upload by some other route, which is worth saying
             # out loud and is not worth failing a completed publish over: the
             # registry read can lag the write.
-            if [ -z "$(npm view "stylewright@$VERSION" dist.attestations 2>/dev/null)" ]; then
+            #
+            # Read the JSON, not the human-readable form. `npm view <field>`
+            # renders any non-string through `util.inspect` (npm 11.17.0,
+            # lib/commands/view.js:222), so an explicit null prints the
+            # four-character string `null` and an emptiness test on it reports
+            # provenance that is not there. npm marks that output path
+            # `TODO(BREAKING_CHANGE)` besides. Absent and null are both absent.
+            attested="$(npm view "stylewright@$VERSION" --json 2>/dev/null | node -pe '
+              let d = null;
+              try { d = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch {}
+              const v = Array.isArray(d) ? d[d.length - 1] : d;
+              v && v.dist && v.dist.attestations ? "yes" : ""
+            ')"
+            if [ -z "$attested" ]; then
               echo "::warning::Published without a provenance attestation. Trusted publishing may not be in effect."
               echo "No provenance attestation. Trusted publishing may not be in effect." >> "$GITHUB_STEP_SUMMARY"
             else
