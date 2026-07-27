@@ -7,6 +7,7 @@ import { uninstallSkills } from './uninstall.js';
 import { doctor } from './doctor.js';
 import { lintText } from './lint.js';
 import { checkAll } from './ground.js';
+import { scaffoldSkill } from './scaffold.js';
 import { VERSION } from './version.js';
 
 const USAGE = `stylewright ${VERSION}
@@ -18,6 +19,9 @@ const USAGE = `stylewright ${VERSION}
   doctor
   lint       <path>...
   ground     --check (--all | --skill <name>)
+  new-skill  <name> --tier standards|craft
+             [--source "<name>"] [--url <url>] [--license "<license>"]
+             [--description "<one sentence>"]
 `;
 
 function parseFlags(argv) {
@@ -128,6 +132,35 @@ export async function run(argv, ctx) {
     }
     say('Grounding clean.');
     return 0;
+  }
+
+  if (command === 'new-skill') {
+    const name = flags._[0];
+    if (!name) {
+      say('new-skill needs a name. Example: new-skill plain-language --tier standards');
+      return 2;
+    }
+    try {
+      const written = await scaffoldSkill({
+        repoRoot,
+        name,
+        tier: flags.tier ?? 'craft',
+        description: flags.description,
+        source: flags.source,
+        url: flags.url,
+        license: flags.license,
+      });
+      for (const f of written) say(`created ${f}`);
+      say('');
+      say('Next:');
+      say('  1. Replace the placeholder rule in SKILL.md with your own.');
+      say(`  2. Add a matching row to grounding/${flags.tier ?? 'craft'}/${name}.md.`);
+      say('  3. Run: npm run check:ground && npm run lint:docs && npm test');
+      return 0;
+    } catch (err) {
+      say(err.message);
+      return 2;
+    }
   }
 
   if (command === 'install' || command === 'uninstall') {

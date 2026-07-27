@@ -1,16 +1,33 @@
 {
   "name": "stylewright",
   "version": "0.1.0",
-  "description": "Writing skills for coding agents, distilled from named standards.",
+  "description": "Writing skills for coding agents, distilled from named standards. Installs into Claude Code, Claude Cowork, and Codex.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "agent-skills",
+    "technical-writing",
+    "documentation",
+    "style-guide",
+    "asd-ste100",
+    "simplified-technical-english",
+    "plain-language",
+    "linter"
+  ],
   "type": "module",
   "license": "MIT",
+  "author": "Logan Rooks",
+  "repository": { "type": "git", "url": "git+https://github.com/OWNER/stylewright.git" },
+  "homepage": "https://github.com/OWNER/stylewright#readme",
+  "bugs": { "url": "https://github.com/OWNER/stylewright/issues" },
   "bin": { "stylewright": "./bin/stylewright.mjs" },
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=20.11.0" },
   "files": ["bin", "src", "skills", "README.md", "LICENSE"],
   "scripts": {
     "test": "node --test",
-    "lint:docs": "node bin/stylewright.mjs lint README.md docs/ skills/",
-    "check:ground": "node bin/stylewright.mjs ground --check --all"
+    "lint:docs": "node bin/stylewright.mjs lint README.md CONTRIBUTING.md SECURITY.md CHANGELOG.md docs/ skills/",
+    "check:ground": "node bin/stylewright.mjs ground --check --all",
+    "check": "npm test && npm run lint:docs && npm run check:ground"
   },
   "dependencies": { "@inquirer/prompts": "^7.0.0" }
 }

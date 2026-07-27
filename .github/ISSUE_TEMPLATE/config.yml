@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/OWNER/stylewright/security/advisories/new
+    about: Report privately. Do not open a public issue for a vulnerability.
+  - name: Question or idea
+    url: https://github.com/OWNER/stylewright/discussions
+    about: Ask about usage, or discuss an idea before you propose a skill.

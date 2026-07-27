@@ -1,0 +1,60 @@
+name: Propose a skill
+description: Suggest a new writing skill, from a standard or from craft.
+title: "skill: <name>"
+labels: ["new skill"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A `standards/` skill needs a source that anyone can read for free, with
+        reuse terms that permit a digest. A `craft/` skill needs neither, and
+        every row in its grounding matrix is an `E` row.
+
+  - type: input
+    id: name
+    attributes:
+      label: Skill name
+      description: Lowercase kebab-case, such as plain-language.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Tier
+      options:
+        - standards (distilled from a named external source)
+        - craft (our own writing discipline, no external source)
+    validations:
+      required: true
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: What does it do
+      description: What does a writer achieve with it, and when do they reach for it?
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source name and URL
+      description: For a standards skill. Leave empty for craft.
+
+  - type: input
+    id: license
+    attributes:
+      label: Source license
+      description: >
+        For a standards skill. Give the license and the URL that states it.
+        We reject any source that is not readable without payment.
+
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Before you submit
+      options:
+        - label: The canonical text is readable at a public URL, without payment.
+        - label: I checked the reuse terms, and they permit a digest in our own words.
+        - label: This does not duplicate a skill that agent harnesses already ship.

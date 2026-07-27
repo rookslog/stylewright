@@ -122,6 +122,7 @@ Cowork reads the Claude directory. The two names resolve to one path.
 | `doctor` | Report problems, such as one skill installed in two places. |
 | `lint` | Check a Markdown file against the mechanical rules below. |
 | `ground` | Check that each grounding matrix still matches its skill. |
+| `new-skill` | Scaffold a new skill that passes both checks from the start. |
 
 ### Update is safe
 
@@ -194,17 +195,24 @@ states the rules in our own words and links to the official source.
 
 ## Contributing
 
-A new `standards/` skill needs all of these:
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first. It covers how to choose a source,
+how to write a grounding matrix, and what a pull request needs.
 
-1. Choose a source that anyone can read at a public URL. Confirm that its reuse
-   terms permit a digest.
-2. Write a `SOURCE.md` file. Record the license and the date that you checked it.
-3. Write a grounding matrix. Give every statement in the skill a row.
-4. Add a `LICENSE` file that matches the source.
-5. Add a non-affiliation notice.
-
-Run all three checks before you open a pull request:
+Do not create skill files by hand. The scaffold puts them in the right places
+and starts green on both checks.
 
 ```
-npm test && npm run lint:docs && npm run check:ground
+npx stylewright new-skill plain-language --tier standards \
+  --source "Federal Plain Language Guidelines" \
+  --url "https://digital.gov/guides/plain-language" \
+  --license "CC0 1.0"
 ```
+
+Run every check before you open a pull request:
+
+```
+npm run check
+```
+
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Report a
+vulnerability privately, as described in [SECURITY.md](SECURITY.md).
