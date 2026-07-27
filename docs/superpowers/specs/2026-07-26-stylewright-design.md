@@ -426,9 +426,10 @@ Resolved on 2026-07-26:
 
 Resolved on 2026-07-27:
 
-- The repository owner is the GitHub account `rookslog`. The account was
-  confirmed free on 2026-07-27, and the operator will rename `loganrooks` to
-  `rookslog` before the first push.
+- The repository owner is the GitHub account `rookslog`. The operator renamed
+  `loganrooks` to `rookslog` on 2026-07-27, then claimed the released
+  `loganrooks` handle with a second account. That claim holds the redirects for
+  the remotes that still carry the old owner segment.
 - The Code of Conduct contact is `logansrooks+conduct@gmail.com`.
 - Two skills now ship: `simplified-technical-english` and `plain-language`.
 - The `plain-language` canonical URL moved. `plainlanguage.gov` returns HTTP 301
