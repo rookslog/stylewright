@@ -59,6 +59,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `uninstall` accepts a skill name that this repository has withdrawn, as long
   as a selected manifest records it. `update` tells you to uninstall such a
   skill, and that advice was impossible to follow.
+- **`uninstall` no longer deletes outside the target directory.** It reached
+  `fs.rm` directly, so a symbolic link among a recorded path's directories sent
+  the deletion through it. It now makes the checks `install` makes before it
+  writes.
+- `uninstall` no longer stops part-way when a recorded path has become a
+  directory. It threw, having already deleted the earlier entries and without
+  rewriting the manifest, so the files were gone and the records still claimed
+  them.
+- `uninstall` keeps a file you edited, and takes `--force` to remove it anyway.
+  It promised to remove only what the installer wrote, and a file you rewrote
+  is not that.
+- `ground --check --skill` rejects a name it does not know. It contributed no
+  findings and reported "Grounding clean.", so a typo turned a CI gate into a
+  no-op that reported pass.
+- `install` and `uninstall` exit non-zero when they changed nothing. An install
+  that refused every skill was indistinguishable from one that wrote them all.
+- A filesystem error the engine cannot interpret prints a message rather than a
+  stack trace.
 
 ### Changed
 

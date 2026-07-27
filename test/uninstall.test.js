@@ -95,7 +95,7 @@ test('an uninstall that removes nothing writes nothing', async () => {
   // an empty manifest: the tool recording its own absence as installed state.
   const target = path.join(await tmp(), 'skills');
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
-  assert.deepEqual(res, { removed: [], missing: ['demo-craft'] });
+  assert.deepEqual(res, { removed: [], missing: ['demo-craft'], skipped: [] });
   assert.ok(!(await exists(target)), 'no directory may be created');
 });
 
@@ -114,4 +114,62 @@ test('a partial uninstall stamps the release that wrote the manifest', async () 
 
   await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
   assert.equal((await readManifest(target)).stylewrightVersion, VERSION);
+});
+
+test('a symlinked ancestor is refused, and nothing is deleted through it', async () => {
+  // This module reached fs.rm directly and imported one of the four filesystem
+  // primitives, so every rule the install path learned across four review
+  // rounds was absent here. Install refused this exact shape; uninstall
+  // executed it.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const outsideDir = await tmp();
+  const outsideFile = path.join(outsideDir, 'notes.md');
+  await fs.writeFile(outsideFile, 'mine\n');
+  await fs.symlink(outsideDir, path.join(target, 'demo-craft', 'extra'));
+
+  const m = await readManifest(target);
+  m.skills['demo-craft'].files['extra/notes.md'] = 'f'.repeat(64);
+  await fs.writeFile(
+    path.join(target, MANIFEST_NAME), `${JSON.stringify(m, null, 2)}\n`);
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.deepEqual(res.removed, []);
+  assert.ok(res.skipped[0].files.includes('extra'), JSON.stringify(res.skipped));
+  assert.ok(await exists(outsideFile), 'must not delete outside the target tree');
+});
+
+test('a recorded path that became a directory does not throw part-way', async () => {
+  // fs.rm without recursive threw ERR_FS_EISDIR mid-loop. Earlier entries were
+  // already deleted and the manifest was never rewritten, so the files were
+  // gone and the records still claimed them. A retry threw at the same row.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const swapped = path.join(target, 'demo-craft', 'LICENSE');
+  await fs.rm(swapped);
+  await fs.mkdir(swapped);
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'], force: true });
+  assert.deepEqual(res.removed, ['demo-craft']);
+  assert.ok(!(await exists(swapped)));
+});
+
+test('a file you edited is kept, and --force removes it', async () => {
+  // "uninstall removes only, and all of, what the installer wrote." A file the
+  // user rewrote is not what the installer wrote, and install already refuses
+  // to overwrite one.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const mine = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.writeFile(mine, 'my own words\n');
+
+  const kept = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.deepEqual(kept.removed, []);
+  assert.deepEqual(kept.skipped[0].files, ['SKILL.md']);
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own words\n');
+
+  const forced = await uninstallSkills({ targetDir: target, names: ['demo-craft'], force: true });
+  assert.deepEqual(forced.removed, ['demo-craft']);
+  assert.ok(!(await exists(mine)));
 });

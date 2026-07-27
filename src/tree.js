@@ -71,6 +71,38 @@ export function ancestorsOf(rel) {
   return parts.map((_, i) => parts.slice(0, i + 1).join(path.sep));
 }
 
+/**
+ * Directory components of `rels`, under `baseDir`, that hold something other
+ * than a directory.
+ *
+ * A path's ancestors belong to the operation. `fs.rm` and `fs.copyFile` both
+ * resolve them, so a symbolic link in the middle of a path sends the operation
+ * out of the tree, and `lstat` below a file component reports ENOTDIR, which
+ * reads as absent. Checking only the leaf let an install write outside the
+ * target and an uninstall delete outside it.
+ *
+ * `exempt` states the one difference between the callers rather than giving
+ * each its own copy of the walk. Install exempts a recorded ancestor that is
+ * still a plain file, because that is the file-to-directory release transition
+ * and retirement completes it. Uninstall exempts nothing: it only ever removes
+ * beneath these paths, and a non-directory there means the record is wrong.
+ */
+export async function blockedAncestors(baseDir, rels, exempt = () => false) {
+  const hits = new Set();
+  const seen = new Set();
+  for (const rel of rels) {
+    for (const dir of ancestorsOf(rel)) {
+      if (seen.has(dir)) continue;
+      seen.add(dir);
+      const state = await destinationState(path.join(baseDir, dir));
+      if (state === 'absent' || state === 'directory') continue;
+      if (exempt(dir, state)) continue;
+      hits.add(dir);
+    }
+  }
+  return hits;
+}
+
 /** Every file under `dir`, as paths relative to it, sorted. */
 export async function walk(dir, base = '') {
   const out = [];

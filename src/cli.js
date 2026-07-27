@@ -150,6 +150,16 @@ export async function run(argv, ctx) {
       say('ground needs --all or --skill <name>.');
       return 2;
     }
+    // The same rule as `update`'s unmatched names, and this is the instance
+    // that matters most: `ground --check` is a CI gate, and a name it does not
+    // know contributed no findings and reported "Grounding clean." A gate that
+    // fails open on a typo or a renamed skill is worse than no gate.
+    const unknown = names.filter((n) => !(n in all));
+    if (unknown.length) {
+      say(`Unknown skill: ${unknown.join(', ')}.`);
+      say(`Available: ${Object.keys(all).sort().join(', ')}.`);
+      return 2;
+    }
     let failed = 0;
     for (const name of names) {
       for (const f of all[name] ?? []) {
@@ -303,6 +313,13 @@ export async function run(argv, ctx) {
       return 2;
     }
 
+    // One rule, stated once over both commands: an operation that changed
+    // nothing must not report success. `uninstall` exited zero after removing
+    // nothing, while `update` exited 2 for the same skill on the same machine,
+    // and an `install` that refused every skill was indistinguishable from one
+    // that wrote them all.
+    let changed = 0;
+    let refused = 0;
     for (const [, targetDir] of targetDirs) {
       if (command === 'install') {
         const res = await installSkills({
@@ -312,11 +329,24 @@ export async function run(argv, ctx) {
         for (const s of res.skipped) {
           say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
         }
+        changed += res.installed.length;
+        refused += res.skipped.length;
       } else {
-        const res = await uninstallSkills({ targetDir, names });
+        const res = await uninstallSkills({ targetDir, names, force: Boolean(flags.force) });
         for (const n of res.removed) say(`removed ${n} from ${targetDir}`);
         for (const n of res.missing) say(`not installed: ${n} in ${targetDir}`);
+        for (const s of res.skipped) {
+          say(`kept ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to remove it anyway.`);
+        }
+        changed += res.removed.length;
+        refused += res.skipped.length;
       }
+    }
+    if (!changed) {
+      say(refused
+        ? `Nothing was ${command === 'install' ? 'installed' : 'removed'}.`
+        : `Nothing to ${command === 'install' ? 'install' : 'remove'}.`);
+      return 1;
     }
     return 0;
   }

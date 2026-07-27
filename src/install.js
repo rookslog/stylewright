@@ -3,7 +3,7 @@ import path from 'node:path';
 import { loadCatalog } from './catalog.js';
 import { hashFile, readManifest, writeManifest, recordSkill } from './manifest.js';
 import {
-  walk, pruneEmpty, destinationState, removeAt, ensureDir, ancestorsOf,
+  walk, pruneEmpty, destinationState, removeAt, ensureDir, blockedAncestors,
 } from './tree.js';
 
 /**
@@ -38,39 +38,14 @@ async function alteredFiles(destDir, recorded) {
  * more dangerous kind.
  */
 /**
- * Directory components that hold something we cannot write through or descend
- * into, across EVERY path this install touches — the ones it ships AND the
- * ones it retires.
- *
- * Walking the shipping paths alone was not enough, and the gap was the same
- * mistake as the one it was written to fix. A release that drops the last file
- * beneath a directory leaves that directory in the manifest and in no source
- * path, so nothing inspected it. Where the user had replaced it with a
- * symbolic link, the recorded child still hashed correctly THROUGH the link,
- * so the drift check passed it, and retirement then deleted the target file
- * outside the tree.
- *
- * A rule about paths has to range over every path the operation will touch.
- * Stating it over the ones that happened to be convenient is how it comes back.
+ * Every path this install touches — the ones it ships AND the ones it retires.
+ * A rule about paths has to range over all of them. Stating it over the ones
+ * that happened to be convenient is how it comes back: the ancestor check
+ * walked only the shipped paths, so a release that dropped the last file
+ * beneath a symlinked directory deleted through the link.
  */
-async function blockedAncestors(destDir, sourceRels, recorded) {
-  const known = new Set(Object.keys(recorded ?? {}));
-  const hits = new Set();
-  const seen = new Set();
-  for (const rel of [...sourceRels, ...known]) {
-    for (const dir of ancestorsOf(rel)) {
-      if (seen.has(dir)) continue;
-      seen.add(dir);
-      const state = await destinationState(path.join(destDir, dir));
-      if (state === 'absent' || state === 'directory') continue;
-      // A recorded ancestor that is still a plain file is the file-to-directory
-      // release transition, and retirement completes it. Anything else there,
-      // a link most of all, is not ours to write through or delete beneath.
-      if (state === 'file' && known.has(dir)) continue;
-      hits.add(dir);
-    }
-  }
-  return hits;
+function pathsTouched(sourceRels, recorded) {
+  return [...sourceRels, ...Object.keys(recorded ?? {})];
 }
 
 async function untrackedCollisions(destDir, sourceRels, recorded) {
@@ -131,7 +106,12 @@ export async function installSkills({
     // level up, where it crashed the copy instead of being reported.
     const destState = await destinationState(destDir);
     const destBlocked = destState !== 'absent' && destState !== 'directory';
-    const blocked = await blockedAncestors(destDir, rels, recorded);
+    const known = new Set(Object.keys(recorded ?? {}));
+    const blocked = await blockedAncestors(
+      destDir, pathsTouched(rels, recorded),
+      // A recorded ancestor that is still a plain file is the file-to-directory
+      // release transition, and retirement completes it.
+      (dir, state) => state === 'file' && known.has(dir));
 
     if (!force) {
       const drifted = await alteredFiles(destDir, recorded);

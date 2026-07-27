@@ -450,3 +450,45 @@ test('the README install example still draws no finding', async () => {
   const code = await run(['doctor'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
   assert.equal(code, 0, out.text());
 });
+
+test('ground --check refuses a skill name it does not know', async () => {
+  // The name yielded undefined, coalesced to an empty finding list, added
+  // nothing, and printed "Grounding clean." `ground --check` is a CI gate, so a
+  // typo or a renamed skill turned the gate into a no-op that reported pass.
+  const out = capture();
+  const code = await run(['ground', '--check', '--skill', 'totally-not-a-skill'], {
+    home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /totally-not-a-skill/);
+  assert.doesNotMatch(out.text(), /Grounding clean/);
+});
+
+test('uninstall that removes nothing does not report success', async () => {
+  // update exited 2 for the same skill on the same machine. One rule, two
+  // commands, opposite answers.
+  const home = await tmp();
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'demo-craft', '--platform', 'claude'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.notEqual(code, 0, out.text());
+  assert.match(out.text(), /not installed/);
+});
+
+test('install that refused every skill does not report success', async () => {
+  // A scripted install that installed nothing was indistinguishable from one
+  // that installed everything.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.writeFile(
+    path.join(home, '.claude', 'skills', 'demo-craft', 'SKILL.md'), 'edited\n');
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'], {
+    home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.notEqual(code, 0, out.text());
+  assert.match(out.text(), /skipped demo-craft/);
+});
