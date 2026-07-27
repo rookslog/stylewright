@@ -29,5 +29,5 @@
     "check:ground": "node bin/stylewright.mjs ground --check --all",
     "check": "npm test && npm run lint:docs && npm run check:ground"
   },
-  "dependencies": { "@inquirer/prompts": "^7.0.0" }
+  "dependencies": { "@inquirer/prompts": "^8.5.2" }
 }
