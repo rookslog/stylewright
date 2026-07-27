@@ -313,6 +313,23 @@ A plugin installs as one bundle. Therefore the repository ships **two** plugins,
 `stylewright-standards` and `stylewright-craft`. The tier split and the plugin
 split are the same split. Tier selection is free on these pathways.
 
+**Verified 2026-07-27 against the Claude Code documentation** (issue #2). One
+repository publishing two plugins is the documented case: *"To publish multiple
+plugins under one marketplace name, list them all in a single
+`marketplace.json`."* Two corrections to section 4's layout follow:
+
+- A plugin's `source` path resolves against the **marketplace root**, the
+  directory holding `.claude-plugin/`, not against `.claude-plugin/` itself.
+  `metadata.pluginRoot` sets a prefix so entries can name a bare directory.
+- The Codex marketplace manifest is reported to live at
+  `.agents/plugins/marketplace.json`, not under `.codex-plugin/`. Section 4
+  shows no Codex marketplace file at all. **Reported, not verified** — the
+  source is a sample spec in the `openai/codex` repository, which also
+  contradicts itself on whether `hooks` is a supported field.
+
+A per-plugin `.claude-plugin/plugin.json` is optional, and where present only
+`name` is required.
+
 ### 5.3 Pathway 5 — the engine
 
 Runtime: Node, distributed as `npx stylewright`.
@@ -345,15 +362,24 @@ The manifest makes three operations possible:
 - `doctor` detects a double install.
 
 **Double install.** A user can install the same skill through a plugin and through
-the engine. Both copies declare the same `name` in frontmatter. `doctor` MUST
-detect this condition and report it.
+the engine. Both copies declare the same `name` in frontmatter.
 
-**Unverified.** Two claims need a test before v1 ships:
+**Amended 2026-07-27 (issue #2). There is no collision.** Claude Code namespaces
+plugin skills: *"Plugin skills use a `plugin-name:skill-name` namespace, so they
+cannot conflict with other levels."* The two copies are two invocations —
+`/stylewright-standards:plain-language` and `/plain-language` — and the platform
+reports nothing, because by its model nothing is wrong. The precedence rule it
+does state governs the other levels: enterprise over personal over project, and
+any of them over a bundled skill.
 
-1. That `/plugin marketplace add` accepts a remote repository that carries two
-   plugins.
-2. That a duplicate skill name across a plugin install and a `~/.claude/skills`
-   install produces the collision described above.
+What survives is narrower, and it is ours rather than the platform's: **our
+manifest cannot see a plugin-installed copy**, so `update` and `doctor` reason
+about half of what is on disk. `doctor` should say so, rather than report a
+conflict that the platform does not have.
+
+**Still untested.** Neither claim has been exercised live. The command that would
+test the first: `/plugin marketplace add rookslog/stylewright`, then
+`/plugin install stylewright-standards@<marketplace-name>`.
 
 ## 6. Testing
 
