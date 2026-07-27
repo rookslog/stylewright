@@ -72,6 +72,22 @@ test('refuses a manifest whose recorded path leaves its own directory', async ()
   }
 });
 
+test('refuses a recorded path that resolves to the skill directory itself', async () => {
+  // The `..` scan is not sufficient, because normalization can consume every
+  // `..` and leave nothing to find. `.` and `sub/..` both normalize to `.`, and
+  // path.join then yields the skill directory, which removeAt deletes whole —
+  // including the files the manifest never recorded. `./` and `a/` reach the
+  // same place by a trailing separator rather than by `..`.
+  const dir = await tmp();
+  for (const rel of ['.', 'sub/..', './', 'a/']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
 test('refuses a manifest whose skill name is not a directory name', async () => {
   // uninstall's name validation was widened to accept any name a manifest
   // records, which is right for a withdrawn skill. The name is then joined as

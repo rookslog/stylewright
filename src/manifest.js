@@ -25,7 +25,16 @@ export function emptyManifest() {
  */
 function contained(rel) {
   if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel)) return false;
-  return !path.normalize(rel).split(path.sep).includes('..');
+  const norm = path.normalize(rel);
+  if (norm.split(path.sep).includes('..')) return false;
+  // Scanning for `..` is not sufficient, because normalization can consume every
+  // one of them and leave nothing to find. `.` and `sub/..` both normalize to
+  // `.`, and `path.join` then yields the skill directory rather than a file in
+  // it — which `removeAt` deletes whole, taking the files the manifest never
+  // recorded. A trailing separator reaches a directory the same way. The rule
+  // the check is really making is that a recorded path names a file BELOW the
+  // directory, so state that, rather than enumerate the ways to escape it.
+  return norm !== '.' && !norm.endsWith(path.sep);
 }
 
 /** A skill name is one path segment, because it is joined as one. */
