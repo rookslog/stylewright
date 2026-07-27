@@ -17,17 +17,34 @@
   "type": "module",
   "license": "MIT",
   "author": "Logan Rooks",
-  "repository": { "type": "git", "url": "git+https://github.com/rookslog/stylewright.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rookslog/stylewright.git"
+  },
   "homepage": "https://github.com/rookslog/stylewright#readme",
-  "bugs": { "url": "https://github.com/rookslog/stylewright/issues" },
-  "bin": { "stylewright": "./bin/stylewright.mjs" },
-  "engines": { "node": ">=20.11.0" },
-  "files": ["bin", "src", "skills", "README.md", "LICENSE"],
+  "bugs": {
+    "url": "https://github.com/rookslog/stylewright/issues"
+  },
+  "bin": {
+    "stylewright": "./bin/stylewright.mjs"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --test",
     "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md docs/ skills/",
     "check:ground": "node bin/stylewright.mjs ground --check --all",
     "check": "npm test && npm run lint:docs && npm run check:ground"
   },
-  "dependencies": { "@inquirer/prompts": "^7.0.0" }
+  "dependencies": {
+    "@inquirer/prompts": "^8.5.2"
+  }
 }
