@@ -5,6 +5,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- Tests for the guided install dialogue. `src/prompt.js` had no coverage at all,
+  so a major bump of `@inquirer/prompts` went green without executing a line of
+  the code it changed. The three prompt calls are now injectable, and one test
+  asserts the library still exports them.
+
+
 ### Changed
 
 - Authoring doctrine now permits quoting a source rule beside its identifier. The
