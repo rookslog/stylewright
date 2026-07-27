@@ -3,9 +3,14 @@ import path from 'node:path';
 import { loadCatalog } from './catalog.js';
 import { hashFile, readManifest, writeManifest, recordSkill } from './manifest.js';
 import {
-  walk, pruneEmpty, destinationState, removeAt, ensureDir, blockedAncestors,
+  walk, pruneEmpty, destinationState, removeAt, ensureDir, reachability,
   ancestorsOf,
 } from './tree.js';
+
+/** The subset of a recorded map whose keys the walk could reach. */
+function pick(recorded, open) {
+  return Object.fromEntries(Object.entries(recorded ?? {}).filter(([rel]) => open.has(rel)));
+}
 
 /**
  * Recorded paths that no longer hold the file we wrote there. Writing over one
@@ -105,26 +110,34 @@ export async function installSkills({
     // ships, and it is the one `ancestorsOf` cannot name, because the paths it
     // walks are relative to it. Leaving it out put the same collision one
     // level up, where it crashed the copy instead of being reported.
-    const destState = await destinationState(destDir);
-    const destBlocked = destState !== 'absent' && destState !== 'directory';
     const known = new Set(Object.keys(recorded ?? {}));
     // A recorded ancestor that is still a plain file is the file-to-directory
     // release transition, and retirement completes it.
     const exempt = (dir, state) => state === 'file' && known.has(dir);
     const retired = retiredFiles(recorded, rels);
-    // Two sets, because `--force` disposes of one and not the other. An
+    // Two passes, because `--force` disposes of one and not the other. An
     // ancestor of a path we SHIP stands in the way of a write, and force clears
     // it. An ancestor reached only by a RETIRED path stands in the way of a
     // deletion, and nothing is written through it, so the round-six rule holds:
     // force may clear what blocks a write, and not what blocks nothing. Ranging
     // one set over the union deleted a user file through the retired half.
-    const blockedWrite = await blockedAncestors(destDir, rels, exempt);
-    const blockedRetire = await blockedAncestors(destDir, retired, exempt);
+    const write = await reachability(destDir, rels, exempt);
+    const retire = await reachability(destDir, retired, exempt);
+    const blockedWrite = write.blocked;
+    const blockedRetire = retire.blocked;
     const blocked = new Set([...blockedWrite, ...blockedRetire]);
+    const destBlocked = write.baseBlocked;
 
     if (!force) {
-      const drifted = await alteredFiles(destDir, recorded);
-      const untracked = await untrackedCollisions(destDir, rels, recorded);
+      // Only the leaves the walk could actually reach. Handing every recorded
+      // and shipping path to these two turned a blocked ancestor into an ELOOP
+      // out of install, where the whole point of finding the blocker was to
+      // refuse politely. `reachability` is empty when the base is blocked, so
+      // this needs no separate guard.
+      const open = new Set([...write.reachable, ...retire.reachable]);
+      const drifted = await alteredFiles(destDir, pick(recorded, open));
+      const untracked = await untrackedCollisions(
+        destDir, rels.filter((r) => open.has(r)), recorded);
       if (destBlocked || blocked.size || drifted.length || untracked.length) {
         skipped.push({
           name,

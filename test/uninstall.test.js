@@ -155,6 +155,28 @@ test('a recorded path that became a directory does not throw part-way', async ()
   assert.ok(!(await exists(swapped)));
 });
 
+test('a skill directory replaced by a link to another install is refused', async () => {
+  // `ancestorsOf` names components BELOW destDir and cannot name destDir, so
+  // the skill directory itself was never classified. The leaves resolved
+  // through the link, matched their recorded hashes because they were the same
+  // files, and the removal ran inside the OTHER installation.
+  const mine = await tmp();
+  const theirs = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: mine, names: ['demo-craft'], now: NOW });
+  await installSkills({ repoRoot: REPO, targetDir: theirs, names: ['demo-craft'], now: NOW });
+  const swapped = path.join(mine, 'demo-craft');
+  await fs.rm(swapped, { recursive: true, force: true });
+  await fs.symlink(path.join(theirs, 'demo-craft'), swapped);
+
+  for (const force of [false, true]) {
+    const res = await uninstallSkills({ targetDir: mine, names: ['demo-craft'], force });
+    assert.deepEqual(res.removed, [], `must remove nothing with force=${force}`);
+    assert.equal(res.skipped[0].reason, 'not-ours');
+    assert.ok(await exists(path.join(theirs, 'demo-craft', 'SKILL.md')),
+      `the other installation survives force=${force}`);
+  }
+});
+
 test('a self-referential link at an ancestor is reported, not followed', async () => {
   // Once blockedAncestors has found the blocker the skill is refused whatever
   // the leaf turns out to be, so reaching for the leaf is a syscall through the

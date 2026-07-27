@@ -106,20 +106,55 @@ export function ancestorsOf(rel) {
  * and retirement completes it. Uninstall exempts nothing: it only ever removes
  * beneath these paths, and a non-directory there means the record is wrong.
  */
-export async function blockedAncestors(baseDir, rels, exempt = () => false) {
-  const hits = new Set();
-  const seen = new Set();
-  for (const rel of rels) {
-    for (const dir of ancestorsOf(rel)) {
-      if (seen.has(dir)) continue;
-      seen.add(dir);
-      const state = await destinationState(path.join(baseDir, dir));
-      if (state === 'absent' || state === 'directory') continue;
-      if (exempt(dir, state)) continue;
-      hits.add(dir);
-    }
+/**
+ * Which directory components refuse to be walked, and which paths survive them.
+ *
+ * It returns `reachable` as well as `blocked` because returning only `blocked`
+ * is what produced the same finding at four separate call sites. Every consumer
+ * has to inspect its leaves — hash them, classify them, decide whether to
+ * remove them — and each one had to remember on its own not to inspect a leaf
+ * that sits under a blocker it had just been handed. Three of them forgot. A
+ * leaf below a blocker is refused whatever it turns out to be, so reaching for
+ * it buys nothing and spends an `lstat` through the very thing we refused to
+ * trust: a self-referential symlink throws `ELOOP` out of the command instead
+ * of a polite refusal, and a FIFO hangs the hash read rather than throwing.
+ *
+ * Handing back the safe set makes the safe thing the easy thing. A caller that
+ * ignores `reachable` and iterates its own paths is now visibly doing that.
+ *
+ * Three rules, and each one was a finding:
+ *
+ * 1. `baseDir` ITSELF is classified. Starting below it meant a skill directory
+ *    replaced by a symlink to another installation was never seen, and the
+ *    removal then ran inside that other installation.
+ * 2. A path stops at its FIRST blocker. Recording `references` and then
+ *    inspecting `references/deep` resolves the second `lstat` through the
+ *    blocker, which is the throw we are trying to prevent.
+ * 3. Results are memoised per directory, so a shared ancestor costs one syscall
+ *    however many recorded paths pass through it.
+ */
+export async function reachability(baseDir, rels, exempt = () => false) {
+  const baseState = await destinationState(baseDir);
+  if (baseState !== 'absent' && baseState !== 'directory') {
+    return { baseBlocked: true, blocked: new Set(), reachable: [] };
   }
-  return hits;
+  const blocked = new Set();
+  const seen = new Map();
+  const reachable = [];
+  for (const rel of rels) {
+    let open = true;
+    for (const dir of ancestorsOf(rel)) {
+      if (!seen.has(dir)) {
+        const state = await destinationState(path.join(baseDir, dir));
+        const bad = state !== 'absent' && state !== 'directory' && !exempt(dir, state);
+        seen.set(dir, bad);
+        if (bad) blocked.add(dir);
+      }
+      if (seen.get(dir)) { open = false; break; }
+    }
+    if (open) reachable.push(rel);
+  }
+  return { baseBlocked: false, blocked, reachable };
 }
 
 /** Every file under `dir`, as paths relative to it, sorted. */

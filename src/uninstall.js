@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { hashFile, readManifest, writeManifest, MANIFEST_NAME } from './manifest.js';
-import { pruneEmpty, removeAt, destinationState, blockedAncestors, ancestorsOf } from './tree.js';
+import { pruneEmpty, removeAt, destinationState, reachability } from './tree.js';
 
 /**
  * Recorded paths that hold something other than a file.
@@ -85,17 +85,22 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
     // would be deleted. Only an edited file is force-able, so only that reason
     // may carry the advice to force. Reporting them under one reason is what
     // sent the user round the loop twice with nothing left to try.
-    const blocked = await blockedAncestors(destDir, rels);
-    // A leaf beneath a known blocker is not inspected. Once the ancestor has
-    // been found, the skill is refused whatever the leaf turns out to be, and
-    // reaching for it is a syscall through the very thing we just refused to
-    // trust: a self-referential symlink at `references` made `lstat` on
-    // `references/guide.md` throw ELOOP instead of reporting `not-ours`, and a
-    // FIFO would hang the hash read rather than throw at all.
-    const reachable = Object.fromEntries(Object.entries(entry.files)
-      .filter(([rel]) => !ancestorsOf(rel).some((dir) => blocked.has(dir))));
-    const stuck = await wrongType(destDir, reachable);
-    const drifted = force ? [] : await altered(destDir, reachable);
+    // The skill's own directory is classified too, and this is where it was
+    // missing. `ancestorsOf` names components BELOW `destDir` and cannot name
+    // `destDir` itself, so a skill directory replaced by a symlink to another
+    // installation was never seen: the leaves resolved through it, matched
+    // their recorded hashes because they were the same files, and the removal
+    // then ran inside the other installation. Nothing here is force-able,
+    // because nothing under that link is ours to remove.
+    const { baseBlocked, blocked, reachable } = await reachability(destDir, rels);
+    if (baseBlocked) {
+      skipped.push({ name, reason: 'not-ours', files: [name] });
+      continue;
+    }
+    const open = new Set(reachable);
+    const seen = Object.fromEntries(Object.entries(entry.files).filter(([rel]) => open.has(rel)));
+    const stuck = await wrongType(destDir, seen);
+    const drifted = force ? [] : await altered(destDir, seen);
     if (blocked.size || stuck.length || drifted.length) {
       skipped.push({
         name,

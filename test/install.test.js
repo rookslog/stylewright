@@ -498,3 +498,39 @@ test('force does not delete through OR clear a link above a retired path', async
   assert.ok(!('extra/gone.md' in after.skills['demo-craft'].files),
     'the retired path leaves the manifest whether or not it left the disk');
 });
+
+test('install refuses politely under a self-referential ancestor', async () => {
+  // blockedAncestors recorded `references` and the non-force path then handed
+  // every leaf to alteredFiles and untrackedCollisions, so lstat on
+  // references/guide.md threw ELOOP out of install. Finding the blocker exists
+  // in order to refuse; throwing instead is the outcome it was meant to stop.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const refs = path.join(target, 'demo-craft', 'references');
+  await fs.rm(refs, { recursive: true, force: true });
+  await fs.symlink(refs, refs);
+
+  const res = await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  assert.deepEqual(res.installed, []);
+  assert.equal(res.skipped[0].reason, 'not-ours');
+  assert.ok(res.skipped[0].files.includes('references'), JSON.stringify(res.skipped));
+});
+
+test('a deeper component below a blocker is never inspected', async () => {
+  // The walk added `references` and then went on to lstat `references/deep`,
+  // which resolves THROUGH the blocker it had just recorded. Stopping a path at
+  // its first blocker is the fix, and it is in the primitive rather than in the
+  // three callers that each have to remember.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const m = await readManifest(target);
+  m.skills['demo-craft'].files['references/deep/file.md'] = 'f'.repeat(64);
+  await writeManifest(target, m);
+  const refs = path.join(target, 'demo-craft', 'references');
+  await fs.rm(refs, { recursive: true, force: true });
+  await fs.symlink(refs, refs);
+
+  const res = await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  assert.deepEqual(res.installed, []);
+  assert.equal(res.skipped[0].reason, 'not-ours');
+});
