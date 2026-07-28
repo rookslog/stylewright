@@ -155,8 +155,17 @@ export function denoise(text) {
   return out.trim();
 }
 
-export function score(raw, prompt) {
-  const text = denoise(raw);
+/**
+ * @param raw     the sample text
+ * @param prompt  the scenario prompt, for `echo`, or null
+ * @param legacy  true only for a sample with no `.meta`, i.e. one collected
+ *                before the runner separated stderr. Denoising is destructive —
+ *                `^hook: ` removes any line a reply legitimately begins that
+ *                way, and a reply about hooks is exactly what this repository
+ *                produces — so it must never touch a sample that cannot need it.
+ */
+export function score(raw, prompt, legacy = false) {
+  const text = legacy ? denoise(raw) : raw.trim();
   const removed = words(raw) - words(text);
   if (removed > 0) {
     process.stderr.write(
@@ -277,7 +286,13 @@ async function main(argv) {
 
   const rows = [];
   for (const f of files) {
-    rows.push({ file: path.basename(f), ...score(await fs.readFile(f, 'utf8'), prompt) });
+    // A sample with metadata came from the fixed runner, whose stderr never
+    // reaches the sample, so denoising it could only ever damage it.
+    const legacy = !metas[files.indexOf(f)];
+    rows.push({
+      file: path.basename(f),
+      ...score(await fs.readFile(f, 'utf8'), prompt, legacy),
+    });
   }
 
   const keys = ['noise', 'words', 'scaffold', 'bullets', 'longestList', 'hedges', 'menus', 'echo'];

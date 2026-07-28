@@ -75,8 +75,10 @@ prose complaint is rated moderate or lower with prevalence unknown.
 1. Open each `A` URL above and confirm the named section still exists.
 2. Confirm the model id and release date at
    https://platform.claude.com/docs/en/about-claude/models/whats-new-opus-5.
-3. Re-run the baseline in `grounding/craft/compressed-deliberation.md`. A
-   control that no longer reproduces the failure retires this skill.
+3. Re-run the baseline in `grounding/craft/compressed-deliberation.md`. The
+   control was already clean, so what must still reproduce is the *contrast*:
+   an operator instruction stack inflating the reply well past the no-guidance
+   run. A contrast that has collapsed retires this skill.
 
 ## When this record expires
 
@@ -85,4 +87,5 @@ before the next release:
 
 - Anthropic changes the Opus 5 alias, the prompting guide, or the system card.
 - A successor model ships and this repository has not re-run the baseline.
-- The baseline stops reproducing the failure under a no-guidance control.
+- The baseline contrast collapses, meaning an instruction stack no longer
+  inflates the reply against a no-guidance run of the same prompt.

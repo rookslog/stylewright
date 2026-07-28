@@ -13,7 +13,7 @@ import path from 'node:path';
 
 import { score, auditable, readMeta } from '../bench/score.mjs';
 
-const s = (text) => score(text, null);
+const s = (text) => score(text, null, false);
 
 test('words counts visible prose, and fence delimiters are not words', () => {
   assert.equal(s('```js\nconst a = 1;\n```').words, 4);
@@ -54,9 +54,18 @@ test('menus does not fire on a direct answer containing either/or', () => {
 });
 
 test('noise reports what it removed rather than cleaning silently', () => {
-  const r = s('Warning: no stdin data received\nThe answer.');
+  const r = score('Warning: no stdin data received\nThe answer.', null, true);
   assert.equal(r.words, 2);
   assert.ok(r.noise > 0);
+});
+
+test('denoising never touches a sample that could not need it', () => {
+  // `^hook: ` is a legitimate opening for a reply in this repository, and
+  // stripping it from a current sample would silently delete real content.
+  const reply = 'hook: SessionStart fires before the prompt is read.';
+  assert.equal(score(reply, null, false).words, 8);
+  assert.equal(score(reply, null, false).noise, 0);
+  assert.equal(score(reply, null, true).words, 0);
 });
 
 // The audit is the half that four of this protocol's own defects slipped past.

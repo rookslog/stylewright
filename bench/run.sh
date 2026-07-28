@@ -52,18 +52,54 @@ if [ -n "$SYSTEM" ]; then
 fi
 
 # The operator's own rule files are a treatment too, whenever --rules user is in
-# play, and they are the ones most likely to be edited between arms. Hash the
-# set so a contaminated cell is visible afterwards rather than invisible.
+# play, and they are the ones most likely to be edited between arms.
+#
+# Hash them PER FILE, not as one concatenation. A single digest over the set
+# changes identically whether one file was edited or three were, so the defect
+# this protocol actually retracted — an arm carrying two edited rule files while
+# named for one — would still be invisible. The manifest names each file with
+# its own hash, so a later reader can say which one moved.
+user_rules_manifest() {
+  [ "$RULES" = user ] || { print none; return }
+  for rf in ~/.claude/CLAUDE.md ~/.claude/*.md; do
+    [ -r "$rf" ] || continue
+    print -n "${rf:t}:$(shasum < "$rf" | cut -c1-8),"
+  done
+}
+
 user_rules_sha() {
   [ "$RULES" = user ] || { print none; return }
-  cat ~/.claude/CLAUDE.md ~/.claude/*.md 2>/dev/null | shasum | cut -c1-12
+  print -r -- "$(user_rules_manifest)" | shasum | cut -c1-12
 }
+
+# Reject anything that is not exactly `user` or `none`. This used to fall
+# through to the control on any unrecognised value, so `--rules usr` collected a
+# no-guidance arm under a treatment name and scored exactly like the control —
+# the one result an arm can produce that looks like a finding and is not. That
+# is the same failure the `--system` resolution above already had to fix, so it
+# gets the same answer: exit rather than improvise.
+case "$RULES" in
+  user) SOURCES=user ;;
+  none) SOURCES='' ;;
+  *) print -u2 -- "--rules must be 'user' or 'none', got: $RULES"; exit 2 ;;
+esac
 
 # An empty --setting-sources suppresses the operator's own CLAUDE.md as well as
 # settings. That is what makes a true no-guidance control possible without
-# touching a live config. Verified 2026-07-27 by asking a run whether it carried
-# a named operator rule file; it did not.
-[ "$RULES" = user ] && SOURCES=user || SOURCES=''
+# touching a live config. Verified 2026-07-27 two ways: by asking a run whether
+# it carried a named operator rule file, and by planting a marker string in a
+# temporary user CLAUDE.md and confirming it appears under `--setting-sources
+# user` and not under `--setting-sources ''`. The second is the real warrant.
+# The first is a model self-report about its own hidden context, which is not
+# evidence, and it should not have been recorded here as though it were.
+
+[ "$REPS" -ge 1 ] 2>/dev/null || { print -u2 -- "--reps must be a positive integer, got: $REPS"; exit 2 }
+if [ "$REPS" -lt 5 ]; then
+  # Below the documented floor is allowed, because a smoke test of the harness
+  # itself is a real use. It is recorded in every `.meta` so the cell cannot
+  # later be quoted as an ordinary arm.
+  print -u2 "note: --reps $REPS is below the five-run floor. Recorded as undersized."
+fi
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -73,8 +109,21 @@ for p in "$HERE"/prompts/*.txt; do
   mkdir -p "$HERE/out/$ARM"
   for r in $(seq 1 "$REPS"); do
     f="$HERE/out/$ARM/$scenario-$r.txt"
-    [ -s "$f" ] && continue
+    # Both artifacts, not just the sample. A `.txt` with no `.meta` beside it is
+    # the wreckage of an interrupted run, and treating it as finished is how a
+    # partial answer gets resumed over and scored as a complete one.
+    [ -s "$f" ] && [ -s "$f.meta" ] && continue
+    rm -f "$f" "$f.meta"
     prompt_text="$(< "$p")"
+
+    # Snapshot the live treatment BEFORE the model sees it. Hashing only
+    # afterwards records the post-edit text against a sample generated from the
+    # pre-edit text, and every later rep then agrees with that new hash — so the
+    # cell reads consistent while actually straddling two treatments. That is
+    # the retracted defect in its narrowest form, and a post-run hash cannot see
+    # it. Both hashes are compared below.
+    rules_before="$(user_rules_sha)"
+    prompt_before="$(shasum "$p" | cut -c1-12)"
     # `--output-format json` rather than plain stdout, for three reasons. The
     # model's answer arrives in a named `result` field, so no harness line can
     # ever land inside it. `is_error` distinguishes a short answer from a failed
@@ -102,6 +151,21 @@ for p in "$HERE"/prompts/*.txt; do
       exit 1
     fi
     rm -f "$f.extract.err"
+
+    # Re-hash and compare. A treatment that moved while the model was reading it
+    # invalidates this sample and no other, so refuse this one rather than the
+    # arm — but refuse loudly, because the edit probably touched neighbours too.
+    rules_after="$(user_rules_sha)"
+    prompt_after="$(shasum "$p" | cut -c1-12)"
+    if [ "$rules_before" != "$rules_after" ] || [ "$prompt_before" != "$prompt_after" ]; then
+      rm -f "$f.part"
+      print -u2 "TREATMENT MOVED during $ARM/$scenario-$r — discarded."
+      print -u2 "  rules  $rules_before -> $rules_after"
+      print -u2 "  prompt $prompt_before -> $prompt_after"
+      print -u2 "Nothing may be edited while an arm is running. Rerun this arm."
+      exit 1
+    fi
+
     mv "$f.part" "$f"
 
     # Provenance beside every sample. The treatment is HASHED, not named,
@@ -109,7 +173,7 @@ for p in "$HERE"/prompts/*.txt; do
     # correctly-named cell whose later reps measured different text. Differing
     # hashes within one arm mean that cell is contaminated; `score.mjs` refuses
     # such a set rather than trusting anyone to check.
-    print "arm=$ARM scenario=$scenario rep=$r rules=$SOURCES system=${SYSTEM:-none} system_sha=$SYSTEM_SHA user_rules_sha=$(user_rules_sha) prompt_sha=$(shasum "$p" | cut -c1-12) model_id=$MODEL_ID cli=$CLI_VERSION at=$(date -u +%FT%TZ)" > "$f.meta"
+    print "arm=$ARM scenario=$scenario rep=$r reps=$REPS rules=$SOURCES system=${SYSTEM:-none} system_sha=$SYSTEM_SHA user_rules_sha=$rules_after user_rules=$(user_rules_manifest) prompt_sha=$prompt_after model_id=$MODEL_ID cli=$CLI_VERSION at=$(date -u +%FT%TZ)" > "$f.meta"
     print "$ARM/$scenario-$r $(wc -w < "$f") words [$MODEL_ID]"
   done
 done

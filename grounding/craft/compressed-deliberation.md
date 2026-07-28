@@ -41,9 +41,13 @@ scenarios, five runs each, fresh context, median visible words.
 **What survived review.** One result, and it is narrower than it first reads. On
 one single-turn reporting prompt, `claude -p` with no operator instructions
 produced 37 to 65 words, and the same harness carrying one operator's rule stack
-produced 192 to 303. The ranges are disjoint. Separately, this skill's own text
-cuts that scenario to 59 median words against 173 with no guidance, while all
-five runs still report a bug seeded in the prompt.
+produced 192 to 303. The ranges are disjoint.
+
+Separately, and on a **different** scenario, this skill's own text cuts the
+`adjacent-bug` prompt to 59 median words against 173 with no guidance, while all
+five runs still report the bug seeded in that prompt. The two results are not
+two views of one measurement, and the reporting scenario was never run against
+the skill.
 
 Read that as a fact about a harness, not about a model. `claude -p` is the
 Claude Code headless path, so "no operator instructions" is not "the stock

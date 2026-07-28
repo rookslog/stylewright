@@ -37,7 +37,7 @@ Install one tier, the other, or both.
 |---|---|---|---|
 | `simplified-technical-english` | standards | ASD-STE100 Issue 9 (2025) | (c) ASD 2025. All rights reserved. See the skill `SOURCE.md`. |
 | `plain-language` | standards | Federal Plain Language Guidelines | CC0 1.0 Universal. Public domain. |
-| `compressed-deliberation` | craft | None. Anthropic documents the model behaviour it corrects. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
+| `compressed-deliberation` | craft | None. Anthropic documents the defaults, and our own baseline traces the inflation to the instruction stack above them. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
 
 A craft skill has no standard behind it, so measurement is the only evidence its
 rules can have. `bench/` holds that protocol, and `bench/README.md` states the

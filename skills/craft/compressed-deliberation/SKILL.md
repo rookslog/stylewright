@@ -27,6 +27,16 @@ model. They prescribe nothing, and no rule below inherits their authority.
 - It can widen a task past what the reader asked for.
 - A lower effort setting does not reliably shorten the visible answer.
 
+Those are the documented defaults. What our own baseline found is narrower and
+partly different: an unguided run was already clean, and an operator instruction
+stack above it was what inflated the reply. So read the rules below as aimed at
+the whole stack you are running inside, and not at the model alone.
+
+Where the rules have been measured: single-turn replies, one prompt each, five
+runs. Not agentic sessions, and not files written to disk. The second is the
+case `SOURCE.md` records the vendor documenting most clearly and the one we have
+tested least, so apply the rules there on their reasoning, not on our evidence.
+
 ## The shape of a reply
 
 - Lead with the result, and not with the route you took to it.
