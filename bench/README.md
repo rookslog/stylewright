@@ -11,6 +11,12 @@ reproducible and artificial. The field half is real and uncontrolled.
 
 Fixed scenarios, fresh context, several runs each, one variable at a time.
 
+`run.sh` needs **zsh** and the `claude` CLI on `PATH`. Neither is a dependency of
+this package, and nothing in `npm run check` invokes the runner, so continuous
+integration never exercises this half. A Linux container without zsh will fail
+every command below before the harness starts. The scorer is plain Node and runs
+anywhere.
+
 ```
 bench/run.sh control                       # no guidance at all
 bench/run.sh with-skill --system skills/craft/compressed-deliberation/SKILL.md

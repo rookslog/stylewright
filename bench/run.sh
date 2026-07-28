@@ -104,6 +104,28 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# Resuming an arm under the same name with a different configuration keeps the
+# old samples and generates only the missing ones, so the cell silently holds
+# two conditions. The arm directory name is not a fingerprint. Compare against
+# what is already there and refuse rather than resume.
+existing="$(ls "$HERE/out/$ARM"/*.meta 2>/dev/null | head -1)"
+if [ -n "$existing" ]; then
+  was_system="$(sed -n 's/.*system_sha=\([^ ]*\).*/\1/p' "$existing")"
+  was_rules="$(sed -n 's/.*rules=\([^ ]*\) .*/\1/p' "$existing")"
+  now_rules="$SOURCES"
+  [ -z "$now_rules" ] && now_rules=''
+  if [ "$was_system" != "$SYSTEM_SHA" ]; then
+    print -u2 "arm '$ARM' already holds samples taken with system_sha=$was_system, not $SYSTEM_SHA."
+    print -u2 "Resuming would mix two conditions under one name. Use a new arm name."
+    exit 2
+  fi
+  if [ "$was_rules" != "$now_rules" ]; then
+    print -u2 "arm '$ARM' already holds samples taken with rules='$was_rules', not '$now_rules'."
+    print -u2 "Resuming would mix two conditions under one name. Use a new arm name."
+    exit 2
+  fi
+fi
+
 for p in "$HERE"/prompts/*.txt; do
   scenario="${p:t:r}"
   mkdir -p "$HERE/out/$ARM"
