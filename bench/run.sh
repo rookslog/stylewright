@@ -59,9 +59,14 @@ fi
 # this protocol actually retracted — an arm carrying two edited rule files while
 # named for one — would still be invisible. The manifest names each file with
 # its own hash, so a later reader can say which one moved.
+# `--setting-sources user` enables the whole user source, which is settings AND
+# CLAUDE.md and what it imports — not markdown alone. Hashing only the markdown
+# left a treatment fingerprint that stayed equal while a settings change altered
+# the invocation, so the sample was accepted under a fingerprint that did not
+# describe it.
 user_rules_manifest() {
   [ "$RULES" = user ] || { print none; return }
-  for rf in ~/.claude/CLAUDE.md ~/.claude/*.md; do
+  for rf in ~/.claude/settings.json ~/.claude/settings.local.json ~/.claude/CLAUDE.md ~/.claude/*.md; do
     [ -r "$rf" ] || continue
     print -n "${rf:t}:$(shasum < "$rf" | cut -c1-8),"
   done
@@ -112,6 +117,7 @@ existing="$(ls "$HERE/out/$ARM"/*.meta 2>/dev/null | head -1)"
 if [ -n "$existing" ]; then
   was_system="$(sed -n 's/.*system_sha=\([^ ]*\).*/\1/p' "$existing")"
   was_rules="$(sed -n 's/.*rules=\([^ ]*\) .*/\1/p' "$existing")"
+  was_rules_sha="$(sed -n 's/.*user_rules_sha=\([^ ]*\).*/\1/p' "$existing")"
   now_rules="$SOURCES"
   [ -z "$now_rules" ] && now_rules=''
   if [ "$was_system" != "$SYSTEM_SHA" ]; then
@@ -122,6 +128,16 @@ if [ -n "$existing" ]; then
   if [ "$was_rules" != "$now_rules" ]; then
     print -u2 "arm '$ARM' already holds samples taken with rules='$was_rules', not '$now_rules'."
     print -u2 "Resuming would mix two conditions under one name. Use a new arm name."
+    exit 2
+  fi
+  # The categorical value is not the treatment. Comparing only `user` against
+  # `user` accepted a resume across an edited rule file and collected the rest
+  # of the cell under a second treatment, leaving the scorer to catch it after
+  # the samples had already been paid for.
+  now_rules_sha="$(user_rules_sha)"
+  if [ "$was_rules_sha" != "$now_rules_sha" ]; then
+    print -u2 "arm '$ARM' already holds samples taken with user_rules_sha=$was_rules_sha, not $now_rules_sha."
+    print -u2 "A rule file changed since this arm started. Use a new arm name."
     exit 2
   fi
 fi
@@ -136,6 +152,11 @@ for p in "$HERE"/prompts/*.txt; do
     # partial answer gets resumed over and scored as a complete one.
     [ -s "$f" ] && [ -s "$f.meta" ] && continue
     rm -f "$f" "$f.meta"
+    # Hash BEFORE reading. Reading first left a window where an edit landed
+    # between the read and the hash, so the model got the old text while both
+    # the before and after hashes observed the new file and agreed — the
+    # comparison passed and the metadata named a prompt that was never sent.
+    prompt_before="$(shasum "$p" | cut -c1-12)"
     prompt_text="$(< "$p")"
 
     # Snapshot the live treatment BEFORE the model sees it. Hashing only
@@ -145,7 +166,6 @@ for p in "$HERE"/prompts/*.txt; do
     # the retracted defect in its narrowest form, and a post-run hash cannot see
     # it. Both hashes are compared below.
     rules_before="$(user_rules_sha)"
-    prompt_before="$(shasum "$p" | cut -c1-12)"
     # `--output-format json` rather than plain stdout, for three reasons. The
     # model's answer arrives in a named `result` field, so no harness line can
     # ever land inside it. `is_error` distinguishes a short answer from a failed

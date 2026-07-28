@@ -21,6 +21,7 @@ anywhere.
 bench/run.sh control                       # no guidance at all
 bench/run.sh with-skill --system skills/craft/compressed-deliberation/SKILL.md
 node bench/score.mjs bench/out/control/report-*.txt --prompt bench/prompts/report.txt
+node bench/score.mjs --compare bench/out/{control,with-skill}/report-*.txt
 ```
 
 Five rules make the result mean something. Every one of them is here because it
@@ -47,13 +48,35 @@ the cell existed to compare against.
 
 **Let the scorer refuse.** `run.sh` writes a `.meta` file beside every sample
 recording the hash of the injected system prompt, the hash of the operator rule
-set, the prompt hash, the CLI version, and the model build that actually served
-the request. `score.mjs` reads them and **exits non-zero** when metadata is
-missing, when any of those hashes varies inside the set, or when a sample has a
-non-empty `.err` beside it. An earlier draft of this file asked you to check the
-hashes yourself before believing a comparison. That is what the person who wrote
-the defects had already been asked to do. `--unaudited` scores anyway, for field
-samples, and labels every run that used it.
+set, the prompt hash, the CLI version, the planned rep count, and the model build
+that actually served the request. `score.mjs` reads them and **exits non-zero**
+when any of the following holds:
+
+- a sample has no sidecar, or a sidecar is missing any required field. Presence
+  is checked before agreement, because a set where *every* sidecar lacked
+  `model_id` used to compare an empty list of values, find no disagreement, and
+  pass as audited.
+- a treatment hash, model build, or CLI version varies inside one arm.
+- the files are a subset of their arm, or the arm was collected below the
+  five-run floor. A cell is a whole arm, not whatever the glob matched.
+- `--prompt` names a file whose digest is not the `prompt_sha` the samples were
+  collected against, which would score `echo` on text nobody answered.
+- a sample has a non-empty `.err` beside it.
+
+**`--compare` is how two arms are read together.** Scoring one arm at a time can
+only establish consistency *within* a cell, so a control served by one build on
+one scenario and a treatment served by another on a different scenario each pass
+alone and are meaningless together. `--compare` permits the treatment fields to
+differ, since differing is the comparison, while still requiring a shared prompt,
+model build, and CLI version — and it refuses two arms carrying the *same*
+treatment, which is not a contrast. It reports a median and range per arm and
+never pools across them.
+
+An earlier draft of this file asked you to check the hashes yourself before
+believing a comparison. That is what the person who wrote the defects had already
+been asked to do. `--unaudited` scores anyway, for field samples, and stamps the
+status on every row of the table — including `MEDIAN` and `RANGE` — because a
+warning on stderr is lost the moment anyone redirects or pastes the output.
 
 **Score the model, never the harness.** An early runner used `2>&1`, so a
 26-word CLI warning landed inside the word counts of two arms and no others. It
@@ -117,7 +140,7 @@ result cannot answer.
 
 ## What the scores mean
 
-`node bench/score.mjs [--prompt FILE] [--unaudited] SAMPLE...` prints one row per
+`node bench/score.mjs [--prompt FILE] [--compare] [--unaudited] SAMPLE...` prints one row per
 sample, a median row, and a range row.
 
 | Metric | What it counts | Read it as |
@@ -127,11 +150,14 @@ sample, a median row, and a range row.
 | `bullets`, `longestList` | Bullets in total, and the longest single run. | A long run means items of unequal weight presented as equals. |
 | `hedges` | Phrases that flag something unverified, each counted once. | One is often load-bearing. Four means the load-bearing one is buried. |
 | `menus` | Offers of a choice the reader did not request, counted per offer. | Each one is a decision handed back rather than made. |
-| `echo` | Share of the reply's word pairs that appear in the prompt. | See the warning below. Not a restatement measure. |
+| `echo` | Share of the reply's prose word pairs that appear in the prompt's prose. | See the warning below. Not a restatement measure. |
 | `noise` | Harness lines stripped from an older sample. | Non-zero means that arm may not be comparable to one scored at zero. |
 
 Everything but `words` reads prose with fenced code removed, because a heading or
 a bullet quoted inside a fence is the reader's material, not the writer's shape.
+That includes `echo`, which briefly did not: on `adjacent-bug` a reply quoting the
+supplied snippet drew most of its overlap from the code rather than from anything
+the writer chose.
 A bold-led bullet counts as both `scaffold` and `bullets`, deliberately: it is a
 heading and a list item at once, and both are doing work.
 

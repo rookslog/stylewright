@@ -11,7 +11,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { score, auditable, readMeta } from '../bench/score.mjs';
+import { score, auditable, readMeta, digest } from '../bench/score.mjs';
 
 const s = (text) => score(text, null, false);
 
@@ -114,11 +114,95 @@ test('a non-empty .err beside a sample makes that sample suspect', async () => {
   assert.match(reasons.join(' '), /non-empty \.err/);
 });
 
-test('a clean set produces no reasons at all', async () => {
+test('a clean and complete cell produces no reasons at all', async () => {
   const dir = await tmpdir();
-  const meta = 'system_sha=s model_id=m prompt_sha=p user_rules_sha=u';
-  const a = await sample(dir, 'a.txt', 'text', meta);
-  const b = await sample(dir, 'b.txt', 'text', meta);
-  const reasons = await auditable([a, b], [await readMeta(a), await readMeta(b)]);
+  const base = 'arm=a scenario=report reps=5 system_sha=s model_id=m prompt_sha=p'
+    + ' user_rules_sha=u cli=v';
+  const fs_ = [];
+  for (let r = 1; r <= 5; r += 1) {
+    fs_.push(await sample(dir, `a-${r}.txt`, 'text', `${base} rep=${r}`));
+  }
+  const reasons = await auditable(fs_, await Promise.all(fs_.map(readMeta)));
   assert.deepEqual(reasons, []);
+});
+
+// Round 3. Every case below is a hole a reviewer found in the audit that round 2
+// added — the audit checked that values AGREED and never that they EXISTED, and
+// checked within a cell while the whole point is comparing cells.
+
+const META = 'arm=a scenario=report rep=1 reps=5 prompt_sha=p system_sha=s user_rules_sha=u model_id=m cli=v';
+const cell = (over = {}) => Object.entries({ ...Object.fromEntries(
+  META.split(' ').map((kv) => kv.split('='))), ...over }).map(([k, v]) => `${k}=${v}`).join(' ');
+
+async function five(dir, arm, over = {}) {
+  const fs2 = await import('node:fs/promises');
+  const out = [];
+  for (let r = 1; r <= 5; r += 1) {
+    out.push(await sample(dir, `${arm}-${r}.txt`, 'text', cell({ arm, rep: r, ...over })));
+  }
+  return out;
+}
+const audit = async (fs_) => auditable(fs_, await Promise.all(fs_.map(readMeta)));
+
+test('a field absent from every sidecar is caught, not skipped as agreeing', async () => {
+  const dir = await tmpdir();
+  const fs_ = await five(dir, 'a', { model_id: '' });
+  assert.match((await audit(fs_)).join(' '), /have no model_id/);
+});
+
+test('a subset of an arm is not a cell', async () => {
+  const dir = await tmpdir();
+  const fs_ = await five(dir, 'a');
+  assert.match((await audit(fs_.slice(0, 4))).join(' '), /only 4 of them are here/);
+});
+
+test('an undersized arm is refused even when complete', async () => {
+  const dir = await tmpdir();
+  const one = [await sample(dir, 'a-1.txt', 'text', cell({ reps: 1 }))];
+  assert.match((await audit(one)).join(' '), /below the documented five-run floor/);
+});
+
+test('--prompt must be the prompt the samples answered', async () => {
+  const dir = await tmpdir();
+  const fs_ = await five(dir, 'a');
+  const metas = await Promise.all(fs_.map(readMeta));
+  assert.match((await auditable(fs_, metas, { promptSha: 'WRONG' })).join(' '),
+    /--prompt does not match/);
+  assert.deepEqual(await auditable(fs_, metas, { promptSha: 'p' }), []);
+});
+
+test('digest reproduces the runner shasum', () => {
+  // `printf x | shasum | cut -c1-12`
+  assert.equal(digest(Buffer.from('x')), '11f6ad8ec52a');
+});
+
+test('two arms are refused by default and permitted under compare', async () => {
+  const dir = await tmpdir();
+  const both = [...await five(dir, 'ctl', { system_sha: 'none' }),
+    ...await five(dir, 'skill', { system_sha: 'S1' })];
+  const metas = await Promise.all(both.map(readMeta));
+  assert.match((await auditable(both, metas)).join(' '), /system_sha differs/);
+  assert.deepEqual(await auditable(both, metas, { compare: true }), []);
+});
+
+test('compare refuses two arms that carry the same treatment', async () => {
+  const dir = await tmpdir();
+  const same = [...await five(dir, 'x'), ...await five(dir, 'y')];
+  const metas = await Promise.all(same.map(readMeta));
+  assert.match((await auditable(same, metas, { compare: true })).join(' '),
+    /same treatment, so this is not a contrast/);
+});
+
+test('compare still refuses a different model or prompt across arms', async () => {
+  const dir = await tmpdir();
+  const mixed = [...await five(dir, 'ctl', { system_sha: 'none' }),
+    ...await five(dir, 'skill', { system_sha: 'S1', model_id: 'other' })];
+  const metas = await Promise.all(mixed.map(readMeta));
+  assert.match((await auditable(mixed, metas, { compare: true })).join(' '), /model_id differs/);
+});
+
+test('echo reads prose, so quoted code does not supply the overlap', () => {
+  const prompt = 'fix the guard\n```js\nif (raw === "") throw new Error("empty");\n```';
+  const quoting = 'Here it is.\n```js\nif (raw === "") throw new Error("empty");\n```';
+  assert.equal(score(quoting, prompt, false).echo, 0);
 });

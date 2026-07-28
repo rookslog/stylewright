@@ -11,6 +11,7 @@
 // fire, and they stay silent on most bad samples. Read them as evidence for a
 // finding, never as evidence against one. `bench/README.md` carries the counts.
 
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -181,7 +182,10 @@ export function score(raw, prompt, legacy = false) {
     ...lists(prose),
     hedges: hedges(prose),
     menus: menus(prose),
-    echo: echo(text, prompt),
+    // Prose, like every metric but `words`. It was reading raw text, so on
+    // adjacent-bug a reply quoting the supplied code drew most of its overlap
+    // from the code rather than from what the writer wrote.
+    echo: echo(prose, prompt ? stripFences(prompt) : prompt),
   };
 }
 
@@ -213,27 +217,102 @@ export async function readMeta(file) {
  * README sentence saying "check the hashes before believing a comparison" is an
  * instruction; this is an invariant.
  */
-export async function auditable(files, metas) {
+/** The digest run.sh writes: `shasum FILE | cut -c1-12`, which is sha1. */
+export function digest(buf) {
+  return crypto.createHash('sha1').update(buf).digest('hex').slice(0, 12);
+}
+
+/** Provenance a sample must carry before any of it can be compared. */
+const REQUIRED = ['arm', 'scenario', 'rep', 'prompt_sha', 'system_sha', 'user_rules_sha', 'model_id'];
+
+// Constant within one arm. In --compare mode the treatment fields are expected
+// to differ, because differing IS the comparison, so only the shared ground has
+// to hold still.
+const WHY = {
+  prompt_sha: 'these are different scenarios, and one median across a '
+    + 'correction and a report is not a number. Score one scenario at a time',
+  model_id: 'more than one model build served this set',
+  cli: 'more than one CLI version produced this set',
+  system_sha: 'the injected system prompt changed while this arm was running',
+  user_rules_sha: 'the operator rule files changed while this arm was running',
+};
+const SHARED_GROUND = ['prompt_sha', 'model_id', 'cli'];
+
+/**
+ * Everything that makes a set of samples incomparable, as a list of reasons.
+ *
+ * These are checks a person was previously asked to perform and did not. A
+ * README sentence saying "check the hashes before believing a comparison" is an
+ * instruction; this is an invariant.
+ *
+ * @param opts.compare    true to permit a treatment difference between arms
+ * @param opts.promptSha  digest of the file passed to --prompt, to catch a
+ *                        scenario scored against the wrong prompt text
+ */
+export async function auditable(files, metas, opts = {}) {
   const reasons = [];
   const missing = files.filter((f, i) => !metas[i]);
   if (missing.length) {
     reasons.push(`${missing.length} of ${files.length} samples have no .meta sidecar`);
   }
   const present = metas.filter(Boolean);
-  // Each of these varying means something different went wrong, so each says so.
-  const WHY = {
-    prompt_sha: 'these are different scenarios, and one median across a '
-      + 'correction and a report is not a number. Score one scenario at a time',
-    system_sha: 'the injected system prompt changed while this arm was running',
-    user_rules_sha: 'the operator rule files changed while this arm was running',
-    model_id: 'more than one model build served this set',
-  };
-  for (const [key, why] of Object.entries(WHY)) {
+
+  // Presence before agreement. Comparing only the values that exist meant a set
+  // where every sidecar lacked model_id produced an empty comparison, no
+  // reason, and an exit code that read as audited.
+  for (const key of REQUIRED) {
+    const absent = present.filter((m) => !m[key]).length;
+    if (absent) reasons.push(`${absent} of ${present.length} sidecars have no ${key}`);
+  }
+
+  const constant = opts.compare ? SHARED_GROUND : Object.keys(WHY);
+  for (const key of constant) {
     const seen = [...new Set(present.map((m) => m[key]).filter(Boolean))];
-    if (seen.length > 1) {
-      reasons.push(`${key} differs (${seen.length} values): ${why}`);
+    if (seen.length > 1) reasons.push(`${key} differs (${seen.length} values): ${WHY[key]}`);
+  }
+
+  // In --compare mode the arms must actually differ by their treatment,
+  // otherwise two identically-configured cells are being read as a contrast.
+  if (opts.compare) {
+    const arms = [...new Set(present.map((m) => m.arm).filter(Boolean))];
+    if (arms.length < 2) reasons.push(`--compare needs at least two arms, found ${arms.length}`);
+    const treatments = new Set(present.map((m) => `${m.system_sha}/${m.user_rules_sha}`));
+    if (arms.length > 1 && treatments.size < 2) {
+      reasons.push('every arm carries the same treatment, so this is not a contrast');
     }
   }
+
+  // A cell is a whole arm, not whatever files happened to be globbed. Scoring
+  // four of five reps, or a smoke run of one, produced an ordinary median.
+  const byArm = new Map();
+  for (const m of present) {
+    if (!m.arm) continue;
+    if (!byArm.has(m.arm)) byArm.set(m.arm, []);
+    byArm.get(m.arm).push(m);
+  }
+  for (const [arm, ms] of byArm) {
+    const planned = Number(ms[0].reps);
+    const reps = new Set(ms.map((m) => Number(m.rep)));
+    if (Number.isFinite(planned)) {
+      if (reps.size < planned) {
+        reasons.push(`arm ${arm} was collected with reps=${planned} but only ${reps.size} `
+          + 'of them are here, so this is a subset and not a cell');
+      }
+      if (planned < 5) {
+        reasons.push(`arm ${arm} holds ${planned} runs, below the documented five-run floor`);
+      }
+    }
+  }
+
+  // The prompt passed for `echo` must be the prompt the samples answered.
+  if (opts.promptSha) {
+    const wrong = present.filter((m) => m.prompt_sha && m.prompt_sha !== opts.promptSha);
+    if (wrong.length) {
+      reasons.push(`--prompt does not match these samples (${opts.promptSha} against `
+        + `${[...new Set(wrong.map((m) => m.prompt_sha))].join(', ')})`);
+    }
+  }
+
   for (const f of files) {
     try {
       const err = await fs.readFile(`${f}.err`, 'utf8');
@@ -252,66 +331,86 @@ function median(xs) {
 async function main(argv) {
   const files = [];
   let prompt = null;
+  let promptSha = null;
   let unaudited = false;
+  let compare = false;
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--prompt') {
-      prompt = await fs.readFile(argv[i + 1], 'utf8');
+      const buf = await fs.readFile(argv[i + 1]);
+      prompt = buf.toString('utf8');
+      promptSha = digest(buf);
       i += 1;
     } else if (argv[i] === '--unaudited') {
       unaudited = true;
+    } else if (argv[i] === '--compare') {
+      compare = true;
     } else {
       files.push(argv[i]);
     }
   }
   if (!files.length) {
-    process.stdout.write('usage: score.mjs [--prompt FILE] [--unaudited] SAMPLE...\n');
+    process.stdout.write(
+      'usage: score.mjs [--prompt FILE] [--compare] [--unaudited] SAMPLE...\n');
     return 2;
   }
 
   // Field samples are uncontrolled by definition and carry no metadata, so
-  // --unaudited is how you score them. It prints on every row, because a number
-  // that skipped the audit must not be quotable as one that passed it.
+  // --unaudited is how you score them. The status rides on every row, because a
+  // table that gets redirected or pasted loses anything written to stderr, and
+  // an unaudited number must not be quotable as one that passed.
   const metas = await Promise.all(files.map(readMeta));
-  const reasons = await auditable(files, metas);
+  const reasons = await auditable(files, metas, { compare, promptSha });
   if (reasons.length && !unaudited) {
     process.stderr.write('refusing to score: this set is not a comparison.\n');
     for (const r of reasons) process.stderr.write(`  - ${r}\n`);
-    process.stderr.write('Rerun the arm with bench/run.sh, or pass --unaudited '
-      + 'to score them as uncontrolled field samples.\n');
+    process.stderr.write('Rerun the arm with bench/run.sh, add --compare to contrast two '
+      + 'arms, or pass --unaudited to score them as uncontrolled field samples.\n');
     return 1;
   }
+  const status = reasons.length ? 'UNAUDITED' : 'audited';
   if (reasons.length) {
     process.stderr.write(`UNAUDITED (${reasons.length} reason(s)): ${reasons.join('; ')}\n`);
   }
 
   const rows = [];
-  for (const f of files) {
+  for (let i = 0; i < files.length; i += 1) {
     // A sample with metadata came from the fixed runner, whose stderr never
     // reaches the sample, so denoising it could only ever damage it.
-    const legacy = !metas[files.indexOf(f)];
+    const legacy = !metas[i];
     rows.push({
-      file: path.basename(f),
-      ...score(await fs.readFile(f, 'utf8'), prompt, legacy),
+      audit: status,
+      arm: metas[i]?.arm ?? '-',
+      file: path.basename(files[i]),
+      ...score(await fs.readFile(files[i], 'utf8'), prompt, legacy),
     });
   }
 
   const keys = ['noise', 'words', 'scaffold', 'bullets', 'longestList', 'hedges', 'menus', 'echo'];
-  process.stdout.write(`file\t${keys.join('\t')}\n`);
+  process.stdout.write(`audit\tarm\tfile\t${keys.join('\t')}\n`);
   for (const r of rows) {
-    process.stdout.write(`${r.file}\t${keys.map((k) => r[k] ?? '').join('\t')}\n`);
+    process.stdout.write(`${r.audit}\t${r.arm}\t${r.file}\t${keys.map((k) => r[k] ?? '').join('\t')}\n`);
   }
-  const nums = (k) => rows.map((r) => r[k]).filter((v) => typeof v === 'number');
-  process.stdout.write(`MEDIAN\t${keys.map((k) => {
-    const v = nums(k);
-    return v.length ? median(v) : '';
-  }).join('\t')}\n`);
-  // The protocol's own rule is that spread matters as much as the middle, and
-  // the tool reported only a middle. A median with no range beside it is how
-  // five readings of five different shapes get quoted as one number.
-  process.stdout.write(`RANGE\t${keys.map((k) => {
-    const v = nums(k);
-    return v.length ? `${Math.min(...v)}-${Math.max(...v)}` : '';
-  }).join('\t')}\n`);
+
+  // In --compare mode a pooled median across arms is the error the mode exists
+  // to permit measuring, so summarise per arm and never across them.
+  const groups = compare
+    ? [...new Set(rows.map((r) => r.arm))].map((a) => [a, rows.filter((r) => r.arm === a)])
+    : [['', rows]];
+  for (const [arm, rs] of groups) {
+    const nums = (k) => rs.map((r) => r[k]).filter((v) => typeof v === 'number');
+    const label = (name) => `${status}\t${arm || '-'}\t${name}`;
+    process.stdout.write(`${label('MEDIAN')}\t${keys.map((k) => {
+      const v = nums(k);
+      return v.length ? median(v) : '';
+    }).join('\t')}\n`);
+    // The protocol's own rule is that spread matters as much as the middle, and
+    // the tool reported only a middle. A median with no range beside it is how
+    // five readings of five different shapes get quoted as one number.
+    process.stdout.write(`${label('RANGE')}\t${keys.map((k) => {
+      const v = nums(k);
+      return v.length ? `${Math.min(...v)}-${Math.max(...v)}` : '';
+    }).join('\t')}\n`);
+  }
   return 0;
 }
 
