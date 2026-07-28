@@ -135,7 +135,7 @@ const cell = (over = {}) => Object.entries({ ...Object.fromEntries(
   META.split(' ').map((kv) => kv.split('='))), ...over }).map(([k, v]) => `${k}=${v}`).join(' ');
 
 async function five(dir, arm, over = {}) {
-  const fs2 = await import('node:fs/promises');
+  await fs.mkdir(dir, { recursive: true });
   const out = [];
   for (let r = 1; r <= 5; r += 1) {
     out.push(await sample(dir, `${arm}-${r}.txt`, 'text', cell({ arm, rep: r, ...over })));
@@ -205,4 +205,25 @@ test('echo reads prose, so quoted code does not supply the overlap', () => {
   const prompt = 'fix the guard\n```js\nif (raw === "") throw new Error("empty");\n```';
   const quoting = 'Here it is.\n```js\nif (raw === "") throw new Error("empty");\n```';
   assert.equal(score(quoting, prompt, false).echo, 0);
+});
+
+// Self-review before round 4. Adding `cli` and `reps` to the comparison without
+// adding them to REQUIRED reintroduced, for two new fields, the exact defect
+// round 3 had just fixed for `model_id`. A field that is compared but not
+// required is skipped when absent.
+
+test('every field a check reads is required, not merely compared', async () => {
+  const dir = await tmpdir();
+  for (const gone of ['cli', 'reps']) {
+    const fs_ = await five(dir + gone, 'a', { [gone]: '' });
+    assert.match((await audit(fs_)).join(' '), new RegExp(`have no ${gone}`),
+      `a missing ${gone} must be a reason`);
+  }
+});
+
+test('an arm that disagrees with itself about its size is caught', async () => {
+  const dir = await tmpdir();
+  const a = await sample(dir, 'a-1.txt', 'text', cell({ rep: 1, reps: 5 }));
+  const b = await sample(dir, 'a-2.txt', 'text', cell({ rep: 2, reps: 3 }));
+  assert.match((await audit([a, b])).join(' '), /disagrees with itself about its size/);
 });

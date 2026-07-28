@@ -222,8 +222,18 @@ export function digest(buf) {
   return crypto.createHash('sha1').update(buf).digest('hex').slice(0, 12);
 }
 
-/** Provenance a sample must carry before any of it can be compared. */
-const REQUIRED = ['arm', 'scenario', 'rep', 'prompt_sha', 'system_sha', 'user_rules_sha', 'model_id'];
+/**
+ * Provenance a sample must carry before any of it can be compared.
+ *
+ * Every field that any check reads belongs here, and the list is easy to leave
+ * a field off. Round 3 fixed exactly this for `model_id`; adding `cli` and
+ * `reps` in the same commit reintroduced it for both, because a field that is
+ * compared but not required is skipped when absent, and a `reps` that parses to
+ * NaN silently disables the completeness check it gates. If a check reads a
+ * field, the field is required.
+ */
+const REQUIRED = ['arm', 'scenario', 'rep', 'reps', 'prompt_sha', 'system_sha',
+  'user_rules_sha', 'model_id', 'cli'];
 
 // Constant within one arm. In --compare mode the treatment fields are expected
 // to differ, because differing IS the comparison, so only the shared ground has
@@ -291,6 +301,10 @@ export async function auditable(files, metas, opts = {}) {
     byArm.get(m.arm).push(m);
   }
   for (const [arm, ms] of byArm) {
+    const plannedSeen = [...new Set(ms.map((m) => m.reps).filter(Boolean))];
+    if (plannedSeen.length > 1) {
+      reasons.push(`arm ${arm} disagrees with itself about its size: reps=${plannedSeen.join(', ')}`);
+    }
     const planned = Number(ms[0].reps);
     const reps = new Set(ms.map((m) => Number(m.rep)));
     if (Number.isFinite(planned)) {
