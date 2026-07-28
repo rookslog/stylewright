@@ -151,12 +151,20 @@ Accepting a reviewer finding takes a verdict block and one line. The commit is
 the argument. Restating why the fix is right repeats what the diff already
 shows, and it buries the replies that do carry a decision.
 
-Write at length only where you changed something:
+The verdict word tells you which it is, so there is nothing to judge:
 
-- **Pushback.** Name what the finding misses. Point at the code or the test that
-  settles it.
-- **Accept with revisions.** Say what you changed, whether it was the fix, the
-  framing of the finding, or both.
+| Verdict | The reply |
+|---|---|
+| `ACCEPTED`, `OBSOLETE` | One line. The commit is the argument. |
+| `DUPLICATE` | One line, naming the thread that carries the disposition. |
+| `ACCEPTED_MODIFIED` | Say what you changed: the fix, the framing, or both. |
+| `DEFERRED`, `REJECTED_*` | Say what the finding misses, and point at the code or the test that settles it. |
+
+An `ACCEPTED` note that explains why the fix is right is the defect this rule
+exists for. It repeats the diff, and it buries the two or three replies on the
+same page that carry a decision. This was written here on 2026-07-27 and broken
+twice the same day, both times on the accept rows, which is why the table
+replaced the prose.
 
 The same economy governs issues. A fix that needs no deliberation needs no
 written case. Open an issue when the decision is open, or when the work must
