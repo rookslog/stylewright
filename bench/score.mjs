@@ -14,23 +14,47 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+// Longest first. `hedges` consumes each match, so "it is worth noting" must be
+// found as one hedge before "worth noting" and "it is worth" can each claim it.
+// Scored unsorted, that one phrase counted twice.
 const HEDGE = [
-  'i did not check', "i didn't check", 'worth noting', "it's worth", 'it is worth',
-  'to be clear', 'that said', 'caveat', 'i should note', 'for completeness',
-  'unchecked', 'i have not verified', "i haven't verified",
+  'i have not verified', "i haven't verified", 'it is worth noting',
+  "it's worth noting", 'i did not check', "i didn't check", 'for completeness',
+  'i should note', 'worth noting', "it's worth", 'it is worth', 'to be clear',
+  'that said', 'unchecked', 'caveat',
 ];
 
+// Each pattern is an offer made TO the reader. A bare `either ... or` was here
+// and is gone: it fired on "you can call it either before or after the guard",
+// which is a direct answer, not a choice handed back.
 const MENU = [
-  /\beither\b[^.]{0,80}\bor\b/i,
-  /\boptions?\s*:/i,
-  /\bwe could\b[^.]{0,80}\bor\b/i,
-  /\blet me know (?:if|whether|which)\b/i,
-  /\bsay the word\b/i,
+  /\boptions?\s*:/gi,
+  /\bwe could\b[^.]{0,80}\bor\b/gi,
+  /\b(?:do you want|would you like)\b/gi,
+  /\blet me know (?:if|whether|which)\b/gi,
+  /\bsay the word\b/gi,
 ];
 
-/** Words, counted the way `wc -w` counts them. */
+/**
+ * Fenced code, and the fence delimiters themselves.
+ *
+ * A reply may legitimately contain code, and the reader asked for it. What the
+ * structural metrics must not do is read the code's own `#` lines as headings
+ * the writer imposed. Measured: a reply quoting `# H1` and `## H2` inside a
+ * fence scored `scaffold: 2` with nothing of its own.
+ */
+function stripFences(text) {
+  return text.replace(/^```.*$[\s\S]*?^```.*$/gm, '');
+}
+
+/** Fence delimiter lines only, for the word count, which keeps the code body. */
+function dropFenceMarkers(text) {
+  return text.replace(/^```.*$/gm, '');
+}
+
+/** Visible words. Fence delimiters are punctuation, not prose. */
 function words(text) {
-  return text.split(/\s+/).filter(Boolean).length;
+  return dropFenceMarkers(text).split(/\s+/).filter(Boolean).length;
 }
 
 /**
@@ -67,13 +91,21 @@ function lists(text) {
   return { bullets: total, longestList: longest };
 }
 
+/** Hedges, each phrase counted once. Longer phrases consume shorter ones. */
 function hedges(text) {
-  const low = text.toLowerCase();
-  return HEDGE.reduce((n, h) => n + (low.split(h).length - 1), 0);
+  let low = text.toLowerCase();
+  let n = 0;
+  for (const h of HEDGE) {
+    const parts = low.split(h);
+    n += parts.length - 1;
+    low = parts.join(' ');
+  }
+  return n;
 }
 
+/** Offers, not offer TYPES. Three `Options:` lines are three decisions handed back. */
 function menus(text) {
-  return MENU.reduce((n, re) => n + (re.test(text) ? 1 : 0), 0);
+  return MENU.reduce((n, re) => n + (text.match(re) ?? []).length, 0);
 }
 
 /** Content bigrams, for the echo measure below. */
@@ -130,15 +162,76 @@ export function score(raw, prompt) {
     process.stderr.write(
       `warning: stripped ${removed} words of harness noise. That arm may not be comparable.\n`);
   }
+  // Structure inside a fence is quoted, not authored. `words` keeps the code
+  // body, because the reader asked for it; everything else reads prose only.
+  const prose = stripFences(text);
   return {
     noise: removed,
     words: words(text),
-    scaffold: scaffold(text),
-    ...lists(text),
-    hedges: hedges(text),
-    menus: menus(text),
+    scaffold: scaffold(prose),
+    ...lists(prose),
+    hedges: hedges(prose),
+    menus: menus(prose),
     echo: echo(text, prompt),
   };
+}
+
+/**
+ * Read the `.meta` sidecar a sample was collected with.
+ *
+ * Absent metadata is not a formatting problem. It means nothing recorded which
+ * treatment produced the file, and a comparison between two such files is a
+ * comparison between two unknowns. Four of this protocol's own defects were
+ * invisible for exactly that reason.
+ */
+export async function readMeta(file) {
+  try {
+    const raw = await fs.readFile(`${file}.meta`, 'utf8');
+    return Object.fromEntries(
+      raw.trim().split(/\s+/).map((kv) => {
+        const i = kv.indexOf('=');
+        return [kv.slice(0, i), kv.slice(i + 1)];
+      }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Everything that makes a set of samples incomparable, as a list of reasons.
+ *
+ * These are checks a person was previously asked to perform and did not. A
+ * README sentence saying "check the hashes before believing a comparison" is an
+ * instruction; this is an invariant.
+ */
+export async function auditable(files, metas) {
+  const reasons = [];
+  const missing = files.filter((f, i) => !metas[i]);
+  if (missing.length) {
+    reasons.push(`${missing.length} of ${files.length} samples have no .meta sidecar`);
+  }
+  const present = metas.filter(Boolean);
+  // Each of these varying means something different went wrong, so each says so.
+  const WHY = {
+    prompt_sha: 'these are different scenarios, and one median across a '
+      + 'correction and a report is not a number. Score one scenario at a time',
+    system_sha: 'the injected system prompt changed while this arm was running',
+    user_rules_sha: 'the operator rule files changed while this arm was running',
+    model_id: 'more than one model build served this set',
+  };
+  for (const [key, why] of Object.entries(WHY)) {
+    const seen = [...new Set(present.map((m) => m[key]).filter(Boolean))];
+    if (seen.length > 1) {
+      reasons.push(`${key} differs (${seen.length} values): ${why}`);
+    }
+  }
+  for (const f of files) {
+    try {
+      const err = await fs.readFile(`${f}.err`, 'utf8');
+      if (err.trim()) reasons.push(`${path.basename(f)} has a non-empty .err sibling`);
+    } catch { /* no .err is the healthy case */ }
+  }
+  return reasons;
 }
 
 function median(xs) {
@@ -150,17 +243,36 @@ function median(xs) {
 async function main(argv) {
   const files = [];
   let prompt = null;
+  let unaudited = false;
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--prompt') {
       prompt = await fs.readFile(argv[i + 1], 'utf8');
       i += 1;
+    } else if (argv[i] === '--unaudited') {
+      unaudited = true;
     } else {
       files.push(argv[i]);
     }
   }
   if (!files.length) {
-    process.stdout.write('usage: score.mjs [--prompt FILE] SAMPLE...\n');
+    process.stdout.write('usage: score.mjs [--prompt FILE] [--unaudited] SAMPLE...\n');
     return 2;
+  }
+
+  // Field samples are uncontrolled by definition and carry no metadata, so
+  // --unaudited is how you score them. It prints on every row, because a number
+  // that skipped the audit must not be quotable as one that passed it.
+  const metas = await Promise.all(files.map(readMeta));
+  const reasons = await auditable(files, metas);
+  if (reasons.length && !unaudited) {
+    process.stderr.write('refusing to score: this set is not a comparison.\n');
+    for (const r of reasons) process.stderr.write(`  - ${r}\n`);
+    process.stderr.write('Rerun the arm with bench/run.sh, or pass --unaudited '
+      + 'to score them as uncontrolled field samples.\n');
+    return 1;
+  }
+  if (reasons.length) {
+    process.stderr.write(`UNAUDITED (${reasons.length} reason(s)): ${reasons.join('; ')}\n`);
   }
 
   const rows = [];
@@ -177,6 +289,13 @@ async function main(argv) {
   process.stdout.write(`MEDIAN\t${keys.map((k) => {
     const v = nums(k);
     return v.length ? median(v) : '';
+  }).join('\t')}\n`);
+  // The protocol's own rule is that spread matters as much as the middle, and
+  // the tool reported only a middle. A median with no range beside it is how
+  // five readings of five different shapes get quoted as one number.
+  process.stdout.write(`RANGE\t${keys.map((k) => {
+    const v = nums(k);
+    return v.length ? `${Math.min(...v)}-${Math.max(...v)}` : '';
   }).join('\t')}\n`);
   return 0;
 }

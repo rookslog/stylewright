@@ -33,15 +33,24 @@ shapes rather than lengths. We carry the counterevidence rather than omit it.
 ## Baseline
 
 These rules answer a measured baseline rather than an impression. It is recorded
-on issue #23 and reproducible from `bench/` in this repository. Four scenarios,
-five runs each, fresh context, median visible words.
+on issue #23. The GREEN-phase arms reproduce from `bench/` in this repository;
+the RED-phase ablation does not, because it ran from scratchpad scripts against
+live uncommitted operator config, and `bench/out/` is not committed. Four
+scenarios, five runs each, fresh context, median visible words.
 
-**What survived review.** One result. The stock model did not produce the
-failure and an operator instruction stack did: on the reporting scenario, 37 to
-65 words with no instructions against 192 to 303 with them, ranges disjoint.
-Separately, this skill's own text cuts that scenario to 59 median words against
-173 with no guidance, while all five runs still report a bug seeded in the
-prompt.
+**What survived review.** One result, and it is narrower than it first reads. On
+one single-turn reporting prompt, `claude -p` with no operator instructions
+produced 37 to 65 words, and the same harness carrying one operator's rule stack
+produced 192 to 303. The ranges are disjoint. Separately, this skill's own text
+cuts that scenario to 59 median words against 173 with no guidance, while all
+five runs still report a bug seeded in the prompt.
+
+Read that as a fact about a harness, not about a model. `claude -p` is the
+Claude Code headless path, so "no operator instructions" is not "the stock
+model", and one author's rule stack is not operator instructions in general.
+Nothing here was measured in the agentic, tool-using, or file-writing regimes
+that `G-02` and `G-03` name as the defect's worst ground, and those are the
+regimes the skill is meant for.
 
 **What did not survive.** Two adversarial reviews on 2026-07-27 struck more of
 this record than they left.

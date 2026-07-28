@@ -16,15 +16,22 @@ ARM="$1"; shift
 RULES=none
 REPS=5
 SYSTEM=
+MODEL=opus
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --rules)  RULES="$2"; shift 2 ;;
     --reps)   REPS="$2";  shift 2 ;;
     --system) SYSTEM="$2"; shift 2 ;;
+    --model)  MODEL="$2"; shift 2 ;;
     *) print -u2 "unknown flag: $1"; exit 2 ;;
   esac
 done
+
+# First field only. `claude --version` prints "2.1.220 (Claude Code)", and a
+# `.meta` line is whitespace-delimited key=value, so the parenthetical would
+# arrive as two more keys.
+CLI_VERSION="$(claude --version 2>/dev/null | head -1 | awk '{print $1}')"
 
 # Resolve and read the system prompt HERE, before anything changes directory.
 # A relative path used to be expanded inside the sample subshell, after the cd,
@@ -68,24 +75,41 @@ for p in "$HERE"/prompts/*.txt; do
     f="$HERE/out/$ARM/$scenario-$r.txt"
     [ -s "$f" ] && continue
     prompt_text="$(< "$p")"
-    # stderr goes to its own file and never into the sample. A `2>&1` here once
-    # put a 26-word CLI warning inside the word counts of two arms and nowhere
-    # else, which reversed the direction of the comparison those arms existed to
-    # make. A sample file holds the model's visible answer and nothing else.
+    # `--output-format json` rather than plain stdout, for three reasons. The
+    # model's answer arrives in a named `result` field, so no harness line can
+    # ever land inside it. `is_error` distinguishes a short answer from a failed
+    # run, which plain stdout cannot. And `modelUsage` names the build that
+    # actually served the request, where `--model opus` is an alias that moves
+    # under you between arms.
+    raw="$WORK/raw.json"
     if [ -n "$SYSTEM" ]; then
-      (cd "$WORK" && claude -p --model opus --setting-sources "$SOURCES" \
-        --strict-mcp-config --append-system-prompt "$SYSTEM_TEXT" \
-        "$prompt_text" < /dev/null) > "$f" 2> "$f.err"
+      (cd "$WORK" && claude -p --model "$MODEL" --setting-sources "$SOURCES" \
+        --strict-mcp-config --output-format json --append-system-prompt "$SYSTEM_TEXT" \
+        "$prompt_text" < /dev/null) > "$raw" 2> "$f.err" || true
     else
-      (cd "$WORK" && claude -p --model opus --setting-sources "$SOURCES" \
-        --strict-mcp-config "$prompt_text" < /dev/null) > "$f" 2> "$f.err"
+      (cd "$WORK" && claude -p --model "$MODEL" --setting-sources "$SOURCES" \
+        --strict-mcp-config --output-format json "$prompt_text" < /dev/null) > "$raw" 2> "$f.err" || true
     fi
     [ -s "$f.err" ] || rm -f "$f.err"
+
+    # Nothing reaches the sample path until the run is known good. Writing
+    # straight to `$f` left a partial answer from a failed invocation sitting
+    # there looking like a successful short one — and short is the direction a
+    # compression treatment is supposed to move, so the defect would have
+    # confirmed the hypothesis.
+    if ! MODEL_ID="$(node "$HERE/extract.mjs" "$raw" "$f.part" 2>"$f.extract.err")"; then
+      print -u2 "FAILED $ARM/$scenario-$r — see $f.extract.err and ${f}.err"
+      exit 1
+    fi
+    rm -f "$f.extract.err"
+    mv "$f.part" "$f"
+
     # Provenance beside every sample. The treatment is HASHED, not named,
     # because a rule file edited while an arm is still running leaves a
     # correctly-named cell whose later reps measured different text. Differing
-    # hashes within one arm mean that cell is contaminated and must be rerun.
-    print "arm=$ARM scenario=$scenario rep=$r rules=$SOURCES system=${SYSTEM:-none} system_sha=$SYSTEM_SHA user_rules_sha=$(user_rules_sha) prompt_sha=$(shasum "$p" | cut -c1-12) at=$(date -u +%FT%TZ)" > "$f.meta"
-    print "$ARM/$scenario-$r $(wc -w < "$f") words"
+    # hashes within one arm mean that cell is contaminated; `score.mjs` refuses
+    # such a set rather than trusting anyone to check.
+    print "arm=$ARM scenario=$scenario rep=$r rules=$SOURCES system=${SYSTEM:-none} system_sha=$SYSTEM_SHA user_rules_sha=$(user_rules_sha) prompt_sha=$(shasum "$p" | cut -c1-12) model_id=$MODEL_ID cli=$CLI_VERSION at=$(date -u +%FT%TZ)" > "$f.meta"
+    print "$ARM/$scenario-$r $(wc -w < "$f") words [$MODEL_ID]"
   done
 done

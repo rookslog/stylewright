@@ -8,6 +8,13 @@ below is what makes the dating visible.
 - Rights holder of the sources below: Anthropic PBC.
 - Transformation: the problem statement is a digest of published vendor
   documentation, in our own words. The prescriptions are ours and cite nothing.
+- Reproduction check: **not performed.** No sentence from any source below is
+  carried into the skill — the seven `G` rows are one-line paraphrases of
+  behaviour the documentation reports, written here from scratch — so nothing
+  in this skill depends on a reproduction right. The governing terms of those
+  pages have not been read, and no claim is made about what they permit. Anyone
+  adding a quotation must read them first and replace this line with the check.
+  Recorded 2026-07-27.
 
 ## What the sources are, and what each one licenses
 
