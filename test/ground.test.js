@@ -66,6 +66,57 @@ test('a G row must carry a rule and an E row must not', () => {
     .some((f) => f.code === 'e-row-has-rule'));
 });
 
+// The checker used to see one shape: a `-` bullet on a single line. Everything
+// below entered a shipped standards skill unclassified while `ground --check`
+// reported clean, under a sentence claiming every statement was traced. Each
+// case is the shape that slipped, and each fails against the old extractor.
+
+const uncovered = (text) => checkSkill({ skillText: `${SKILL}\n${text}\n`, matrixText: MATRIX })
+  .filter((f) => f.code === 'uncovered-statement').map((f) => f.message).join(' ');
+
+test('a numbered item is a statement', () => {
+  assert.match(uncovered('1. Preserve technical meaning and safety.'),
+    /Preserve technical meaning/);
+});
+
+test('a prose paragraph is a statement', () => {
+  assert.match(uncovered('For strict compliance, check every word.'),
+    /For strict compliance/);
+});
+
+test('a wrapped paragraph is ONE statement, joined', () => {
+  const found = uncovered('Check every general word\nagainst the dictionary.');
+  assert.match(found, /Check every general word against the dictionary\./);
+  assert.equal(found.split('has no grounding row').length - 1, 1);
+});
+
+test('a wrapped list item is ONE statement, and its tail is not invisible', () => {
+  // Reading the first line alone let the rest of an item change without the
+  // matrix noticing — the same defect one level down.
+  const found = uncovered('- Do not use a semicolon,\n  because it joins two ideas.');
+  assert.match(found, /Do not use a semicolon, because it joins two ideas\./);
+  assert.equal(found.split('has no grounding row').length - 1, 1);
+});
+
+test('a heading, a table row, and fenced code assert nothing', () => {
+  assert.equal(uncovered('## Later\n\n| a | b |\n|---|---|\n| c | d |'), '');
+  assert.equal(uncovered('```js\nconst x = 1;\n```'), '');
+});
+
+test('an N row carries no rule, and an unknown prefix is refused', () => {
+  const narrative = `${SKILL}\nThis guide does not replace the standard.\n`;
+  const withN = `${MATRIX}| N-01 | This guide does not replace the standard. | Rules |  | Framing |\n`;
+  assert.deepEqual(checkSkill({ skillText: narrative, matrixText: withN }), []);
+
+  const nWithRule = withN.replace('| Rules |  | Framing |', '| Rules | Rule 1.1 | Framing |');
+  assert.ok(checkSkill({ skillText: narrative, matrixText: nWithRule })
+    .some((f) => f.code === 'e-row-has-rule'));
+
+  const bogus = withN.replace('| N-01 |', '| X-01 |');
+  assert.ok(checkSkill({ skillText: narrative, matrixText: bogus })
+    .some((f) => f.code === 'unknown-row-kind'));
+});
+
 test('checkAll covers every skill in the repository', async () => {
   const all = await checkAll(REPO);
   assert.ok('demo-standard' in all);

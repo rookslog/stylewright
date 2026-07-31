@@ -5,6 +5,8 @@ guideline in the Federal Plain Language Guidelines.
 
 - A **`G` row** traces to the source. Its rule cell names the guideline slug.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
+- An **`N` row** is narrative. It orients the reader and asserts no rule, so it
+  claims no authority at all. Its rule cell is empty.
 
 This file stays in the repository. It does not install with the skill.
 
@@ -66,3 +68,6 @@ in our own words anyway, because that is the doctrine for every skill.
 | G-36 | Avoid a page of frequently asked questions. Organize the content by topic instead. | Web | web/avoid-faqs | Write for the web |
 | G-37 | Test the document with real readers before you publish it. | Testing | test/usability-testing | Test |
 | G-38 | Ask a reader to restate the content in their own words. | Testing | test/paraphrase-testing | Test |
+| N-01 | Write so that a reader finds what they need, understands it the first time, and can act on it. This guide is based on the Federal Plain Language Guidelines, which support the Plain Writing Act of 2010. | Purpose |  | Purpose framing, asserts no rule |
+| N-02 | Plain language is not simplified language. It does not remove detail. It puts the reader ahead of the writer. | Purpose |  | Orients the reader, asserts no rule |
+| N-03 | The two standards disagree in places. Plain language allows contractions and asks for a conversational tone. Simplified Technical English forbids contractions, because they are hard for a reader whose first language is not English. The reader decides which standard wins. | Choosing between this and Simplified Technical English |  | Our comparison of two sources |

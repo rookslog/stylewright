@@ -4,6 +4,8 @@ Traces every statement in `skills/craft/compressed-deliberation/SKILL.md`.
 
 - A **`G` row** traces to an external source. Its rule cell names the rule.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
+- An **`N` row** is narrative. It orients the reader and asserts no rule, so it
+  claims no authority at all. Its rule cell is empty.
 
 This file stays in the repository. It does not install with the skill.
 
@@ -108,3 +110,9 @@ is a controlled trial, and no `E` row should be read as one.
 | E-14 | Do not set a word budget, because a budget cuts substance before it cuts scaffolding. | What this skill does not ask for |  | Our own guidance |
 | E-15 | Do not drop a finding to make a reply shorter. | What this skill does not ask for |  | Our own guidance |
 | E-16 | Do not suppress the narration that a reader uses to intervene. | What this skill does not ask for |  | Our own guidance |
+| N-01 | Deliberation is not the product. Monitoring, qualifying, verifying, managing scope and correcting course are all real work, and a reader wants the edited result of that work rather than a transcript of it. | Purpose |  | Purpose framing, asserts no rule |
+| N-02 | This skill is pinned to one model build. The record of what it targets, and of when it expires, is in `SOURCE.md` beside this file. | Purpose |  | Points at SOURCE.md, asserts no rule |
+| N-03 | Anthropic publishes these as differences in Claude Opus 5. They describe the model. They prescribe nothing, and no rule below inherits their authority. | What this corrects |  | States what the G rows do NOT license |
+| N-04 | Those are the documented defaults. What our own baseline found is narrower and partly different: an unguided run was already clean, and an operator instruction stack above it was what inflated the reply. So read the rules below as aimed at the whole stack you are running inside, and not at the model alone. | What this corrects |  | Records what our baseline found |
+| N-05 | Where the rules have been measured: single-turn replies, one prompt each, five runs. Not agentic sessions, and not files written to disk. The second is the case `SOURCE.md` records the vendor documenting most clearly and the one we have tested least, so apply the rules there on their reasoning, not on our evidence. | What this corrects |  | Scope of the evidence, asserts no rule |
+| N-06 | `de-slop` treats prose that reads as machine-written, whatever produced it. This skill treats one model's documented defaults, and it expires when that model does. Follow both. They do not disagree. | How this differs from de-slop |  | Relates two skills |

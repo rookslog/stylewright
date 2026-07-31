@@ -24,14 +24,58 @@ export function parseMatrix(text) {
   return rows;
 }
 
+/**
+ * Every unit of content a graded section carries, not every unit that looks
+ * normative.
+ *
+ * This used to match one shape — a `-` bullet on a single line — and call the
+ * result "every statement". The skill above it claimed every statement was
+ * traced to a rule, so four numbered priorities and a prose directive entered a
+ * standards skill unclassified and `ground --check` reported clean. Widening
+ * the pattern to numbered items would have moved that boundary rather than
+ * removed it, and the next shape to slip through would have been a definition
+ * list.
+ *
+ * So the checker no longer decides what counts as a statement. It accounts for
+ * everything, and the matrix disposes of each unit as `G` (the source's
+ * authority), `E` (our own guidance), or `N` (narrative that claims neither).
+ * Classification is a judgment somebody recorded, not a shape a regular
+ * expression recognised.
+ *
+ * A wrapped list item is ONE unit. Reading its first line alone let the rest of
+ * the item change without the matrix noticing, which is the same defect one
+ * level down.
+ */
 function statements(skillText) {
   const out = [];
   for (const sec of sections(skillText)) {
     if (SKIP_HEADINGS.test(sec.heading)) continue;
+    let para = [];
+    let item = null;
+    let inFence = false;
+    const flush = () => {
+      if (para.length) out.push({ text: para.join(' '), anchor: sec.heading });
+      para = [];
+      item = null;
+    };
     for (const line of sec.body.split('\n')) {
-      const m = /^\s*[-*+]\s+(.*\S)\s*$/.exec(line);
-      if (m) out.push({ text: m[1], anchor: sec.heading });
+      if (/^\s*(```|~~~)/.test(line)) { flush(); inFence = !inFence; continue; }
+      if (inFence) continue;
+      // A table is reference data the reader looks things up in, and a heading
+      // names a section rather than asserting anything.
+      if (!line.trim() || /^\s*\|/.test(line) || /^#{1,6}\s/.test(line)) { flush(); continue; }
+      const m = /^\s*(?:[-*+]|\d+\.)\s+(.*\S)\s*$/.exec(line);
+      if (m) {
+        flush();
+        item = { text: m[1], anchor: sec.heading };
+        out.push(item);
+        continue;
+      }
+      // Lazy continuation. Prose under a list item belongs to that item.
+      if (item) item.text += ` ${line.trim()}`;
+      else para.push(line.trim());
     }
+    flush();
   }
   return out;
 }
@@ -61,19 +105,24 @@ export function checkSkill({ skillText, matrixText }) {
         message: `${row.id}: quote is under "${hit.anchor}", not "${row.anchor}".`,
       });
     }
-    const isG = /^G-/i.test(row.id);
-    if (isG && !row.rule) {
+    const kind = /^([GEN])-/i.exec(row.id)?.[1]?.toUpperCase();
+    if (!kind) {
+      findings.push({
+        level: 'error',
+        code: 'unknown-row-kind',
+        message: `${row.id}: an id must begin with G-, E-, or N-.`,
+      });
+    } else if (kind === 'G' && !row.rule) {
       findings.push({
         level: 'error',
         code: 'g-row-no-rule',
         message: `${row.id}: a G row must cite a source rule.`,
       });
-    }
-    if (!isG && row.rule) {
+    } else if (kind !== 'G' && row.rule) {
       findings.push({
         level: 'error',
         code: 'e-row-has-rule',
-        message: `${row.id}: an E row is our own guidance and must cite no source rule.`,
+        message: `${row.id}: only a G row cites a source rule.`,
       });
     }
   }

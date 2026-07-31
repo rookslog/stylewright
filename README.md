@@ -19,14 +19,15 @@ one. Most guidance you can give it is invented on the spot, and it changes each
 time you ask.
 
 `stylewright` gives an agent writing rules that come from somewhere. Each rule in
-the `standards/` tier traces to a numbered rule in a published standard. You can
-check the trace. That is the point.
+the `standards/` tier traces to a numbered rule in a published standard, and
+anything that is not such a rule says so rather than borrowing the standard's
+authority. You can check the trace. That is the point.
 
 ## The two tiers
 
 | Tier | What it means |
 |---|---|
-| `standards/` | Every skill is distilled from a named standard that you can read at a public URL. Every statement traces to a numbered rule. |
+| `standards/` | Every skill is distilled from a named standard that you can read at a public URL. Every statement is accounted for: it cites a numbered rule, or it is marked as our own guidance, or it is marked as narrative. |
 | `craft/` | Every skill encodes writing discipline that has no external standard behind it. The authority is ours, and the skill says so. |
 
 Install one tier, the other, or both.

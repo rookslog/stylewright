@@ -4,6 +4,13 @@ import { TIERS } from './catalog.js';
 
 const NAME_RULE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
+// One constant, quoted into the skill and into its matrix row, because the two
+// must be identical for `ground --check` to pass. Written twice, they drift on
+// the first edit to either — and the scaffold is the one place a drift is
+// inherited by every skill made after it.
+const PURPOSE = 'Replace this paragraph. State what a writer achieves with this skill,'
+  + ' and when to reach for it.';
+
 /**
  * The scaffold generates a skill whose statement and grounding row already
  * match, so `ground --check` passes immediately. The contributor then edits
@@ -44,8 +51,7 @@ description: ${description}
 
 ## Purpose
 
-Replace this paragraph. State what a writer achieves with this skill, and when
-to reach for it.
+${PURPOSE}
 
 ## Rules
 
@@ -65,6 +71,8 @@ Traces every statement in \`skills/${tier}/${name}/SKILL.md\`${tier === 'standar
 
 - A **\`G\` row** traces to an external source. Its rule cell names the rule.
 - An **\`E\` row** is our own editorial guidance. Its rule cell is empty.
+- An **\`N\` row** is narrative. It orients the reader and asserts no rule, so it
+  claims no authority at all. Its rule cell is empty.
 
 This file stays in the repository. It does not install with the skill.
 
@@ -72,6 +80,7 @@ Checked by \`stylewright ground --check --skill ${name}\`.
 
 | ID | Our guidance | Our anchor | Source rule | Source location |
 |---|---|---|---|---|
+| N-01 | ${PURPOSE} | Purpose |  | Purpose framing, asserts no rule |
 ${first}
 `;
 }

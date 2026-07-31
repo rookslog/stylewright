@@ -7,6 +7,8 @@ to a numbered rule in ASD-STE100 Issue 9, January 2025.
 - An **`E` row** is our own editorial guidance. It traces to nothing, and its
   `Source rule` cell is empty. An `E` row carries our authority, not the
   standard's.
+- An **`N` row** is narrative. It orients the reader and asserts no rule, so it
+  claims no authority at all. Its `Source rule` cell is empty.
 
 This file stays in the repository. It does not install with the skill.
 
@@ -67,3 +69,10 @@ checkable without opening the PDF, and the repository permits that as of
 | G-39 | safety consequences are explicit. | Final check | Rule 7.3 | Part 1, Section 7 |
 | E-05 | units, identifiers, labels, quotations, and technical facts are unchanged. | Final check |  | Our editing-safety check, not a writing rule |
 | E-06 | no simplification creates ambiguity. | Final check |  | Our editing-safety check, not a writing rule |
+| N-01 | Write technical content that is accurate, direct, consistent, and difficult to misunderstand. This compact guide is based on ASD-STE100 Issue 9. It does not replace the official standard or controlled dictionary. | Purpose |  | Purpose framing, asserts no rule |
+| E-07 | Preserve technical meaning and safety. | Priorities |  | Our ordering of concerns, not an ASD rule |
+| E-08 | Remove ambiguity. | Priorities |  | Our ordering of concerns, not an ASD rule |
+| E-09 | Use consistent terminology. | Priorities |  | Our ordering of concerns, not an ASD rule |
+| E-10 | Reduce length only when clarity remains intact. | Priorities |  | Our ordering of concerns, not an ASD rule |
+| N-02 | Confirm that: | Final check |  | Lead-in to the checklist below it |
+| E-11 | For strict compliance, check every general word against the official dictionary and every technical term against the applicable terminology database. | Final check |  | Our boundary statement, as E-03 |

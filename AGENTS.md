@@ -24,17 +24,27 @@ them, so look for them first.
 
 ### A grounding matrix that lies
 
-Every statement in a `standards/` skill traces to a numbered rule in the
-published source. The trace lives in `grounding/<tier>/<skill>.md`.
+Every unit of content in a graded section of a skill is disposed of in
+`grounding/<tier>/<skill>.md`. Nothing enters a skill unclassified.
 
 - A **`G` row** claims the authority of the source. Its rule cell names the rule.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
+- An **`N` row** is narrative. It orients the reader and asserts no rule, so it
+  claims no authority at all. Its rule cell is empty.
 
 Labelling our own advice as a `G` row is the worst defect this repository can
 ship. It borrows authority the source never granted. Flag it as critical.
 
 A `G` row that cites a rule which does not say that is the same defect in a
-quieter form.
+quieter form. So is an `N` row over a sentence that tells the reader to do
+something, because it retires a statement from review by calling it scenery.
+
+The checker accounts for every paragraph and every list item, not for the ones
+whose shape looks normative. It used to read single-line `-` bullets alone and
+call that "every statement", so four numbered priorities and a prose directive
+entered the STE skill unclassified while `ground --check` reported clean. Any
+change that narrows what the checker sees reopens that hole, whatever it widens
+elsewhere.
 
 ### A skill that substitutes for its source
 
