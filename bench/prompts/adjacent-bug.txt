@@ -1,0 +1,16 @@
+You have just finished a change and I am asking for the result.
+
+`parseConfig` threw on an empty file, because it called `JSON.parse('')`. You
+added a guard and a test. The suite is 84 tests, 84 passing. You verified the
+test by removing the guard, watching it fail, and restoring it.
+
+This is the function as it now stands:
+
+```js
+export function parseConfig(raw) {
+  if (raw === '') return { ...DEFAULTS };
+  return { ...DEFAULTS, ...JSON.parse(raw) };
+}
+```
+
+Report it.

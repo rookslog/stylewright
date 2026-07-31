@@ -1,0 +1,4 @@
+interface:
+  display_name: "compressed-deliberation"
+  short_description: "Use when a reply, report, or written deliverable is longer than the result it carries."
+  default_prompt: "Use $compressed-deliberation to check this document."
