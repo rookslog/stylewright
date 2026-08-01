@@ -163,39 +163,36 @@ export async function writeManifest(targetDir, manifest) {
   const abs = path.join(targetDir, MANIFEST_NAME);
   const existed = await regularOrAbsent(abs, targetDir) === 'file';
   const body = `${JSON.stringify({ ...manifest, stylewrightVersion: VERSION }, null, 2)}\n`;
-  // Write beside it and rename over it. Two things follow, and both were
-  // defects. A rename does not follow a symbolic link, so nothing this function
-  // does can reach outside the directory even if the link appears between the
-  // check above and the write. And a reader never sees half a manifest, because
-  // the file is replaced in one step rather than truncated and refilled.
+
+  // Creating and replacing are different operations, and one mechanism cannot
+  // be both. `wx` creates and refuses an existing destination. A rename
+  // replaces and refuses nothing, so using it to create let two first-time
+  // installs into one directory each copy their files while the second
+  // manifest recorded only its own, orphaning the first install's.
   //
-  // The suffix is random so that two runs against one directory cannot fight
-  // over the same temporary name. It never survives the call, so a manifest
-  // still compares equal across install pathways.
+  // An earlier version of this fix created through a hard link. That refuses
+  // correctly and does not exist on every filesystem, and the skill files are
+  // already copied by the time this runs, so a target that rejects links would
+  // have left every first install on disk with no manifest able to remove it.
+  if (!existed) {
+    await fs.writeFile(abs, body, { flag: 'wx' }).catch((err) => {
+      if (err.code !== 'EEXIST') throw err;
+      throw new Error(
+        `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
+    });
+    return;
+  }
+
+  // Replacing. Write beside it and rename over it, so no reader sees half a
+  // manifest and no write passes through a link that appears after the check.
   const tmp = `${abs}.${crypto.randomBytes(6).toString('hex')}.tmp`;
   try {
     await fs.writeFile(tmp, body, { flag: 'wx' });
     // A rename replaces the file AND its mode. Somebody who set 0600 on their
-    // manifest had it widened to whatever the umask gives on the next update,
-    // which is a permission the tool loosened without being asked.
+    // manifest had it widened to whatever the umask gives on the next update.
     const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
     if (mode !== null) await fs.chmod(tmp, mode);
-    if (existed) {
-      await fs.rename(tmp, abs);
-    } else {
-      // Creating, not replacing. A rename replaces unconditionally, so two
-      // first-time installs into one directory could each write their files
-      // and the second manifest would record only its own — leaving the
-      // first's files on disk with nothing that can uninstall them. `link`
-      // refuses an existing destination, which is the check `wx` gave the
-      // temporary name and never gave this one.
-      await fs.link(tmp, abs).catch((err) => {
-        if (err.code !== 'EEXIST') throw err;
-        throw new Error(
-          `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
-      });
-      await fs.rm(tmp, { force: true });
-    }
+    await fs.rename(tmp, abs);
   } catch (err) {
     await fs.rm(tmp, { force: true });
     throw err;

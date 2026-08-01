@@ -161,12 +161,12 @@ test('a manifest keeps the permissions you gave it', async () => {
 // directory. Interfering at that write puts the change after every earlier
 // output was written and recorded, which is the window these two describe.
 const atLastWrite = async (repo, act, run) => {
-  const original = fs.writeFile;
+  // The scaffold creates each output through `fs.open` with `wx`, so that is
+  // where the interference belongs.
+  const original = fs.open;
   const last = path.join(repo, 'grounding', 'craft', 'demo.md');
   let fired = false;
-  fs.writeFile = async (...args) => {
-    // Once only. `act` writes through this same patched function, so without
-    // the guard it calls itself.
+  fs.open = async (...args) => {
     if (!fired && String(args[0]) === last) {
       fired = true;
       await act();
@@ -176,7 +176,7 @@ const atLastWrite = async (repo, act, run) => {
   try {
     return await run();
   } finally {
-    fs.writeFile = original;
+    fs.open = original;
   }
 };
 
@@ -247,14 +247,16 @@ test('a first write refuses a manifest that appeared meanwhile', async () => {
   const dir = await tmp();
   const abs = path.join(dir, MANIFEST_NAME);
   const original = fs.writeFile;
+  let raced = false;
   fs.writeFile = async (...args) => {
-    const out = await original.apply(fs, args);
     // Another first-time install wins the race between the check and the
-    // rename. A rename would replace it and orphan that install's files.
-    if (String(args[0]).endsWith('.tmp')) {
+    // create. Exclusive creation must refuse rather than replace, because a
+    // replacement orphans the other install's files.
+    if (!raced && String(args[0]) === abs) {
+      raced = true;
       await original.call(fs, abs, '{"schema":1,"skills":{"theirs":{"files":{}}}}\n');
     }
-    return out;
+    return original.apply(fs, args);
   };
   try {
     await assert.rejects(writeManifest(dir, emptyManifest()), /appeared while/);

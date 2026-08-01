@@ -197,11 +197,18 @@ export async function scaffoldSkill({
         }
       }
       const abs = path.join(repoRoot, rel);
-      await fs.writeFile(abs, body, { flag: 'wx' });
-      // Identity, not the name. Rollback that deletes whatever now stands at a
-      // remembered path deletes another process's file when it put one there.
-      const st = await fs.lstat(abs);
-      written.push({ rel, dev: st.dev, ino: st.ino });
+      // Identity comes from the HANDLE that created the file, not from the
+      // path afterwards. Sampling through the path let another process swap
+      // the file between the write and the stat, and rollback would then match
+      // that inode and delete the replacement.
+      const fh = await fs.open(abs, 'wx');
+      try {
+        await fh.writeFile(body);
+        const st = await fh.stat();
+        written.push({ rel, dev: st.dev, ino: st.ino });
+      } finally {
+        await fh.close();
+      }
     }
     for (const { rel } of written) {
       let cur = repoRoot;
