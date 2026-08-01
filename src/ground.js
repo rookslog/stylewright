@@ -45,6 +45,13 @@ export function parseMatrix(text) {
  * A wrapped list item is ONE unit. Reading its first line alone let the rest of
  * the item change without the matrix noticing, which is the same defect one
  * level down.
+ *
+ * A table and a fenced block are units too. The first draft of this change
+ * exempted both, on the reasoning that a table is reference data and a block is
+ * an example. That is the original defect wearing different clothes, because a
+ * rule written as a table is still a rule. Neither fits in a matrix cell, so
+ * each carries a designator such as `[table 1]`. The row still records what a
+ * person decided the block claims.
  */
 function statements(skillText) {
   const out = [];
@@ -52,18 +59,29 @@ function statements(skillText) {
     if (SKIP_HEADINGS.test(sec.heading)) continue;
     let para = [];
     let item = null;
-    let inFence = false;
+    let table = 0;
+    let fence = 0;
+    let tables = 0;
+    let fences = 0;
+    const push = (text) => out.push({ text, anchor: sec.heading });
     const flush = () => {
-      if (para.length) out.push({ text: para.join(' '), anchor: sec.heading });
+      if (para.length) push(para.join(' '));
       para = [];
       item = null;
+      if (table) push(`[table ${table}]`);
+      table = 0;
     };
     for (const line of sec.body.split('\n')) {
-      if (/^\s*(```|~~~)/.test(line)) { flush(); inFence = !inFence; continue; }
-      if (inFence) continue;
-      // A table is reference data the reader looks things up in, and a heading
-      // names a section rather than asserting anything.
-      if (!line.trim() || /^\s*\|/.test(line) || /^#{1,6}\s/.test(line)) { flush(); continue; }
+      if (/^\s*(```|~~~)/.test(line)) {
+        if (fence) { push(`[code ${fence}]`); fence = 0; } else { flush(); fences += 1; fence = fences; }
+        continue;
+      }
+      if (fence) continue;
+      if (/^\s*\|/.test(line)) {
+        if (!table) { flush(); tables += 1; table = tables; }
+        continue;
+      }
+      if (!line.trim()) { flush(); continue; }
       const m = /^\s*(?:[-*+]|\d+\.)\s+(.*\S)\s*$/.exec(line);
       if (m) {
         flush();
@@ -76,6 +94,8 @@ function statements(skillText) {
       else para.push(line.trim());
     }
     flush();
+    // A block nobody closed still holds content, so it still needs a row.
+    if (fence) push(`[code ${fence}]`);
   }
   return out;
 }
@@ -85,25 +105,33 @@ export function checkSkill({ skillText, matrixText }) {
     return [{ level: 'error', code: 'no-matrix', message: 'Skill has no grounding matrix.' }];
   }
   const rows = parseMatrix(matrixText);
-  const stmts = statements(skillText);
+  // Each row claims ONE occurrence, so a matched unit is spent. Comparing sets
+  // of strings let a single row cover a sentence the skill repeated three
+  // times, which is the accounting hole one level down from the shape rule.
+  const stmts = statements(skillText).map((s) => ({ ...s, taken: false }));
   const findings = [];
 
   for (const row of rows) {
-    const hit = stmts.find((s) => s.text === row.guidance);
+    const exact = stmts.find((s) => !s.taken && s.text === row.guidance && s.anchor === row.anchor);
+    const hit = exact ?? stmts.find((s) => !s.taken && s.text === row.guidance);
     if (!hit) {
+      const spent = stmts.some((s) => s.text === row.guidance);
       findings.push({
         level: 'error',
-        code: 'missing-quote',
-        message: `${row.id}: "${row.guidance}" no longer appears in SKILL.md.`,
+        code: spent ? 'duplicate-row' : 'missing-quote',
+        message: spent
+          ? `${row.id}: "${row.guidance}" appears fewer times in SKILL.md than the matrix claims.`
+          : `${row.id}: "${row.guidance}" no longer appears in SKILL.md.`,
       });
-      continue;
-    }
-    if (hit.anchor !== row.anchor) {
-      findings.push({
-        level: 'error',
-        code: 'wrong-anchor',
-        message: `${row.id}: quote is under "${hit.anchor}", not "${row.anchor}".`,
-      });
+    } else {
+      hit.taken = true;
+      if (!exact) {
+        findings.push({
+          level: 'error',
+          code: 'wrong-anchor',
+          message: `${row.id}: quote is under "${hit.anchor}", not "${row.anchor}".`,
+        });
+      }
     }
     const kind = /^([GEN])-/i.exec(row.id)?.[1]?.toUpperCase();
     if (!kind) {
@@ -127,9 +155,8 @@ export function checkSkill({ skillText, matrixText }) {
     }
   }
 
-  const covered = new Set(rows.map((r) => r.guidance));
   for (const s of stmts) {
-    if (!covered.has(s.text)) {
+    if (!s.taken) {
       findings.push({
         level: 'error',
         code: 'uncovered-statement',

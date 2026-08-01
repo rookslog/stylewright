@@ -202,16 +202,21 @@ dictionary, which this repository does not ship.
 
 ## Grounding matrices
 
-Each skill has a grounding matrix in `grounding/`. The matrix maps every
-statement in the skill to its rule in the standard.
+Each skill has a grounding matrix in `grounding/`. The matrix disposes of every
+unit of content in the skill, and each row says what that unit claims.
 
-Rows come in two kinds:
+Rows come in three kinds:
 
 - A **`G` row** traces to the standard. It names the rule, such as `Rule 5.1`.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
+- An **`N` row** is narrative. It orients you and asserts no rule.
 
 The distinction is the point of the file. It shows you which instructions carry
 the authority of the standard, and which carry only ours.
+
+The check confirms that a `G` row names a rule. It cannot confirm that the rule
+says what the row says. That reading is a person's, and the matrix records who
+did it and when.
 
 Matrices stay in this repository. They do not install with a skill. A matrix is
 an audit record for a reader, and an agent does not need it while it writes.

@@ -98,9 +98,31 @@ test('a wrapped list item is ONE statement, and its tail is not invisible', () =
   assert.equal(found.split('has no grounding row').length - 1, 1);
 });
 
-test('a heading, a table row, and fenced code assert nothing', () => {
-  assert.equal(uncovered('## Later\n\n| a | b |\n|---|---|\n| c | d |'), '');
-  assert.equal(uncovered('```js\nconst x = 1;\n```'), '');
+test('a table and a fenced block need a row, under a designator', () => {
+  // The first draft of this change exempted both. A rule written as a table is
+  // still a rule, so exempting one shape was the original defect renamed.
+  assert.match(uncovered('## Later\n\n| a | b |\n|---|---|\n| c | d |'), /\[table 1\]/);
+  assert.match(uncovered('```js\nconst x = 1;\n```'), /\[code 1\]/);
+});
+
+test('a heading inside a fence does not open a section', () => {
+  // Splitting there put the rest of the block under a heading nobody wrote,
+  // and the lint reads the same sections.
+  const found = uncovered('```sh\n# not a heading\nls\n```');
+  assert.match(found, /\[code 1\]/);
+  assert.doesNotMatch(found, /not a heading/);
+});
+
+test('one row covers one occurrence, not every copy of a sentence', () => {
+  const twice = `${SKILL}- Do not use semicolons.\n`;
+  const found = checkSkill({ skillText: twice, matrixText: MATRIX });
+  assert.ok(found.some((f) => f.code === 'uncovered-statement'
+    && /Do not use semicolons/.test(f.message)));
+
+  const spare = `${MATRIX}| G-03 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 |\n`;
+  assert.deepEqual(checkSkill({ skillText: twice, matrixText: spare }), []);
+  assert.ok(checkSkill({ skillText: SKILL, matrixText: spare })
+    .some((f) => f.code === 'duplicate-row'));
 });
 
 test('an N row carries no rule, and an unknown prefix is refused', () => {

@@ -39,7 +39,15 @@ export function sentences(text) {
 export function sections(text) {
   const lines = text.split('\n');
   const heads = [];
+  // A `#` inside a fence is a comment in somebody's shell script, not a
+  // heading. Reading it as one splits a section in the middle of the block.
+  let inFence = false;
   lines.forEach((line, i) => {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence) return;
     const m = /^(#{1,6})\s+(.*?)\s*$/.exec(line);
     if (m) heads.push({ level: m[1].length, heading: m[2], startLine: i + 1 });
   });

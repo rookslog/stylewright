@@ -39,12 +39,20 @@ A `G` row that cites a rule which does not say that is the same defect in a
 quieter form. So is an `N` row over a sentence that tells the reader to do
 something, because it retires a statement from review by calling it scenery.
 
-The checker accounts for every paragraph and every list item, not for the ones
+The checker accounts for every unit a graded section carries, not for the ones
 whose shape looks normative. It used to read single-line `-` bullets alone and
 call that "every statement", so four numbered priorities and a prose directive
 entered the STE skill unclassified while `ground --check` reported clean. Any
 change that narrows what the checker sees reopens that hole, whatever it widens
 elsewhere.
+
+A table and a fenced block are units. Neither fits in a matrix cell, so each
+carries a designator such as `[table 1]`, numbered within its section. Exempting
+them was the first attempt at this fix, and it was the same defect renamed. A
+rule written as a table is still a rule.
+
+Each row claims one occurrence. A skill that repeats a sentence needs a row for
+each time it says it.
 
 ### A skill that substitutes for its source
 
