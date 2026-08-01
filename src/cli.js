@@ -45,7 +45,7 @@ const BOOL_FLAGS = new Set(['force', 'check', 'all']);
 //
 // A flag a command does not read is a typing mistake, and acting on the rest of
 // the line carries out something other than what was typed.
-const COMMAND_FLAGS = {
+const COMMAND_FLAGS = new Map(Object.entries({
   install: new Set(['tier', 'skill', 'platform', 'scope', 'force']),
   update: new Set(['skill', 'platform', 'scope', 'force']),
   uninstall: new Set(['tier', 'skill', 'platform', 'scope', 'force', 'all']),
@@ -54,7 +54,10 @@ const COMMAND_FLAGS = {
   lint: new Set(),
   ground: new Set(['check', 'all', 'skill']),
   'new-skill': new Set(['tier', 'source', 'url', 'license', 'description']),
-};
+// A plain object inherits from Object.prototype, so `stylewright constructor`
+// looked up a function and `allowed.has` threw a type error at a typing
+// mistake. A Map holds only what was put in it.
+}));
 
 function splitList(value) {
   return String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -116,7 +119,7 @@ export async function run(argv, ctx) {
     return 2;
   }
 
-  const allowed = COMMAND_FLAGS[command];
+  const allowed = COMMAND_FLAGS.get(command);
   if (allowed) {
     const stray = Object.keys(flags)
       .filter((k) => k !== '_' && !allowed.has(k) && !(k === 'skill' && !flags.skill.length));
@@ -327,7 +330,9 @@ export async function run(argv, ctx) {
       }
       Object.assign(flags, chosen);
     } else if (!flags.platform) {
-      say('Pass --platform when you use --tier or --skill. Omit all flags for the guided install.');
+      say(`Pass --platform when you select skills. ${command === 'uninstall'
+        ? 'Run `stylewright doctor` to see where they are.'
+        : 'Omit all flags for the guided install.'}`);
       return 2;
     }
 
@@ -342,6 +347,18 @@ export async function run(argv, ctx) {
       return 2;
     }
     const scope = scopes[0] ?? 'user';
+    // One selection at a time. `--all --tier craft` accepted both and applied
+    // the tier, so a command naming everything removed one tier and exited
+    // zero. Implicit precedence between two explicit selections is a silent
+    // reinterpretation of what was typed.
+    const selectors = [
+      flags.skill.length && '--skill', flags.tier && '--tier', flags.all && '--all',
+    ].filter(Boolean);
+    if (selectors.length > 1) {
+      say(`${command} takes one of ${selectors.join(', ')}, not several.`);
+      return 2;
+    }
+
     let names = flags.skill;
     if (!names.length) {
       // An omitted selection means "everything" for install, where the cost of

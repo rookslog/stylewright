@@ -598,7 +598,7 @@ test('uninstall --tier removes one tier and leaves the other', async () => {
     ['uninstall', '--tier', 'craft', '--platform', 'claude', '--scope', 'user'],
     { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
   assert.equal(code, 0);
-  assert.deepEqual(await fs.readdir(at(home)),
+  assert.deepEqual((await fs.readdir(at(home))).sort(),
     ['.stylewright-manifest.json', 'demo-standard']);
 });
 
@@ -615,6 +615,25 @@ test('a bare uninstall in a terminal never runs the install dialogue', async () 
   });
   assert.equal(code, 2);
   assert.match(out.text(), /needs to know what to remove/);
+});
+
+test('a command name from the prototype chain is not a command', async () => {
+  // A plain object lookup found Object.prototype.constructor, and `.has` on a
+  // function threw a type error at what is only a typing mistake.
+  const out = capture();
+  const code = await run(['constructor', '--force'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /stylewright/);
+});
+
+test('uninstall takes one selection, not several', async () => {
+  const out = capture();
+  const code = await run(
+    ['uninstall', '--all', '--tier', 'craft', '--platform', 'claude', '--scope', 'user'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /takes one of --tier, --all/);
 });
 
 test('a command rejects a flag it does not read', async () => {
