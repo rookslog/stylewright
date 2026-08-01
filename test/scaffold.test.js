@@ -156,3 +156,81 @@ test('a manifest keeps the permissions you gave it', async () => {
   await writeManifest(dir, emptyManifest());
   assert.equal((await fs.stat(abs)).mode & 0o777, 0o600);
 });
+
+test('a failed scaffold leaves no directory behind, so a retry works', async () => {
+  const repo = await tmp();
+  // The LAST output is the grounding matrix. A collision there fails the call
+  // after the skill tree exists.
+  const clash = path.join(repo, 'grounding', 'craft', 'demo.md');
+  await fs.mkdir(path.dirname(clash), { recursive: true });
+  await fs.writeFile(clash, 'mine\n');
+  await assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }));
+
+  // Rollback used to remove files and leave `skills/craft/demo` standing, and
+  // the directory-level collision check then refused every retry.
+  await assert.rejects(fs.access(path.join(repo, 'skills', 'craft', 'demo')));
+  await fs.rm(clash);
+  const written = await scaffoldSkill({
+    repoRoot: repo, name: 'demo', tier: 'craft', description: 'd',
+  });
+  assert.ok(written.includes(path.join('grounding', 'craft', 'demo.md')));
+});
+
+// The grounding matrix is the LAST output, and it lives outside the skill
+// directory. Interfering at that write puts the change after every earlier
+// output was written and recorded, which is the window these two describe.
+const atLastWrite = async (repo, act, run) => {
+  const original = fs.writeFile;
+  const last = path.join(repo, 'grounding', 'craft', 'demo.md');
+  fs.writeFile = async (...args) => {
+    if (String(args[0]) === last) await act();
+    return original.apply(fs, args);
+  };
+  try {
+    return await run();
+  } finally {
+    fs.writeFile = original;
+  }
+};
+
+test('rollback leaves a file another process put at the same path', async () => {
+  const repo = await tmp();
+  const skillMd = path.join(repo, 'skills', 'craft', 'demo', 'SKILL.md');
+  const last = path.join(repo, 'grounding', 'craft', 'demo.md');
+
+  await atLastWrite(repo, async () => {
+    // Hold the original inode with a hard link before unlinking, so the new
+    // file cannot be handed the same inode number and pass the identity check
+    // by accident.
+    await fs.link(skillMd, path.join(repo, 'held'));
+    await fs.rm(skillMd);
+    await fs.writeFile(skillMd, 'theirs\n');
+    // And make the last write fail, AFTER the preflight passed.
+    await fs.mkdir(path.dirname(last), { recursive: true });
+    await fs.writeFile(last, 'mine\n');
+  }, () => assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' })));
+
+  // Rollback removed by remembered NAME, so it deleted whatever now stood
+  // there. It compares identity now, and this file is not the one it wrote.
+  assert.equal(await fs.readFile(skillMd, 'utf8'), 'theirs\n');
+});
+
+test('an ancestor swapped after the preflight stops the call', async () => {
+  const repo = await tmp();
+  const outside = await tmp();
+  const craft = path.join(repo, 'skills', 'craft');
+
+  await atLastWrite(repo, async () => {
+    await fs.rm(craft, { recursive: true });
+    await fs.symlink(outside, craft);
+  }, () => assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
+    /changed while writing/));
+
+  // Creating the chain level by level narrows the window and does not close
+  // it, so the chain is read again after the last write. Nothing was written
+  // through the link.
+  assert.deepEqual(await fs.readdir(outside), []);
+});

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TIERS } from './catalog.js';
-import { ancestorsOf, destinationState, reachability } from './tree.js';
+import { destinationState, reachability } from './tree.js';
 
 const NAME_RULE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
@@ -159,34 +159,67 @@ export async function scaffoldSkill({
     }
   }
 
+  // Three findings from one cause: the writes used primitives that resolve a
+  // whole path, and the rollback remembered NAMES.
+  //
+  // `mkdir` with `recursive` and `writeFile` with `wx` both resolve every
+  // ancestor, and `wx` protects the leaf alone, so a link appearing at an
+  // ancestor after the preflight sent every output outside the repository and
+  // the command reported success. Each directory is now created one level at a
+  // time, and a level that is not already a directory stops the call.
+  //
+  // The chain is re-read after the last write, because creating it level by
+  // level narrows that window and does not close it. Node offers no way to
+  // open a path relative to a directory it has already checked, so detection
+  // after the fact is the honest end of what this can do.
   const written = [];
+  const made = [];
   try {
     for (const [rel, body] of outputs) {
+      let cur = repoRoot;
+      for (const part of path.dirname(rel).split(path.sep).filter((q) => q && q !== '.')) {
+        cur = path.join(cur, part);
+        const state = await destinationState(cur);
+        if (state === 'absent') {
+          await fs.mkdir(cur).then(() => made.push(cur), (e) => {
+            if (e.code !== 'EEXIST') throw e;
+          });
+        } else if (state !== 'directory') {
+          throw new Error(
+            `Cannot scaffold "${name}": ${path.relative(repoRoot, cur)} is a ${state}.`);
+        }
+      }
       const abs = path.join(repoRoot, rel);
-      await fs.mkdir(path.dirname(abs), { recursive: true });
-      // `wx` refuses an existing path rather than truncating it, and it does
-      // not follow a link. The checks above report a collision in words. This
-      // is what holds if one appears between the check and the write.
       await fs.writeFile(abs, body, { flag: 'wx' });
-      written.push(rel);
+      // Identity, not the name. Rollback that deletes whatever now stands at a
+      // remembered path deletes another process's file when it put one there.
+      const st = await fs.lstat(abs);
+      written.push({ rel, dev: st.dev, ino: st.ino });
+    }
+    for (const { rel } of written) {
+      let cur = repoRoot;
+      for (const part of path.dirname(rel).split(path.sep).filter((q) => q && q !== '.')) {
+        cur = path.join(cur, part);
+        if (await destinationState(cur) !== 'directory') {
+          throw new Error(
+            `Cannot scaffold "${name}": ${path.relative(repoRoot, cur)} changed while writing.`);
+        }
+      }
     }
   } catch (err) {
     // A half-written skill passes neither check and looks like a skill, so it
-    // is worse than no skill. Take back only what this call wrote.
-    //
-    // Rollback re-checks the paths rather than trusting the names it recorded.
-    // Otherwise a link that appeared at an ancestor after the write — which is
-    // how this call got here — sends the removal through it, and rollback
-    // deletes the very files outside the repository that the checks exist to
-    // protect.
-    const { blocked: gone } = await reachability(repoRoot, written);
-    for (const rel of written.reverse()) {
-      if (ancestorsOf(rel).some((a) => gone.has(a))) continue;
-      if (await destinationState(path.join(repoRoot, rel)) !== 'file') continue;
-      await fs.rm(path.join(repoRoot, rel), { force: true });
+    // is worse than no skill. Take back what this call made, and only that.
+    for (const { rel, dev, ino } of [...written].reverse()) {
+      const abs = path.join(repoRoot, rel);
+      const st = await fs.lstat(abs).catch(() => null);
+      if (st?.isFile() && st.dev === dev && st.ino === ino) await fs.rm(abs, { force: true });
     }
+    // Directories too, deepest first. Leaving them behind made the new
+    // directory-level collision check refuse every retry until somebody
+    // removed them by hand.
+    for (const abs of [...made].reverse()) await fs.rmdir(abs).catch(() => {});
     throw err;
   }
 
-  return written.sort();
+  return written.map(({ rel }) => rel).sort();
 }
