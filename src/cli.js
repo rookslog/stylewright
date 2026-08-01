@@ -19,7 +19,9 @@ const USAGE = `stylewright ${VERSION}
   update     [--skill <name>]... [--platform ...] [--scope ...] [--force]
              With no flags, covers user scope plus THIS directory. Installs in
              other projects are not discoverable, so run it there too.
-  uninstall  --skill <name>... [--platform ...] [--scope ...]
+  uninstall  (--skill <name>... | --tier standards|craft | --all)
+             [--platform ...] [--scope ...] [--force]
+             It never removes everything by default. Name what goes.
   list
   doctor
   lint       <path>...
@@ -35,6 +37,24 @@ const USAGE = `stylewright ${VERSION}
 // they decided differently.
 const LIST_FLAGS = new Set(['skill', 'platform', 'scope']);
 const BOOL_FLAGS = new Set(['force', 'check', 'all']);
+
+// What each command accepts. One shared parser and no schema meant a flag was
+// silently ignored by the command that did not read it, and — worse — that
+// `uninstall` inherited install's rule for an empty selection. `--platform
+// claude` with nothing else removed the whole catalogue and exited zero.
+//
+// A flag a command does not read is a typing mistake, and acting on the rest of
+// the line carries out something other than what was typed.
+const COMMAND_FLAGS = {
+  install: new Set(['tier', 'skill', 'platform', 'scope', 'force']),
+  update: new Set(['skill', 'platform', 'scope', 'force']),
+  uninstall: new Set(['tier', 'skill', 'platform', 'scope', 'force', 'all']),
+  list: new Set(),
+  doctor: new Set(),
+  lint: new Set(),
+  ground: new Set(['check', 'all', 'skill']),
+  'new-skill': new Set(['tier', 'source', 'url', 'license', 'description']),
+};
 
 function splitList(value) {
   return String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -94,6 +114,17 @@ export async function run(argv, ctx) {
   } catch (err) {
     say(err.message);
     return 2;
+  }
+
+  const allowed = COMMAND_FLAGS[command];
+  if (allowed) {
+    const stray = Object.keys(flags)
+      .filter((k) => k !== '_' && !allowed.has(k) && !(k === 'skill' && !flags.skill.length));
+    if (stray.length) {
+      say(`${command} does not take ${stray.sort().map((k) => `--${k}`).join(', ')}.`);
+      say(USAGE);
+      return 2;
+    }
   }
 
   if (!command || command === 'help' || command === '--help') {
@@ -257,7 +288,24 @@ export async function run(argv, ctx) {
 
     // The guided dialogue is the DEFAULT. Any flag that selects targets or
     // skills opts out of it, so a scripted command stays non-interactive.
-    const flagDriven = Boolean(flags.platform) || Boolean(flags.tier) || flags.skill.length > 0;
+    const flagDriven = Boolean(flags.platform) || Boolean(flags.tier)
+      || flags.skill.length > 0 || Boolean(flags.all);
+
+    // The dialogue belongs to install. A bare `uninstall` in a terminal ran it,
+    // so the user was shown `stylewright install` and asked `Install now?`, and
+    // answering yes removed skills. A destructive command may not borrow a
+    // script that names the other operation. Until uninstall has its own, it
+    // asks for a selection rather than guessing one.
+    if (!flagDriven && command === 'uninstall') {
+      say('uninstall needs to know what to remove.');
+      say('');
+      say('  --skill <name>            one skill, repeatable');
+      say('  --tier standards|craft    every skill in one tier');
+      say('  --all                     every skill this repository ships');
+      say('');
+      say('Add --platform to say where. Run `stylewright doctor` to see what is installed.');
+      return 2;
+    }
 
     if (!flagDriven) {
       if (!interactive) {
@@ -296,6 +344,23 @@ export async function run(argv, ctx) {
     const scope = scopes[0] ?? 'user';
     let names = flags.skill;
     if (!names.length) {
+      // An omitted selection means "everything" for install, where the cost of
+      // being wrong is a file you can delete. `uninstall` inherited that rule
+      // from sharing this block, so `--platform claude` with nothing else
+      // removed every installed skill and exited zero. Nothing in the command
+      // said so, and no dialogue ran, because a flag turns the dialogue off.
+      //
+      // Removing everything stays available. It has to be typed.
+      if (command === 'uninstall' && !flags.all && !flags.tier) {
+        say('uninstall needs to know what to remove.');
+        say('');
+        say('  --skill <name>            one skill, repeatable');
+        say('  --tier standards|craft    every skill in one tier');
+        say('  --all                     every skill this repository ships');
+        say('');
+        say('Run `stylewright doctor` to see what is installed.');
+        return 2;
+      }
       const tier = flags.tier ?? 'all';
       names = catalog.filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name);
     }

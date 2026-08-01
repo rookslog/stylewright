@@ -558,3 +558,73 @@ test('the same scope named twice is one scope', async () => {
     { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
   assert.equal(code, 0, out.text());
 });
+
+// `install` and `uninstall` shared one selection block, so an omitted
+// selection meant "everything" for both. For install that is a file you can
+// delete. For uninstall it was the whole catalogue, with nothing on the command
+// line saying so.
+
+const at = (home) => path.join(home, '.claude', 'skills');
+
+test('uninstall with no selection removes nothing and says what to pass', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const before = await fs.readdir(at(home));
+
+  const out = capture();
+  const code = await run(['uninstall', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /needs to know what to remove/);
+  assert.deepEqual(await fs.readdir(at(home)), before);
+});
+
+test('uninstall --all removes everything, because it was typed', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const code = await run(['uninstall', '--all', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  await assert.rejects(fs.readdir(at(home)));
+});
+
+test('uninstall --tier removes one tier and leaves the other', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  assert.deepEqual(await fs.readdir(at(home)),
+    ['.stylewright-manifest.json', 'demo-standard']);
+});
+
+test('a bare uninstall in a terminal never runs the install dialogue', async () => {
+  const out = capture();
+  const code = await run(['uninstall'], {
+    home: '/h',
+    cwd: '/c',
+    repoRoot: REPO,
+    stdout: out,
+    now: NOW,
+    interactive: true,
+    promptTargets: async () => { throw new Error('the install dialogue must not run here'); },
+  });
+  assert.equal(code, 2);
+  assert.match(out.text(), /needs to know what to remove/);
+});
+
+test('a command rejects a flag it does not read', async () => {
+  const out = capture();
+  assert.equal(await run(['list', '--force'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW }), 2);
+  assert.match(out.text(), /list does not take --force/);
+
+  const said = capture();
+  assert.equal(await run(['update', '--all'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: said, now: NOW }), 2);
+  assert.match(said.text(), /update does not take --all/);
+});
