@@ -71,7 +71,7 @@ in our own words anyway, because that is the doctrine for every skill.
 | G-38 | Ask a reader to restate the content in their own words. | Testing | test/paraphrase-testing | Test |
 | E-04 | Write so that a reader finds what they need, understands it the first time, and can act on it. This guide is based on the Federal Plain Language Guidelines, which support the Plain Writing Act of 2010. | Purpose |  | Our own framing, and it tells the reader what to aim for |
 | N-02 | Plain language is not simplified language. It does not remove detail. It puts the reader ahead of the writer. | Purpose |  | Orients the reader, asserts no rule |
-| N-03 | The two standards disagree in places. Plain language allows contractions and asks for a conversational tone. Simplified Technical English forbids contractions, because they are hard for a reader whose first language is not English. The reader decides which standard wins. | Choosing between this and Simplified Technical English |  | Our comparison of two sources |
+| E-05 | The two standards disagree in places. Plain language allows contractions and asks for a conversational tone. Simplified Technical English forbids contractions, because they are hard for a reader whose first language is not English. The reader decides which standard wins. | Choosing between this and Simplified Technical English |  | Our comparison, and it tells the reader who decides |
 | N-04 | plain-language | plain-language |  | Section title, asserts no rule |
 | N-05 | Purpose | Purpose |  | Section title, asserts no rule |
 | N-06 | Choosing between this and Simplified Technical English | Choosing between this and Simplified Technical English |  | Section title, asserts no rule |

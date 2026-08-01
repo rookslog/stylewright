@@ -85,3 +85,20 @@ test('refuses to overwrite an existing skill', async () => {
   await scaffoldSkill({ repoRoot: repo, ...STD });
   await assert.rejects(() => scaffoldSkill({ repoRoot: repo, ...STD }), /already exists/);
 });
+
+test('a source name containing a pipe still produces a matrix that passes', async () => {
+  // The check learned to read `\\|` and this generator never learned to write
+  // it, so the scaffold produced a matrix that failed its own first check.
+  const repo = await tmp();
+  await scaffoldSkill({
+    repoRoot: repo,
+    name: 'piped',
+    tier: 'standards',
+    description: 'A demo skill.',
+    source: 'ACME | Standard',
+    url: 'https://example.invalid/x',
+    license: 'CC BY 4.0',
+  });
+  const all = await checkAll(repo);
+  assert.deepEqual(all.piped, []);
+});

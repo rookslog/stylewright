@@ -28,9 +28,11 @@ rule text from the source. It does not replace the official source.
 
 Standard: [${source}](${url})
 
-Every statement above is traced to the source. The trace lives in the
-stylewright repository at \`grounding/${tier}/${name}.md\`. It is not installed
-with this skill.
+Every unit of content above is accounted for in a public trace. Each one either
+cites a rule in the source, or is marked as our own editorial guidance, or is
+marked as narrative that asserts no rule. The trace lives in the stylewright
+repository at \`grounding/${tier}/${name}.md\`. It is not installed with this
+skill.
 
 ## Notice
 
@@ -39,8 +41,9 @@ source above.
 `
     : `## Boundary
 
-This skill has no external standard behind it. Every statement is our own
-editorial guidance. The trace lives in the stylewright repository at
+This skill has no external standard behind it. Every rule in it is our own
+editorial guidance, and the trace marks the rest as narrative that asserts no
+rule. The trace lives in the stylewright repository at
 \`grounding/${tier}/${name}.md\`. It is not installed with this skill.
 `;
 
@@ -74,6 +77,10 @@ ${boundary}`;
  * is the defect `AGENTS.md` calls critical, so the scaffold must not seed one.
  */
 function groundingMd({ name, tier, skillText, source }) {
+  // A pipe in a cell ends the cell. The check learned to read `\\|`, and this
+  // generator never learned to write it, so a source named `ACME | Standard`
+  // produced a matrix that failed its own first check.
+  const cell = (v) => String(v).replace(/\|/g, '\\|');
   const instructs = new Set([PURPOSE, RULE]);
   const counts = { G: 0, E: 0, N: 0 };
   const rows = contentUnits(skillText).map((u) => {
@@ -85,7 +92,7 @@ function groundingMd({ name, tier, skillText, source }) {
     }
     counts[kind] += 1;
     const rule = kind === 'G' ? 'RULE-ID' : '';
-    return `| ${kind}-${String(counts[kind]).padStart(2, '0')} | ${u.text} | ${u.anchor} | ${rule} | ${note} |`;
+    return `| ${kind}-${String(counts[kind]).padStart(2, '0')} | ${cell(u.text)} | ${cell(u.anchor)} | ${rule} | ${note} |`;
   });
 
   return `# Grounding: ${name}
