@@ -85,3 +85,53 @@ test('refuses to overwrite an existing skill', async () => {
   await scaffoldSkill({ repoRoot: repo, ...STD });
   await assert.rejects(() => scaffoldSkill({ repoRoot: repo, ...STD }), /already exists/);
 });
+
+// The scaffold checked one path and wrote six. Each test below is a write that
+// escaped, reproduced against the old code before the fix was written.
+
+test('a symlinked grounding path is refused, and its target is untouched', async () => {
+  const repo = await tmp();
+  const outside = path.join(await tmp(), 'precious.md');
+  await fs.writeFile(outside, 'mine\n');
+  await fs.mkdir(path.join(repo, 'grounding', 'craft'), { recursive: true });
+  await fs.symlink(outside, path.join(repo, 'grounding', 'craft', 'demo.md'));
+
+  await assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
+    /already exists, as a symlink/);
+  assert.equal(await fs.readFile(outside, 'utf8'), 'mine\n');
+  // Nothing partial survives the refusal.
+  await assert.rejects(fs.access(path.join(repo, 'skills', 'craft', 'demo', 'SKILL.md')));
+});
+
+test('an existing grounding draft is refused rather than replaced', async () => {
+  const repo = await tmp();
+  const draft = path.join(repo, 'grounding', 'craft', 'demo.md');
+  await fs.mkdir(path.dirname(draft), { recursive: true });
+  await fs.writeFile(draft, 'half a matrix\n');
+
+  await assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
+    /grounding\/craft\/demo\.md already exists/);
+  assert.equal(await fs.readFile(draft, 'utf8'), 'half a matrix\n');
+});
+
+test('a symlinked ancestor is refused before anything is written', async () => {
+  const repo = await tmp();
+  const elsewhere = await tmp();
+  await fs.mkdir(path.join(repo, 'skills'), { recursive: true });
+  await fs.symlink(elsewhere, path.join(repo, 'skills', 'craft'));
+
+  await assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
+    /is not a directory/);
+  assert.deepEqual(await fs.readdir(elsewhere), []);
+});
+
+test('an existing skill is still refused, by the path that collides', async () => {
+  const repo = await tmp();
+  await scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' });
+  await assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
+    /skills\/craft\/demo\/SKILL\.md already exists/);
+});

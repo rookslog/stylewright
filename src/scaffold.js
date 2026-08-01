@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TIERS } from './catalog.js';
+import { destinationState, reachability } from './tree.js';
 
 const NAME_RULE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
@@ -116,41 +117,58 @@ export async function scaffoldSkill({
     throw new Error('A standards skill needs --source and --url. Every rule must trace somewhere.');
   }
 
-  const skillDir = path.join(repoRoot, 'skills', tier, name);
-  try {
-    await fs.access(skillDir);
-    throw new Error(`Skill "${name}" already exists at skills/${tier}/${name}.`);
-  } catch (err) {
-    if (!err.code || err.code !== 'ENOENT') {
-      if (err.message.includes('already exists')) throw err;
+  const desc = description || `FILL IN one sentence. Say when an agent should use ${name}.`;
+  const dir = path.join('skills', tier, name);
+
+  // Every output, decided before anything is written. The scaffold used to
+  // check one path and write six. It checked whether the skill directory
+  // existed, and then wrote each file with a call that follows a symbolic link
+  // and truncates whatever it lands on. The grounding path is not under the
+  // skill directory, so it was never checked at all: a grounding file linked
+  // outside the repository was written through, the link survived, and an
+  // existing draft was replaced without a word.
+  const outputs = [
+    [path.join(dir, 'SKILL.md'), skillMd({ name, tier, description: desc, source, url })],
+    [path.join(dir, 'agents', 'openai.yaml'), agentsYaml({ name, description: desc })],
+    [path.join(dir, 'LICENSE'), tier === 'standards'
+      ? `Source license: ${license || 'FILL IN'}\n\nThe original digest in this directory is licensed MIT.\nSee SOURCE.md for the source record.\n`
+      : 'MIT\n'],
+    ...(tier === 'standards'
+      ? [[path.join(dir, 'SOURCE.md'), sourceMd({ source, url, license: license || 'FILL IN' })]]
+      : []),
+    [path.join('grounding', tier, `${name}.md`), groundingMd({ name, tier, source })],
+  ];
+
+  const rels = outputs.map(([rel]) => rel);
+  const { blocked } = await reachability(repoRoot, rels);
+  if (blocked.size) {
+    throw new Error(
+      `Cannot scaffold "${name}": ${[...blocked].sort().join(', ')} is not a directory.`);
+  }
+  for (const rel of rels) {
+    const state = await destinationState(path.join(repoRoot, rel));
+    if (state !== 'absent') {
+      throw new Error(`Cannot scaffold "${name}": ${rel} already exists, as a ${state}.`);
     }
   }
 
-  const desc = description || `FILL IN one sentence. Say when an agent should use ${name}.`;
   const written = [];
-
-  const write = async (abs, body) => {
-    await fs.mkdir(path.dirname(abs), { recursive: true });
-    await fs.writeFile(abs, body);
-    written.push(path.relative(repoRoot, abs));
-  };
-
-  await write(path.join(skillDir, 'SKILL.md'),
-    skillMd({ name, tier, description: desc, source, url }));
-  await write(path.join(skillDir, 'agents', 'openai.yaml'),
-    agentsYaml({ name, description: desc }));
-  await write(path.join(skillDir, 'LICENSE'),
-    tier === 'standards'
-      ? `Source license: ${license || 'FILL IN'}\n\nThe original digest in this directory is licensed MIT.\nSee SOURCE.md for the source record.\n`
-      : 'MIT\n');
-
-  if (tier === 'standards') {
-    await write(path.join(skillDir, 'SOURCE.md'),
-      sourceMd({ source, url, license: license || 'FILL IN' }));
+  try {
+    for (const [rel, body] of outputs) {
+      const abs = path.join(repoRoot, rel);
+      await fs.mkdir(path.dirname(abs), { recursive: true });
+      // `wx` refuses an existing path rather than truncating it, and it does
+      // not follow a link. The checks above report a collision in words. This
+      // is what holds if one appears between the check and the write.
+      await fs.writeFile(abs, body, { flag: 'wx' });
+      written.push(rel);
+    }
+  } catch (err) {
+    // A half-written skill passes neither check and looks like a skill, so it
+    // is worse than no skill. Take back only what this call wrote.
+    for (const rel of written.reverse()) await fs.rm(path.join(repoRoot, rel), { force: true });
+    throw err;
   }
-
-  await write(path.join(repoRoot, 'grounding', tier, `${name}.md`),
-    groundingMd({ name, tier, source }));
 
   return written.sort();
 }
