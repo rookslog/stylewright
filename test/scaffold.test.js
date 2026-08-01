@@ -242,3 +242,41 @@ test('a failed scaffold leaves no directory behind, so a retry works', async () 
   });
   assert.ok(written.includes(path.join('grounding', 'craft', 'demo.md')));
 });
+
+test('a first write refuses a manifest that appeared meanwhile', async () => {
+  const dir = await tmp();
+  const abs = path.join(dir, MANIFEST_NAME);
+  const original = fs.writeFile;
+  fs.writeFile = async (...args) => {
+    const out = await original.apply(fs, args);
+    // Another first-time install wins the race between the check and the
+    // rename. A rename would replace it and orphan that install's files.
+    if (String(args[0]).endsWith('.tmp')) {
+      await original.call(fs, abs, '{"schema":1,"skills":{"theirs":{"files":{}}}}\n');
+    }
+    return out;
+  };
+  try {
+    await assert.rejects(writeManifest(dir, emptyManifest()), /appeared while/);
+  } finally {
+    fs.writeFile = original;
+  }
+  assert.match(await fs.readFile(abs, 'utf8'), /theirs/);
+  assert.deepEqual(await fs.readdir(dir), [MANIFEST_NAME]);
+});
+
+test('rollback leaves a directory it did not create', async () => {
+  const repo = await tmp();
+  const outside = await tmp();
+  await fs.mkdir(path.join(outside, 'demo'));
+
+  await atLastWrite(repo, async () => {
+    // Swap the ancestor for a link whose target holds a same-named directory.
+    // Removing by remembered name would take the outside one.
+    await fs.rm(path.join(repo, 'skills', 'craft'), { recursive: true });
+    await fs.symlink(outside, path.join(repo, 'skills', 'craft'));
+  }, () => assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' })));
+
+  assert.deepEqual(await fs.readdir(outside), ['demo']);
+});

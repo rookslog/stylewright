@@ -161,7 +161,7 @@ export async function readManifest(targetDir) {
 export async function writeManifest(targetDir, manifest) {
   await fs.mkdir(targetDir, { recursive: true });
   const abs = path.join(targetDir, MANIFEST_NAME);
-  await regularOrAbsent(abs, targetDir);
+  const existed = await regularOrAbsent(abs, targetDir) === 'file';
   const body = `${JSON.stringify({ ...manifest, stylewrightVersion: VERSION }, null, 2)}\n`;
   // Write beside it and rename over it. Two things follow, and both were
   // defects. A rename does not follow a symbolic link, so nothing this function
@@ -180,7 +180,22 @@ export async function writeManifest(targetDir, manifest) {
     // which is a permission the tool loosened without being asked.
     const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
     if (mode !== null) await fs.chmod(tmp, mode);
-    await fs.rename(tmp, abs);
+    if (existed) {
+      await fs.rename(tmp, abs);
+    } else {
+      // Creating, not replacing. A rename replaces unconditionally, so two
+      // first-time installs into one directory could each write their files
+      // and the second manifest would record only its own — leaving the
+      // first's files on disk with nothing that can uninstall them. `link`
+      // refuses an existing destination, which is the check `wx` gave the
+      // temporary name and never gave this one.
+      await fs.link(tmp, abs).catch((err) => {
+        if (err.code !== 'EEXIST') throw err;
+        throw new Error(
+          `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
+      });
+      await fs.rm(tmp, { force: true });
+    }
   } catch (err) {
     await fs.rm(tmp, { force: true });
     throw err;

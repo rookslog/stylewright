@@ -181,7 +181,14 @@ export async function scaffoldSkill({
         cur = path.join(cur, part);
         const state = await destinationState(cur);
         if (state === 'absent') {
-          await fs.mkdir(cur).then(() => made.push(cur), (e) => {
+          const at = cur;
+          await fs.mkdir(at).then(async () => {
+            // Identity, for the same reason the files carry it. Removing a
+            // remembered NAME removes whatever now stands there, and what now
+            // stands there may be a link into somebody else's tree.
+            const st = await fs.lstat(at);
+            made.push({ abs: at, dev: st.dev, ino: st.ino });
+          }, (e) => {
             if (e.code !== 'EEXIST') throw e;
           });
         } else if (state !== 'directory') {
@@ -217,7 +224,12 @@ export async function scaffoldSkill({
     // Directories too, deepest first. Leaving them behind made the new
     // directory-level collision check refuse every retry until somebody
     // removed them by hand.
-    for (const abs of [...made].reverse()) await fs.rmdir(abs).catch(() => {});
+    for (const { abs, dev, ino } of [...made].reverse()) {
+      const st = await fs.lstat(abs).catch(() => null);
+      if (st?.isDirectory() && st.dev === dev && st.ino === ino) {
+        await fs.rmdir(abs).catch(() => {});
+      }
+    }
     throw err;
   }
 
