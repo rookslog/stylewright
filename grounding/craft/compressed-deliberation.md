@@ -1,6 +1,7 @@
 # Grounding: compressed-deliberation
 
-Traces every statement in `skills/craft/compressed-deliberation/SKILL.md`.
+Disposes of every unit of content in
+`skills/craft/compressed-deliberation/SKILL.md`.
 
 - A **`G` row** traces to an external source. Its rule cell names the rule.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
@@ -113,6 +114,17 @@ is a controlled trial, and no `E` row should be read as one.
 | N-01 | Deliberation is not the product. Monitoring, qualifying, verifying, managing scope and correcting course are all real work, and a reader wants the edited result of that work rather than a transcript of it. | Purpose |  | Purpose framing, asserts no rule |
 | N-02 | This skill is pinned to one model build. The record of what it targets, and of when it expires, is in `SOURCE.md` beside this file. | Purpose |  | Points at SOURCE.md, asserts no rule |
 | N-03 | Anthropic publishes these as differences in Claude Opus 5. They describe the model. They prescribe nothing, and no rule below inherits their authority. | What this corrects |  | States what the G rows do NOT license |
-| N-04 | Those are the documented defaults. What our own baseline found is narrower and partly different: an unguided run was already clean, and an operator instruction stack above it was what inflated the reply. So read the rules below as aimed at the whole stack you are running inside, and not at the model alone. | What this corrects |  | Records what our baseline found |
-| N-05 | Where the rules have been measured: single-turn replies, one prompt each, five runs. Not agentic sessions, and not files written to disk. The second is the case `SOURCE.md` records the vendor documenting most clearly and the one we have tested least, so apply the rules there on their reasoning, not on our evidence. | What this corrects |  | Scope of the evidence, asserts no rule |
-| N-06 | `de-slop` treats prose that reads as machine-written, whatever produced it. This skill treats one model's documented defaults, and it expires when that model does. Follow both. They do not disagree. | How this differs from de-slop |  | Relates two skills |
+| E-17 | Those are the documented defaults. What our own baseline found is narrower and partly different: an unguided run was already clean, and an operator instruction stack above it was what inflated the reply. So read the rules below as aimed at the whole stack you are running inside, and not at the model alone. | What this corrects |  | Records our baseline, and instructs how to read the rules |
+| E-18 | Where the rules have been measured: single-turn replies, one prompt each, five runs. Not agentic sessions, and not files written to disk. The second is the case `SOURCE.md` records the vendor documenting most clearly and the one we have tested least, so apply the rules there on their reasoning, not on our evidence. | What this corrects |  | States the evidence, and instructs where to apply the rules |
+| E-19 | `de-slop` treats prose that reads as machine-written, whatever produced it. This skill treats one model's documented defaults, and it expires when that model does. Follow both. They do not disagree. | How this differs from de-slop |  | Relates two skills, and instructs the reader to follow both |
+| N-07 | compressed-deliberation | compressed-deliberation |  | Section title, asserts no rule |
+| N-08 | Purpose | Purpose |  | Section title, asserts no rule |
+| N-09 | What this corrects | What this corrects |  | Section title, asserts no rule |
+| N-10 | The shape of a reply | The shape of a reply |  | Section title, asserts no rule |
+| N-11 | Reporting finished work | Reporting finished work |  | Section title, asserts no rule |
+| N-12 | Conceding a correction | Conceding a correction |  | Section title, asserts no rule |
+| N-13 | Surfacing a decision | Surfacing a decision |  | Section title, asserts no rule |
+| N-14 | What this skill does not ask for | What this skill does not ask for |  | Section title, asserts no rule |
+| N-15 | How this differs from de-slop | How this differs from de-slop |  | Section title, asserts no rule |
+| N-16 | Boundary | Boundary |  | Section title, asserts no rule |
+| N-17 | Only the section named "What this corrects" traces to a published source, and it traces for description alone. Every rule in this skill is our own editorial guidance. The trace lives in the stylewright repository at `grounding/craft/compressed-deliberation.md`. It is not installed with this skill. | Boundary |  | Describes the trace, asserts no rule |

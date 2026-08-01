@@ -215,14 +215,16 @@ The distinction is the point of the file. It shows you which instructions carry
 the authority of the standard, and which carry only ours.
 
 The check confirms that a `G` row names a rule. It cannot confirm that the rule
-says what the row says. That reading is a person's, and the matrix records who
-did it and when.
+says what the row says. A person read the source and wrote the row, and no
+program has checked that reading.
 
 Matrices stay in this repository. They do not install with a skill. A matrix is
 an audit record for a reader, and an agent does not need it while it writes.
 
-`stylewright ground --check --all` fails when a skill changes and its matrix does
-not.
+`stylewright ground --check --all` fails when a skill changes and its matrix
+does not. Every heading, paragraph, list item, table and code block counts,
+including the ones before the first heading. Front matter does not, because it
+is metadata for the agent harness rather than instruction for a reader.
 
 ## Licensing
 

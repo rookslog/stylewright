@@ -47,9 +47,17 @@ change that narrows what the checker sees reopens that hole, whatever it widens
 elsewhere.
 
 A table and a fenced block are units. Neither fits in a matrix cell, so each
-carries a designator such as `[table 1]`, numbered within its section. Exempting
-them was the first attempt at this fix, and it was the same defect renamed. A
-rule written as a table is still a rule.
+carries a designator such as `[table 8f3a2b1c]`, whose digest names the block
+CONTENTS. An ordinal named a position instead, so a table could be rewritten
+whole while the matrix stayed clean. Exempting these was the first attempt at
+this fix, and it was the same defect renamed. A rule written as a table is
+still a rule.
+
+There are no exempt headings and no exempt sections. A heading is a unit, so is
+anything above the first heading, and `Source`, `Boundary` and `Notice` grade
+like any other section. Each of those was a hiding place: an instruction under
+a heading called `Source` was disposed of by nothing. Front matter is the one
+thing outside the check, because it is metadata for the harness.
 
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.

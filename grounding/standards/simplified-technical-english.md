@@ -1,6 +1,7 @@
 # Grounding: simplified-technical-english
 
-Traces every statement in `skills/standards/simplified-technical-english/SKILL.md`
+Disposes of every unit of content in
+`skills/standards/simplified-technical-english/SKILL.md`
 to a numbered rule in ASD-STE100 Issue 9, January 2025.
 
 - A **`G` row** traces to the standard. The `Source rule` cell names the rule.
@@ -69,10 +70,28 @@ checkable without opening the PDF, and the repository permits that as of
 | G-39 | safety consequences are explicit. | Final check | Rule 7.3 | Part 1, Section 7 |
 | E-05 | units, identifiers, labels, quotations, and technical facts are unchanged. | Final check |  | Our editing-safety check, not a writing rule |
 | E-06 | no simplification creates ambiguity. | Final check |  | Our editing-safety check, not a writing rule |
-| N-01 | Write technical content that is accurate, direct, consistent, and difficult to misunderstand. This compact guide is based on ASD-STE100 Issue 9. It does not replace the official standard or controlled dictionary. | Purpose |  | Purpose framing, asserts no rule |
+| E-12 | Write technical content that is accurate, direct, consistent, and difficult to misunderstand. This compact guide is based on ASD-STE100 Issue 9. It does not replace the official standard or controlled dictionary. | Purpose |  | Our own framing, and it tells the reader what to aim for |
 | E-07 | Preserve technical meaning and safety. | Priorities |  | Our ordering of concerns, not an ASD rule |
 | E-08 | Remove ambiguity. | Priorities |  | Our ordering of concerns, not an ASD rule |
 | E-09 | Use consistent terminology. | Priorities |  | Our ordering of concerns, not an ASD rule |
 | E-10 | Reduce length only when clarity remains intact. | Priorities |  | Our ordering of concerns, not an ASD rule |
-| N-02 | Confirm that: | Final check |  | Lead-in to the checklist below it |
+| E-13 | Confirm that: | Final check |  | Our own lead-in, and it is an instruction |
 | E-11 | For strict compliance, check every general word against the official dictionary and every technical term against the applicable terminology database. | Final check |  | Our boundary statement, as E-03 |
+| N-03 | Simplified Technical English | Simplified Technical English |  | Section title, asserts no rule |
+| N-04 | Purpose | Purpose |  | Section title, asserts no rule |
+| N-05 | Priorities | Priorities |  | Section title, asserts no rule |
+| N-06 | Reference routing | Reference routing |  | Section title, asserts no rule |
+| N-07 | Vocabulary | Vocabulary |  | Section title, asserts no rule |
+| N-08 | Nouns | Nouns |  | Section title, asserts no rule |
+| N-09 | Verbs | Verbs |  | Section title, asserts no rule |
+| N-10 | Sentences and lists | Sentences and lists |  | Section title, asserts no rule |
+| N-11 | Procedures | Procedures |  | Section title, asserts no rule |
+| N-12 | Descriptions | Descriptions |  | Section title, asserts no rule |
+| N-13 | Safety instructions | Safety instructions |  | Section title, asserts no rule |
+| N-14 | Final check | Final check |  | Section title, asserts no rule |
+| N-15 | Source and boundary | Source and boundary |  | Section title, asserts no rule |
+| E-14 | This skill is an operational digest. It states the rules in our own words, and it carries no part of the standard large enough to replace it. Read the official document for the complete rule, its explanation, and its dictionary entries. | Source and boundary |  | Our own boundary statement, and it tells the reader to read the source |
+| N-16 | Standard: [ASD-STE100 Simplified Technical English, Issue 9 (2025)](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf) | Source and boundary |  | Names the source |
+| N-17 | Every statement above is accounted for in a public trace. Each one either cites a numbered rule in the standard, or is marked as our own editorial guidance, or is marked as narrative that asserts no rule. The trace lives in the [stylewright repository](https://github.com/rookslog/stylewright/blob/main/grounding/standards/simplified-technical-english.md). It is not installed with this skill, because it is an audit record for a reader and not context for an agent. | Source and boundary |  | Describes the trace, asserts no rule |
+| N-18 | Notice | Notice |  | Section title, asserts no rule |
+| N-19 | This skill is not affiliated with, endorsed by, or approved by ASD. `ASD-STE100` and `Simplified Technical English` are European Union registered trademarks owned by the Aerospace, Security and Defence Industries Association of Europe, number 017966390. | Notice |  | Affiliation and trademark notice |
