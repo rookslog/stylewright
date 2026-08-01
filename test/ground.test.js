@@ -144,6 +144,37 @@ test('a fence closes only on its own marker', () => {
   assert.equal(found.match(/\[code [0-9a-f]{8}\]/g).length, 1);
 });
 
+test('a table without outer pipes is still a table', () => {
+  // `Name | Meaning` over `--- | ---` was read as prose, so it got no
+  // designator and could not be quoted in a cell either.
+  const found = uncovered('## Later\n\nName | Meaning\n--- | ---\na | b');
+  assert.match(found, /\[table [0-9a-f]{8}\]/);
+  assert.doesNotMatch(found, /Meaning/);
+});
+
+test('a fence info string is part of the block', () => {
+  // Changing ```js to ```sh changes how the example is read, and both hashed
+  // to one designator.
+  assert.notEqual(uncovered('```js\nx\n```'), uncovered('```sh\nx\n```'));
+});
+
+test('guidance containing a pipe can be quoted in a cell', () => {
+  // parseMatrix split on every pipe with no escape, so a paragraph about a
+  // shell pipeline could not be reproduced by any row and stayed red forever.
+  const skill = `${SKILL}\nUse a | b carefully.\n`;
+  const matrix = `${MATRIX}| E-01 | Use a \\| b carefully. | Rules |  | Ours |\n`;
+  assert.deepEqual(checkSkill({ skillText: skill, matrixText: matrix }), []);
+});
+
+test('a setext heading is a heading', () => {
+  // `Rules` over `=====` was read as prose, so every directive below it was
+  // anchored to the PREVIOUS section and a matrix naming that anchor passed.
+  const units = checkSkill({
+    skillText: SKILL.replace('## Rules', 'Rules\n=====\n'), matrixText: MATRIX,
+  });
+  assert.deepEqual(units, []);
+});
+
 test('prose cannot impersonate a block designator', () => {
   const found = checkSkill({ skillText: `${SKILL}\n[table 0123abcd]\n`, matrixText: MATRIX });
   assert.ok(found.some((f) => f.code === 'reserved-designator'));

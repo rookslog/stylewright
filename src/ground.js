@@ -8,7 +8,12 @@ export function parseMatrix(text) {
   const rows = [];
   for (const line of text.split('\n')) {
     if (!/^\s*\|/.test(line)) continue;
-    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    // Split on UNESCAPED pipes only. Without this a paragraph containing a
+    // pipe — guidance about a shell pipeline, or about Markdown itself — could
+    // not be reproduced in any cell, so `ground --check` stayed red for valid
+    // content and no row could fix it.
+    const cells = line.split(/(?<!\\)\|/).slice(1, -1)
+      .map((c) => c.trim().replace(/\\\|/g, '|'));
     if (cells.length < 5) continue;
     if (/^-+$/.test(cells[0].replace(/[\s:]/g, ''))) continue;
     if (/^id$/i.test(cells[0])) continue;
@@ -71,6 +76,8 @@ const PREAMBLE = '(before the first heading)';
 
 const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 const INDENTED = /^(?: {4}|\t)/;
+const PIPE = /(?<!\\)\|/;
+const DELIMITER = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 
 function unitsIn(body, anchor) {
   const out = [];
@@ -88,7 +95,8 @@ function unitsIn(body, anchor) {
     para = [];
     item = null;
   };
-  for (const line of body.split('\n')) {
+  const lines = body.split('\n');
+  for (const [i, line] of lines.entries()) {
     const fence = FENCE.exec(line);
     // Close only on the SAME marker, at least as long. A four-backtick fence
     // around a three-backtick example was closed by the example's own opening
@@ -102,12 +110,18 @@ function unitsIn(body, anchor) {
     if (fence && block?.kind !== 'code') {
       flush();
       closeBlock();
-      block = { kind: 'code', lines: [], marker: fence[2] };
+      // The info string governs how the block is read, so it is part of the
+      // block. Hashing the body alone gave ```js and ```sh one designator.
+      block = { kind: 'code', lines: [fence[3].trim()], marker: fence[2] };
       continue;
     }
     if (block?.kind === 'code') { block.lines.push(line); continue; }
-    if (/^\s*\|/.test(line)) {
-      if (!block) { flush(); block = { kind: 'table', lines: [] }; }
+    // A table row need not start with a pipe. `Name | Meaning` over
+    // `--- | ---` is a table, and reading it as prose left it with no
+    // designator and no way to be quoted in a cell.
+    const inTable = block?.kind === 'table';
+    if (PIPE.test(line) && (inTable || DELIMITER.test(lines[i + 1] ?? ''))) {
+      if (!inTable) { flush(); block = { kind: 'table', lines: [] }; }
       block.lines.push(line.trim());
       continue;
     }
