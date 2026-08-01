@@ -87,7 +87,12 @@ function parseFlags(argv) {
       throw new Error(`--${key} needs a value.`);
     }
     if (LIST_FLAGS.has(key)) flags[key] = [...(flags[key] ?? []), ...splitList(value)];
-    else flags[key] = value;
+    else if (key in flags) {
+      // A flag that names ONE value, given twice, kept the last. `--tier craft
+      // --tier standards` therefore selected standards and removed standards,
+      // silently discarding half of what was typed, on a command that deletes.
+      throw new Error(`--${key} was given more than once.`);
+    } else flags[key] = value;
   }
   return flags;
 }

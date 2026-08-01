@@ -650,6 +650,15 @@ test('a command name from the prototype chain is not a command', async () => {
   assert.match(out.text(), /stylewright/);
 });
 
+test('a single-value flag given twice is an error', async () => {
+  const out = capture();
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--tier', 'standards', '--platform', 'claude'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /--tier was given more than once/);
+});
+
 test('uninstall takes one selection, not several', async () => {
   const out = capture();
   const code = await run(
