@@ -157,34 +157,20 @@ test('a manifest keeps the permissions you gave it', async () => {
   assert.equal((await fs.stat(abs)).mode & 0o777, 0o600);
 });
 
-test('a failed scaffold leaves no directory behind, so a retry works', async () => {
-  const repo = await tmp();
-  // The LAST output is the grounding matrix. A collision there fails the call
-  // after the skill tree exists.
-  const clash = path.join(repo, 'grounding', 'craft', 'demo.md');
-  await fs.mkdir(path.dirname(clash), { recursive: true });
-  await fs.writeFile(clash, 'mine\n');
-  await assert.rejects(
-    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }));
-
-  // Rollback used to remove files and leave `skills/craft/demo` standing, and
-  // the directory-level collision check then refused every retry.
-  await assert.rejects(fs.access(path.join(repo, 'skills', 'craft', 'demo')));
-  await fs.rm(clash);
-  const written = await scaffoldSkill({
-    repoRoot: repo, name: 'demo', tier: 'craft', description: 'd',
-  });
-  assert.ok(written.includes(path.join('grounding', 'craft', 'demo.md')));
-});
-
 // The grounding matrix is the LAST output, and it lives outside the skill
 // directory. Interfering at that write puts the change after every earlier
 // output was written and recorded, which is the window these two describe.
 const atLastWrite = async (repo, act, run) => {
   const original = fs.writeFile;
   const last = path.join(repo, 'grounding', 'craft', 'demo.md');
+  let fired = false;
   fs.writeFile = async (...args) => {
-    if (String(args[0]) === last) await act();
+    // Once only. `act` writes through this same patched function, so without
+    // the guard it calls itself.
+    if (!fired && String(args[0]) === last) {
+      fired = true;
+      await act();
+    }
     return original.apply(fs, args);
   };
   try {
@@ -233,4 +219,26 @@ test('an ancestor swapped after the preflight stops the call', async () => {
   // it, so the chain is read again after the last write. Nothing was written
   // through the link.
   assert.deepEqual(await fs.readdir(outside), []);
+});
+
+test('a failed scaffold leaves no directory behind, so a retry works', async () => {
+  const repo = await tmp();
+  const last = path.join(repo, 'grounding', 'craft', 'demo.md');
+
+  // The collision appears AFTER the preflight, so the call fails with the
+  // skill tree already created. That is the only way directories are left.
+  await atLastWrite(repo, async () => {
+    await fs.mkdir(path.dirname(last), { recursive: true });
+    await fs.writeFile(last, 'mine\n');
+  }, () => assert.rejects(
+    scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' })));
+
+  // Rollback removed files and left skills/craft/demo standing, and the
+  // directory-level collision check then refused every retry.
+  await assert.rejects(fs.access(path.join(repo, 'skills', 'craft', 'demo')));
+  await fs.rm(last);
+  const written = await scaffoldSkill({
+    repoRoot: repo, name: 'demo', tier: 'craft', description: 'd',
+  });
+  assert.ok(written.includes(path.join('grounding', 'craft', 'demo.md')));
 });
