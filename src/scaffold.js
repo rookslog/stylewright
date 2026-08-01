@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TIERS } from './catalog.js';
-import { destinationState, reachability } from './tree.js';
+import { ancestorsOf, destinationState, reachability } from './tree.js';
 
 const NAME_RULE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
@@ -145,6 +145,13 @@ export async function scaffoldSkill({
     throw new Error(
       `Cannot scaffold "${name}": ${[...blocked].sort().join(', ')} is not a directory.`);
   }
+  // The skill DIRECTORY, not only the leaves this call would write. Checking
+  // leaves alone let a directory holding `notes.md` and nothing else pass, and
+  // install pathways copy a skill directory whole, so that file would ship
+  // inside the new skill rather than be reported as a collision.
+  if (await destinationState(path.join(repoRoot, dir)) !== 'absent') {
+    throw new Error(`Cannot scaffold "${name}": ${dir} already exists.`);
+  }
   for (const rel of rels) {
     const state = await destinationState(path.join(repoRoot, rel));
     if (state !== 'absent') {
@@ -166,7 +173,18 @@ export async function scaffoldSkill({
   } catch (err) {
     // A half-written skill passes neither check and looks like a skill, so it
     // is worse than no skill. Take back only what this call wrote.
-    for (const rel of written.reverse()) await fs.rm(path.join(repoRoot, rel), { force: true });
+    //
+    // Rollback re-checks the paths rather than trusting the names it recorded.
+    // Otherwise a link that appeared at an ancestor after the write — which is
+    // how this call got here — sends the removal through it, and rollback
+    // deletes the very files outside the repository that the checks exist to
+    // protect.
+    const { blocked: gone } = await reachability(repoRoot, written);
+    for (const rel of written.reverse()) {
+      if (ancestorsOf(rel).some((a) => gone.has(a))) continue;
+      if (await destinationState(path.join(repoRoot, rel)) !== 'file') continue;
+      await fs.rm(path.join(repoRoot, rel), { force: true });
+    }
     throw err;
   }
 

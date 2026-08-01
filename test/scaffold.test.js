@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { scaffoldSkill } from '../src/scaffold.js';
+import { MANIFEST_NAME, writeManifest, emptyManifest } from '../src/manifest.js';
 import { checkAll } from '../src/ground.js';
 import { loadCatalog } from '../src/catalog.js';
 import { lintText } from '../src/lint.js';
@@ -128,10 +129,30 @@ test('a symlinked ancestor is refused before anything is written', async () => {
   assert.deepEqual(await fs.readdir(elsewhere), []);
 });
 
-test('an existing skill is still refused, by the path that collides', async () => {
+test('an existing skill is refused, and so is a directory holding only your files', async () => {
   const repo = await tmp();
   await scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' });
   await assert.rejects(
     scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
-    /skills\/craft\/demo\/SKILL\.md already exists/);
+    /skills\/craft\/demo already exists/);
+
+  // Checking the leaves alone let this through. Install copies a skill
+  // directory whole, so the note would ship inside the generated skill.
+  const other = await tmp();
+  const notes = path.join(other, 'skills', 'craft', 'demo', 'notes.md');
+  await fs.mkdir(path.dirname(notes), { recursive: true });
+  await fs.writeFile(notes, 'mine\n');
+  await assert.rejects(
+    scaffoldSkill({ repoRoot: other, name: 'demo', tier: 'craft', description: 'd' }),
+    /skills\/craft\/demo already exists/);
+  assert.equal(await fs.readFile(notes, 'utf8'), 'mine\n');
+});
+
+test('a manifest keeps the permissions you gave it', async () => {
+  const dir = await tmp();
+  await writeManifest(dir, emptyManifest());
+  const abs = path.join(dir, MANIFEST_NAME);
+  await fs.chmod(abs, 0o600);
+  await writeManifest(dir, emptyManifest());
+  assert.equal((await fs.stat(abs)).mode & 0o777, 0o600);
 });

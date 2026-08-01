@@ -175,6 +175,11 @@ export async function writeManifest(targetDir, manifest) {
   const tmp = `${abs}.${crypto.randomBytes(6).toString('hex')}.tmp`;
   try {
     await fs.writeFile(tmp, body, { flag: 'wx' });
+    // A rename replaces the file AND its mode. Somebody who set 0600 on their
+    // manifest had it widened to whatever the umask gives on the next update,
+    // which is a permission the tool loosened without being asked.
+    const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
+    if (mode !== null) await fs.chmod(tmp, mode);
     await fs.rename(tmp, abs);
   } catch (err) {
     await fs.rm(tmp, { force: true });
