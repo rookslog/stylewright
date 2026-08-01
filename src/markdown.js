@@ -41,13 +41,17 @@ export function sections(text) {
   const heads = [];
   // A `#` inside a fence is a comment in somebody's shell script, not a
   // heading. Reading it as one splits a section in the middle of the block.
-  let inFence = false;
+  // A fence closes only on its own marker, at least as long as the opener, so
+  // a four-backtick block quoting a three-backtick one stays one block.
+  let marker = null;
   lines.forEach((line, i) => {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence;
+    const f = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+    if (f) {
+      if (!marker) marker = f[1];
+      else if (f[1][0] === marker[0] && f[1].length >= marker.length && !f[2].trim()) marker = null;
       return;
     }
-    if (inFence) return;
+    if (marker) return;
     const m = /^(#{1,6})\s+(.*?)\s*$/.exec(line);
     if (m) heads.push({ level: m[1].length, heading: m[2], startLine: i + 1 });
   });

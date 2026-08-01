@@ -69,6 +69,9 @@ const DESIGNATOR = /^\[(?:table|code) [0-9a-f]{8}\]$/;
 
 const PREAMBLE = '(before the first heading)';
 
+const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
+const INDENTED = /^(?: {4}|\t)/;
+
 function unitsIn(body, anchor) {
   const out = [];
   let para = [];
@@ -77,7 +80,7 @@ function unitsIn(body, anchor) {
   const push = (text, isBlock = false) => out.push({ text, anchor, block: isBlock });
   const closeBlock = () => {
     if (!block) return;
-    push(`[${block.kind} ${digest(block.lines.join('\n'))}]`, true);
+    push(`[${block.kind === 'indented' ? 'code' : block.kind} ${digest(block.lines.join('\n'))}]`, true);
     block = null;
   };
   const flush = () => {
@@ -86,11 +89,20 @@ function unitsIn(body, anchor) {
     item = null;
   };
   for (const line of body.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      if (block?.kind === 'code') { closeBlock(); continue; }
+    const fence = FENCE.exec(line);
+    // Close only on the SAME marker, at least as long. A four-backtick fence
+    // around a three-backtick example was closed by the example's own opening
+    // line, and the rest of the block was then read as prose.
+    if (block?.kind === 'code' && block.marker && fence
+      && fence[2][0] === block.marker[0] && fence[2].length >= block.marker.length
+      && !fence[3].trim()) {
+      closeBlock();
+      continue;
+    }
+    if (fence && block?.kind !== 'code') {
       flush();
       closeBlock();
-      block = { kind: 'code', lines: [] };
+      block = { kind: 'code', lines: [], marker: fence[2] };
       continue;
     }
     if (block?.kind === 'code') { block.lines.push(line); continue; }
@@ -99,9 +111,21 @@ function unitsIn(body, anchor) {
       block.lines.push(line.trim());
       continue;
     }
+    // An indented block is code too. Reading it as prose reported each line as
+    // an uncovered statement, which teaches a contributor to write a grounding
+    // row for an example.
+    if (block?.kind === 'indented') {
+      if (!line.trim() || INDENTED.test(line)) { block.lines.push(line); continue; }
+      closeBlock();
+    }
     if (block) closeBlock();
     if (!line.trim()) { flush(); continue; }
-    const m = /^\s*(?:[-*+]|\d+\.)\s+(.*\S)\s*$/.exec(line);
+    if (INDENTED.test(line) && !item && !para.length) {
+      block = { kind: 'code', lines: [line] };
+      block.kind = 'indented';
+      continue;
+    }
+    const m = /^\s*(?:[-*+]|\d+[.)])\s+(.*\S)\s*$/.exec(line);
     if (m) {
       flush();
       item = { text: m[1], anchor, block: false };

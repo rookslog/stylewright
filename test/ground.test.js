@@ -120,6 +120,30 @@ test('a designator names the block contents, not its position', () => {
   assert.equal(tail(both('a')), tail(both('b')));
 });
 
+test('an ordered list written with parentheses is still a list', () => {
+  // `1)` matched nothing, so two directives merged into one paragraph and one
+  // row citing one rule covered both.
+  const found = uncovered('1) First rule.\n2) Second rule.');
+  assert.match(found, /"First rule\."/);
+  assert.match(found, /"Second rule\."/);
+});
+
+test('an indented block is code, not prose', () => {
+  // Each line reached the paragraph path and was reported uncovered, which
+  // teaches a contributor to write a grounding row for an example.
+  const found = uncovered('## Later\n\n    const x = 1;\n    const y = 2;');
+  assert.match(found, /\[code [0-9a-f]{8}\]/);
+  assert.doesNotMatch(found, /const x/);
+});
+
+test('a fence closes only on its own marker', () => {
+  // A four-backtick block quoting a three-backtick one was closed by the
+  // example's opening line, and the rest was read as prose.
+  const found = uncovered('````markdown\n```js\nconst x = 1;\n```\nStill inside.\n````');
+  assert.doesNotMatch(found, /Still inside/);
+  assert.equal(found.match(/\[code [0-9a-f]{8}\]/g).length, 1);
+});
+
 test('prose cannot impersonate a block designator', () => {
   const found = checkSkill({ skillText: `${SKILL}\n[table 0123abcd]\n`, matrixText: MATRIX });
   assert.ok(found.some((f) => f.code === 'reserved-designator'));
