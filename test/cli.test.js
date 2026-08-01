@@ -602,6 +602,29 @@ test('uninstall --tier removes one tier and leaves the other', async () => {
     ['.stylewright-manifest.json', 'demo-standard']);
 });
 
+test('uninstall --tier removes a withdrawn skill the manifest still records', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  // Rename the installed craft skill to one this repository no longer ships,
+  // as a withdrawal would leave it.
+  const skills = at(home);
+  const mf = path.join(skills, '.stylewright-manifest.json');
+  const m = JSON.parse(await fs.readFile(mf, 'utf8'));
+  m.skills.gone = m.skills['demo-craft'];
+  delete m.skills['demo-craft'];
+  await fs.writeFile(mf, JSON.stringify(m, null, 2));
+  await fs.rename(path.join(skills, 'demo-craft'), path.join(skills, 'gone'));
+
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  assert.deepEqual((await fs.readdir(skills)).sort(),
+    ['.stylewright-manifest.json', 'demo-standard']);
+});
+
 test('a bare uninstall in a terminal never runs the install dialogue', async () => {
   const out = capture();
   const code = await run(['uninstall'], {

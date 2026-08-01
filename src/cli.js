@@ -359,6 +359,9 @@ export async function run(argv, ctx) {
       return 2;
     }
 
+    const targetDirs = flags.platform
+      .map((platform) => [platform, resolveTarget({ platform, scope, home, cwd })]);
+
     let names = flags.skill;
     if (!names.length) {
       // An omitted selection means "everything" for install, where the cost of
@@ -380,14 +383,25 @@ export async function run(argv, ctx) {
       }
       const tier = flags.tier ?? 'all';
       names = catalog.filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name);
+      // A skill this repository withdrew is still on disk, and the manifest
+      // records the tier it was installed under. Deriving the set from the
+      // catalogue alone left it behind while the help said the tier was gone.
+      if (command === 'uninstall') {
+        const seen = new Set(names);
+        for (const [, dir] of targetDirs) {
+          for (const [n, entry] of Object.entries((await readManifest(dir)).skills)) {
+            if (!seen.has(n) && (tier === 'all' || entry.tier === tier)) {
+              seen.add(n);
+              names.push(n);
+            }
+          }
+        }
+      }
     }
     if (!names.length) {
       say('No skills selected.');
       return 2;
     }
-
-    const targetDirs = flags.platform
-      .map((platform) => [platform, resolveTarget({ platform, scope, home, cwd })]);
 
     const known = new Set(catalog.map((s) => s.name));
     // A skill this repository withdrew is still installed on the user's
