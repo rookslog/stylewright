@@ -292,6 +292,12 @@ repository owner. Version 0.2.1 republishes the skill to every user who
 installs, so an unmade decision is a decision to publish again. The owner
 answers before 0.2.1 is tagged.
 
+**Decided 2026-08-04.** The owner ships the skill as it stands. The condition
+is the one this cluster already states. The skill must not reproduce the
+standard in full, and it reproduces no rule text today. The gate on 0.2.1 is
+open. The skill `SOURCE.md` records the same decision beside the license it
+qualifies.
+
 ## Releases
 
 The manifest defect is live. Version 0.2.0 is published, and a user who installs

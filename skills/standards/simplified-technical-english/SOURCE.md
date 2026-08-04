@@ -14,6 +14,10 @@
   approved and non-approved word pairs. This skill does not yet use either. See
   section 3.2 of the design document for the limit, which is substitution rather
   than quotation.
+- Publication decision: the repository owner read this record and approved
+  continued publication on 2026-08-04. The approval holds while the skill
+  reproduces no rule text and no substantial part of the standard. A change
+  that crosses either line reopens the decision.
 
 ## How to re-check this record
 
