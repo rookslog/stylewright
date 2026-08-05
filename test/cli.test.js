@@ -625,6 +625,38 @@ test('uninstall --tier removes a withdrawn skill the manifest still records', as
     ['.stylewright-manifest.json', 'demo-standard']);
 });
 
+test('a tier uninstall reads each target manifest, not one shared list', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude,codex', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  // Record the same withdrawn name under two tiers: craft under claude, and
+  // standards under codex. Only the claude copy is in the selected tier.
+  const withdraw = async (dir, from) => {
+    const mf = path.join(dir, '.stylewright-manifest.json');
+    const m = JSON.parse(await fs.readFile(mf, 'utf8'));
+    m.skills.gone = m.skills[from];
+    delete m.skills[from];
+    await fs.writeFile(mf, JSON.stringify(m, null, 2));
+    await fs.rename(path.join(dir, from), path.join(dir, 'gone'));
+  };
+  const claude = path.join(home, '.claude', 'skills');
+  const codex = path.join(home, '.codex', 'skills');
+  await withdraw(claude, 'demo-craft');
+  await withdraw(codex, 'demo-standard');
+
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--platform', 'claude,codex', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  assert.deepEqual((await fs.readdir(claude)).sort(),
+    ['.stylewright-manifest.json', 'demo-standard']);
+  // The codex manifest records `gone` as standards, so --tier craft removed the
+  // craft skill there and left it. One shared list took it from claude's tier.
+  assert.deepEqual((await fs.readdir(codex)).sort(),
+    ['.stylewright-manifest.json', 'gone']);
+});
+
 test('a bare uninstall in a terminal never runs the install dialogue', async () => {
   const out = capture();
   const code = await run(['uninstall'], {

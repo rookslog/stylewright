@@ -367,42 +367,58 @@ export async function run(argv, ctx) {
     const targetDirs = flags.platform
       .map((platform) => [platform, resolveTarget({ platform, scope, home, cwd })]);
 
-    let names = flags.skill;
-    if (!names.length) {
-      // An omitted selection means "everything" for install, where the cost of
-      // being wrong is a file you can delete. `uninstall` inherited that rule
-      // from sharing this block, so `--platform claude` with nothing else
-      // removed every installed skill and exited zero. Nothing in the command
-      // said so, and no dialogue ran, because a flag turns the dialogue off.
-      //
-      // Removing everything stays available. It has to be typed.
-      if (command === 'uninstall' && !flags.all && !flags.tier) {
-        say('uninstall needs to know what to remove.');
-        say('');
-        say('  --skill <name>            one skill, repeatable');
-        say('  --tier standards|craft    every skill in one tier');
-        say('  --all                     every skill this repository ships');
-        say('');
-        say('Run `stylewright doctor` to see what is installed.');
-        return 2;
+    // An omitted selection means "everything" for install, where the cost of
+    // being wrong is a file you can delete. `uninstall` inherited that rule
+    // from sharing this block, so `--platform claude` with nothing else
+    // removed every installed skill and exited zero. Nothing in the command
+    // said so, and no dialogue ran, because a flag turns the dialogue off.
+    //
+    // Removing everything stays available. It has to be typed.
+    if (!flags.skill.length && command === 'uninstall' && !flags.all && !flags.tier) {
+      say('uninstall needs to know what to remove.');
+      say('');
+      say('  --skill <name>            one skill, repeatable');
+      say('  --tier standards|craft    every skill in one tier');
+      say('  --all                     every skill this repository ships');
+      say('');
+      say('Run `stylewright doctor` to see what is installed.');
+      return 2;
+    }
+
+    const tier = flags.tier ?? 'all';
+    const fromCatalog = catalog
+      .filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name);
+    // A tier is resolved once per target, never once for all of them. Each
+    // manifest records the tier its own skills were installed under, and two
+    // targets can record one name under two tiers. Collecting into a single
+    // list let a craft entry found in the first manifest carry the name into
+    // the second target, where the same skill is a standards installation the
+    // selection never named.
+    const selections = [];
+    for (const [, dir] of targetDirs) {
+      if (flags.skill.length) {
+        selections.push([dir, flags.skill]);
+        continue;
       }
-      const tier = flags.tier ?? 'all';
-      names = catalog.filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name);
-      // A skill this repository withdrew is still on disk, and the manifest
-      // records the tier it was installed under. Deriving the set from the
-      // catalogue alone left it behind while the help said the tier was gone.
+      const names = [...fromCatalog];
+      // A skill this repository withdrew is still on disk, and this target's
+      // manifest records the tier it was installed under. Deriving the set from
+      // the catalogue alone left it behind while the help said the tier was
+      // gone.
       if (command === 'uninstall') {
         const seen = new Set(names);
-        for (const [, dir] of targetDirs) {
-          for (const [n, entry] of Object.entries((await readManifest(dir)).skills)) {
-            if (!seen.has(n) && (tier === 'all' || entry.tier === tier)) {
-              seen.add(n);
-              names.push(n);
-            }
+        for (const [n, entry] of Object.entries((await readManifest(dir)).skills)) {
+          if (!seen.has(n) && (tier === 'all' || entry.tier === tier)) {
+            seen.add(n);
+            names.push(n);
           }
         }
       }
+      selections.push([dir, names]);
     }
+    const names = flags.skill.length
+      ? flags.skill
+      : [...new Set([fromCatalog, ...selections.map(([, n]) => n)].flat())];
     if (!names.length) {
       say('No skills selected.');
       return 2;
@@ -432,10 +448,10 @@ export async function run(argv, ctx) {
     // that wrote them all.
     let changed = 0;
     let refused = 0;
-    for (const [, targetDir] of targetDirs) {
+    for (const [targetDir, selected] of selections) {
       if (command === 'install') {
         const res = await installSkills({
-          repoRoot, targetDir, names, now, force: Boolean(flags.force),
+          repoRoot, targetDir, names: selected, now, force: Boolean(flags.force),
         });
         for (const n of res.installed) say(`installed ${n} -> ${targetDir}`);
         for (const s of res.skipped) {
@@ -444,7 +460,9 @@ export async function run(argv, ctx) {
         changed += res.installed.length;
         refused += res.skipped.length;
       } else {
-        const res = await uninstallSkills({ targetDir, names, force: Boolean(flags.force) });
+        const res = await uninstallSkills({
+          targetDir, names: selected, force: Boolean(flags.force),
+        });
         for (const n of res.removed) say(`removed ${n} from ${targetDir}`);
         for (const n of res.missing) say(`not installed: ${n} in ${targetDir}`);
         for (const s of res.skipped) {
