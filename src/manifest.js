@@ -141,13 +141,29 @@ export async function readManifest(targetDir) {
   const abs = path.join(targetDir, MANIFEST_NAME);
   if (await regularOrAbsent(abs, targetDir) === 'absent') return emptyManifest();
   let raw;
+  let fh;
   try {
-    raw = await fs.readFile(abs, 'utf8');
+    fh = await fs.open(abs, 'r');
   } catch (err) {
     // The file was there a moment ago and is gone now. Treat it as absent
     // rather than as a crash, which is what a caller would see otherwise.
     if (err.code === 'ENOENT') return emptyManifest();
     throw err;
+  }
+  try {
+    // The classification and the read are two calls, and a link put here
+    // between them is followed by the read. Comparing what the HANDLE holds
+    // against what stands at the path settles it: they differ exactly when
+    // the path is no longer the file that was classified.
+    const byHandle = await fh.stat();
+    const byPath = await fs.lstat(abs).catch(() => null);
+    if (!byHandle.isFile() || byHandle.dev !== byPath?.dev || byHandle.ino !== byPath?.ino) {
+      throw new Error(
+        `Manifest in ${targetDir} changed while this command was reading it. Run again.`);
+    }
+    raw = await fh.readFile('utf8');
+  } finally {
+    await fh.close();
   }
   return checkContained(checkShape(JSON.parse(raw), targetDir), targetDir);
 }

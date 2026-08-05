@@ -212,9 +212,13 @@ export async function scaffoldSkill({
       // that inode and delete the replacement.
       const fh = await fs.open(abs, 'wx');
       try {
-        await fh.writeFile(body);
+        // Recorded BEFORE the body goes in. The open created the file, so a
+        // write that fails on a full disk leaves an empty file this call made,
+        // and rollback that learned of it only afterwards left it standing and
+        // refused every retry.
         const st = await fh.stat();
         written.push({ rel, dev: st.dev, ino: st.ino });
+        await fh.writeFile(body);
       } finally {
         await fh.close();
       }

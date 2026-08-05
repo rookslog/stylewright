@@ -201,6 +201,33 @@ test('a manifest of the wrong shape is refused where it is read', async () => {
   await assert.rejects(readManifest(dir), /"a" records no hash for "SKILL.md"/);
 });
 
+test('a manifest linked away after the check is not read through', async () => {
+  const dir = await tmp();
+  const abs = path.join(dir, MANIFEST_NAME);
+  await fs.writeFile(abs, '{"schema":1,"skills":{}}\n');
+  const outside = path.join(await tmp(), 'theirs.json');
+  await fs.writeFile(outside, '{"schema":1,"skills":{"theirs":{"files":{}}}}\n');
+
+  const original = fs.lstat;
+  let swapped = false;
+  fs.lstat = async (...args) => {
+    const st = await original.apply(fs, args);
+    // The classification passes, and the manifest becomes a link before the
+    // read. A read that follows it acts on somebody else's record.
+    if (!swapped && String(args[0]) === abs) {
+      swapped = true;
+      await fs.rm(abs);
+      await fs.symlink(outside, abs);
+    }
+    return st;
+  };
+  try {
+    await assert.rejects(readManifest(dir), /changed while this command was reading it/);
+  } finally {
+    fs.lstat = original;
+  }
+});
+
 test('a write leaves no temporary file behind, and replaces in one step', async () => {
   const dir = await tmp();
   await writeManifest(dir, emptyManifest());

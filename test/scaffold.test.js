@@ -262,6 +262,39 @@ test('an ancestor that appears between the check and the mkdir stops the call', 
   assert.deepEqual(openedIn.filter((dir) => !isBelow(root, dir)), []);
 });
 
+test('a write that fails part way takes its own empty file with it', async () => {
+  const repo = await tmp();
+  const first = path.join(repo, 'skills', 'craft', 'demo', 'SKILL.md');
+
+  const original = fs.open;
+  fs.open = async (...args) => {
+    const fh = await original.apply(fs, args);
+    if (String(args[0]) !== first) return fh;
+    // `open` with `wx` has already created the file. A body that never
+    // arrives, on a full disk, leaves an empty one this call made.
+    return {
+      stat: () => fh.stat(),
+      close: () => fh.close(),
+      writeFile: async () => {
+        const err = new Error('no space left on device');
+        err.code = 'ENOSPC';
+        throw err;
+      },
+    };
+  };
+  try {
+    await assert.rejects(
+      scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
+      /no space left on device/);
+  } finally {
+    fs.open = original;
+  }
+
+  // Rollback learned the file only after the write returned, so it left the
+  // empty one standing and the collision check refused every retry.
+  await assert.rejects(fs.access(path.join(repo, 'skills', 'craft', 'demo')));
+});
+
 test('a failed scaffold leaves no directory behind, so a retry works', async () => {
   const repo = await tmp();
   const last = path.join(repo, 'grounding', 'craft', 'demo.md');
