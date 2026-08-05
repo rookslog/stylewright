@@ -1,7 +1,5 @@
 # stylewright Engine Core Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Build the `stylewright` CLI engine and prove it end-to-end against one real skill. `npx stylewright install` must place skills on disk for Claude and Codex, at user or project scope. The engine must also supply drift-safe updates, an exact uninstall, an ASD-STE100 mechanical lint, and a checked grounding matrix.
 
 **Architecture:** Pure-function core modules under `src/`, each with one responsibility, wrapped by a thin CLI in `bin/stylewright.mjs` that owns all prompting and all process exit codes. Core modules never prompt and never call `process.exit`, so every behavior is testable without a TTY. Filesystem side effects funnel through `install.js`, `uninstall.js`, and `manifest.js`. Time is injected, never read from a global, so manifests compare byte-for-byte across pathways in the conformance suite.
