@@ -735,6 +735,42 @@ test('an install whose commit is refused leaves no unrecorded file', async () =>
   assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
 });
 
+test('a refused run does not take the winner\'s copy of the same skill', async () => {
+  // Two runs installing ONE skill. The loser's paths are the winner's paths, so
+  // an undo that removed what this process copied would delete a file the
+  // manifest now records — the install would end recorded and absent. The rule
+  // that decides is the same one recovery uses: a file the record reaches, and
+  // that still holds what the record says, is not ours to remove.
+  const target = await tmp();
+  const original = fs.copyFile;
+  let raced = false;
+  fs.copyFile = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced) {
+      raced = true;
+      await installSkills({
+        repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+      });
+    }
+    return result;
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }));
+  } finally {
+    fs.copyFile = original;
+  }
+
+  const mf = await readManifest(target);
+  assert.deepEqual(Object.keys(mf.skills), ['demo-craft']);
+  assert.equal(mf.pending, undefined);
+  for (const [rel, hash] of Object.entries(mf.skills['demo-craft'].files)) {
+    const abs = path.join(target, 'demo-craft', rel);
+    assert.ok(await exists(abs), `${rel} must survive the loser's undo`);
+    assert.equal(await hashFile(abs), hash);
+  }
+});
+
 test('a run whose files another run cleared still leaves nothing behind', async () => {
   // Two installs in one directory at one moment, at the worst interleaving: the
   // second reads the first's statement, cannot tell a dead run from a live one,
