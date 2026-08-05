@@ -30,5 +30,6 @@
     "check:docs": "node scripts/check-docs-meta.mjs",
     "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs"
   },
-  "dependencies": { "@inquirer/prompts": "^7.0.0" }
+  "dependencies": { "@inquirer/prompts": "^7.0.0" },
+  "devDependencies": { "acorn": "^8.18.0" }
 }
