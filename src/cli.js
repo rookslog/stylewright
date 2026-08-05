@@ -452,6 +452,20 @@ export async function run(argv, ctx) {
       return 2;
     }
 
+    // A name install cannot use is a typing mistake, and install reads its
+    // names from the catalogue, which no lock hides. Checked before the held
+    // directories are passed over, or a typo stayed hidden behind a lock the
+    // user had to clear first to be told about it.
+    if (command === 'install') {
+      const shipped = new Set(catalog.map((s) => s.name));
+      const wrong = [...new Set([...flags.skill, ...fromCatalog])].filter((n) => !shipped.has(n));
+      if (wrong.length) {
+        say(`Unknown skill: ${wrong.join(', ')}.`);
+        say(`Available: ${[...shipped].sort().join(', ')}.`);
+        return 2;
+      }
+    }
+
     // Install and uninstall answer two different questions, and one catalogue
     // lookup answered both. The catalogue says what this repository ships NOW
     // and which tier it ships it in. A removal asks what is installed HERE and

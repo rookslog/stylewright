@@ -917,6 +917,55 @@ test('a clean failure withdraws the statement it committed', async () => {
   assert.equal((await readManifest(target)).pending, undefined);
 });
 
+test('a failed update leaves a record that over-claims, and the next run repairs it', async () => {
+  // What a run that fails part way through an update leaves, stated so that a
+  // change to it is a change to a test. The files it had already replaced are
+  // removed — they are provably this run's bytes, and leaving them would read
+  // as an edit the user made — so the record names files that are absent. That
+  // is the direction this engine repairs rather than the one it cannot: install
+  // restores an absent recorded file, and uninstall tolerates one. Issue #55
+  // holds what it would take to leave the old bytes in place instead.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  // A release that ships different bytes for LICENSE, and a source that changes
+  // under the run when it reaches SKILL.md.
+  const source = path.join(repo, 'skills', 'craft', 'demo-craft');
+  await fs.writeFile(path.join(source, 'LICENSE'), 'a later licence\n');
+  const original = fs.copyFile;
+  let swapped = false;
+  fs.copyFile = async (...args) => {
+    if (!swapped && String(args[0]).endsWith('SKILL.md')) {
+      swapped = true;
+      await fs.writeFile(path.join(source, 'SKILL.md'), '---\nname: demo-craft\n---\n\nLater.\n');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed in .* while this command was running/);
+  } finally {
+    fs.copyFile = original;
+  }
+
+  const after = await readManifest(target);
+  const licence = path.join(target, 'demo-craft', 'LICENSE');
+  assert.ok(!(await exists(licence)), 'the bytes this run wrote are gone');
+  assert.ok(after.skills['demo-craft'].files.LICENSE, 'and the record still names the path');
+  assert.equal(after.pending, undefined);
+
+  const again = await installSkills({
+    repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(again.installed, ['demo-craft'], JSON.stringify(again.skipped));
+  assert.equal(
+    await hashFile(licence),
+    (await readManifest(target)).skills['demo-craft'].files.LICENSE);
+});
+
 // --- Two runs in one directory -------------------------------------------
 
 test('a second run in the same directory is refused, and changes nothing', async () => {

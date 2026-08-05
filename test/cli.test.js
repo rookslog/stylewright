@@ -479,6 +479,22 @@ test('a command that reads manifests to plan its work refuses a held directory',
   assert.match(removed.text(), /held: .*skills\./);
 });
 
+test('install names a typo even when every target is held', async () => {
+  // Install reads its names from the catalogue, which no lock hides. Reporting
+  // only the held directory kept the typo hidden until the user had cleared the
+  // lock and run the same wrong command again.
+  const home = await tmp();
+  const claude = path.join(home, '.claude', 'skills');
+  await fs.mkdir(claude, { recursive: true });
+  await fs.writeFile(path.join(claude, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'nonesuch', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /Unknown skill: nonesuch/);
+});
+
 test('uninstall does not call a name unknown while a selected target is held', async () => {
   // The one manifest that could carry a withdrawn name is the one this command
   // refused to read. `install` reads its names from the catalog, which no lock
