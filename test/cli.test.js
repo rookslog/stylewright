@@ -454,6 +454,31 @@ test('install says what it cleared from an interrupted run', async () => {
   assert.match(out.text(), /removed demo-standard\/SKILL\.md/);
 });
 
+test('a command that reads manifests to plan its work refuses a held directory', async () => {
+  // `installSkills` and `uninstallSkills` take the lock themselves, but the
+  // discovery and selection above them parse manifests first — and a held
+  // directory is one whose manifest may be changing under that read, or one a
+  // killed run left mid-write. Both reached the user as a JSON parse error.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+  await fs.writeFile(path.join(target, '.stylewright-manifest.json'), '');
+
+  const updated = capture();
+  assert.equal(
+    await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: updated, now: NOW }), 1);
+  assert.match(updated.text(), /held: .*skills\./);
+  assert.match(updated.text(), /Remove .*\.stylewright-lock/);
+
+  const removed = capture();
+  assert.equal(
+    await run(['uninstall', '--all', '--platform', 'claude'],
+      { home, cwd: '/c', repoRoot: REPO, stdout: removed, now: NOW }), 1);
+  assert.match(removed.text(), /held: .*skills\./);
+});
+
 test('an unknown skill is still rejected on install', async () => {
   const out = capture();
   const code = await run(['install', '--skill', 'nonesuch', '--platform', 'claude'],

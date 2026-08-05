@@ -1,5 +1,6 @@
 import { PLATFORMS, SCOPES, resolveTarget } from './targets.js';
 import { readManifest } from './manifest.js';
+import { isLocked } from './lock.js';
 import { installSkills } from './install.js';
 import { loadCatalog } from './catalog.js';
 
@@ -26,6 +27,7 @@ export async function findInstalls({ home, cwd, platforms, scopes }) {
   if (scopes) validateNames(scopes, SCOPES, 'scope');
 
   const found = [];
+  const locked = [];
   const seen = new Set();
   for (const platform of platforms ?? PLATFORMS) {
     for (const scope of scopes ?? SCOPES) {
@@ -42,6 +44,16 @@ export async function findInstalls({ home, cwd, platforms, scopes }) {
         continue;
       }
       if (seen.has(targetDir)) continue;
+      // Asked before the manifest is parsed. A directory a run holds is one
+      // whose manifest may be changing under this read, and one a killed run
+      // held may hold a manifest from an older release that never finished
+      // being written. Neither is this command's to interpret, and a directory
+      // it was not going to touch must not stop the ones it was.
+      if (await isLocked(targetDir)) {
+        seen.add(targetDir);
+        locked.push(targetDir);
+        continue;
+      }
       const manifest = await readManifest(targetDir);
       const names = Object.keys(manifest.skills);
       // A directory holding only the statement of an install that did not come
@@ -56,14 +68,14 @@ export async function findInstalls({ home, cwd, platforms, scopes }) {
       found.push({ platform, scope, targetDir, names, pending });
     }
   }
-  return found;
+  return { found, locked };
 }
 
 export async function updateSkills({
   repoRoot, home, cwd, platforms, scopes, names, now, force = false,
 }) {
   const known = new Set((await loadCatalog(repoRoot)).map((s) => s.name));
-  const installs = await findInstalls({ home, cwd, platforms, scopes });
+  const { found: installs, locked } = await findInstalls({ home, cwd, platforms, scopes });
 
   // --skill is the third consumer of the same rule as --platform and --scope,
   // and it was missed the first time. A misspelling filtered every install to
@@ -111,5 +123,5 @@ export async function updateSkills({
 
     results.push({ ...install, ...res, orphaned });
   }
-  return { results, unmatched };
+  return { results, unmatched, locked };
 }

@@ -10,6 +10,7 @@ import { readManifest } from './manifest.js';
 import { lintText } from './lint.js';
 import { checkAll } from './ground.js';
 import { scaffoldSkill } from './scaffold.js';
+import { isLocked } from './lock.js';
 import { VERSION } from './version.js';
 
 const USAGE = `stylewright ${VERSION}
@@ -127,6 +128,11 @@ export async function run(argv, ctx) {
   // run stated it would write and never recorded, and clearing them without a
   // word is how a tool loses the right to be trusted with a delete. Said once
   // here, because install, update and uninstall all clear them.
+  // A directory a run holds is not this command's to read. The message names
+  // the file, because removing it is the one judgement only a person can make.
+  const sayLocked = (dir) => say(
+    `held: ${dir}. A stylewright command is working there, or one was killed. `
+    + `Remove ${path.join(dir, '.stylewright-lock')} if no other run is active.`);
   const sayCleared = ({ recovered, cleared }, dir) => {
     for (const name of cleared ?? []) {
       say(`cleared the unfinished install of ${name} in ${dir}`);
@@ -279,7 +285,8 @@ export async function run(argv, ctx) {
       say(err.message);
       return 2;
     }
-    if (!update.results.length && !update.unmatched.length) {
+    for (const dir of update.locked ?? []) sayLocked(dir);
+    if (!update.results.length && !update.unmatched.length && !update.locked?.length) {
       say('Nothing to update. No installed skills were found.');
       say('Run `stylewright install` first, or pass --platform to look elsewhere.');
       return 0;
@@ -312,6 +319,7 @@ export async function run(argv, ctx) {
     // skills written told a script that a cleanup which deleted files had
     // failed.
     if (!update.results.some((r) => r.installed.length || r.cleared?.length)) {
+      if (update.locked?.length) return 1;
       say('Nothing was updated.');
       return 1;
     }
@@ -452,6 +460,19 @@ export async function run(argv, ctx) {
     // it missed a withdrawn skill the manifest still placed in the tier, and it
     // removed a skill from a target whose manifest placed it outside the tier,
     // because a skill that moved tiers is one name under two answers.
+    // Before any manifest is read. `installSkills` and `uninstallSkills` take
+    // the lock themselves, but the SELECTION above them parses manifests to
+    // work out what to remove, and a held directory is one whose manifest may
+    // be changing under that read.
+    const held = [];
+    for (const [, dir] of targetDirs) {
+      if (await isLocked(dir)) held.push(dir);
+    }
+    if (held.length) {
+      for (const dir of held) sayLocked(dir);
+      return 1;
+    }
+
     const selections = [];
     for (const [, dir] of targetDirs) {
       if (flags.skill.length) {

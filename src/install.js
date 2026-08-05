@@ -3,6 +3,7 @@ import path from 'node:path';
 import { loadCatalog } from './catalog.js';
 import {
   hashFile, readManifestWithIdentity, writeManifest, recordSkill, clearStaleWrite,
+  removeManifest,
 } from './manifest.js';
 import {
   hasPending, addPending, clearPending, recoverPending, discardStated, stagingPath,
@@ -113,7 +114,7 @@ function retiredFiles(recorded, sourceRels) {
  * It reads the manifest fresh, because the run that overtook us wrote it, and
  * its record is what decides which of these paths are now somebody's.
  */
-async function undo(targetDir, name, stated, retired) {
+async function undo(targetDir, name, stated, written, retired) {
   const { manifest, identity } = await readManifestWithIdentity(targetDir);
   await discardStated(targetDir, name, stated, manifest);
 
@@ -154,7 +155,13 @@ export async function installSkills(options) {
   // Held for the whole command. Everything below reads the tree and then acts
   // on what it read, and another run inside the same directory invalidates the
   // reading between the two.
-  return withTargetLock(options.targetDir, () => installUnderLock(byName, options));
+  const { emptied, ...result } = await withTargetLock(
+    options.targetDir, () => installUnderLock(byName, options));
+  // After the lock is released, because the lock file lives in this directory.
+  // `rmdir` refuses a directory that is not empty, which is the whole of the
+  // check: anything else there keeps it alive.
+  if (emptied) await fs.rmdir(options.targetDir).catch(() => {});
+  return result;
 }
 
 async function installUnderLock(byName, {
@@ -354,14 +361,26 @@ async function installUnderLock(byName, {
       // undo leaves the pending statement on disk, which is exactly the state
       // the next command recovers from, so it is not worth reporting over the
       // error that caused it.
-      await undo(targetDir, name, { ...stated, ...files }, retiredHere).catch(() => {});
+      await undo(targetDir, name, stated, files, retiredHere).catch(() => {});
       throw err;
     }
   }
 
   // A run that committed each skill has already written this manifest. A run
-  // that installed nothing has not, and the empty manifest it leaves behind is
-  // what earlier releases wrote too.
-  if (!installed.length) await writeManifest(targetDir, manifest, identity);
-  return { installed, skipped, recovered, cleared };
+  // that installed nothing has not.
+  let emptied = false;
+  if (!installed.length) {
+    // And a manifest recording nothing is a file this engine wrote and nothing
+    // needs, so a run whose only work was clearing up after an interrupted one
+    // leaves the directory as it found it. Writing the empty record back kept
+    // the interrupted run's last trace, and every later scan read the directory
+    // as one this tool owns.
+    if (!Object.keys(manifest.skills).length && !hasPending(manifest) && identity !== null) {
+      await removeManifest(targetDir, identity);
+      emptied = true;
+    } else {
+      await writeManifest(targetDir, manifest, identity);
+    }
+  }
+  return { installed, skipped, recovered, cleared, emptied };
 }

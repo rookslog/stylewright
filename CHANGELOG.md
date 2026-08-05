@@ -36,7 +36,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   offers. A command killed mid-run leaves the directory held, and every later
   command refuses and names the file to remove. Whether a run is still alive is
   the one judgement this tool will not make for you, because making it wrongly
-  deletes files a live run is still writing. `doctor` reports a held directory.
+  deletes files a live run is still writing. `doctor` reports a held directory,
+  and so does any command that finds one while working out what to do.
 - **A manifest write answers to the read that preceded it.** `writeManifest`
   chose between creating and replacing by classifying the path afresh, which is
   a different question from whether the file is still the one the command read.

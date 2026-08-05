@@ -27,6 +27,18 @@ export const LOCK_NAME = '.stylewright-lock';
  * names the file, and removing it is the one thing only a person can be sure
  * about.
  */
+/**
+ * Is a run holding this directory?
+ *
+ * Every command that READS a manifest asks this first. A held directory is one
+ * a run may be changing, so its manifest is a picture in motion — and a killed
+ * run could have left it mid-write, which used to reach the user as a JSON
+ * parse error rather than the name of the file to remove.
+ */
+export async function isLocked(targetDir) {
+  return fs.stat(path.join(targetDir, LOCK_NAME)).then(() => true, () => false);
+}
+
 export async function withTargetLock(targetDir, run, { create = true } = {}) {
   const abs = path.join(targetDir, LOCK_NAME);
   // `stat`, which follows a link, and not `lstat`. A target directory that is a

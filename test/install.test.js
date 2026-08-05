@@ -834,6 +834,58 @@ test('a retired file a refused run deleted is unrecorded, not left claimed', asy
     'and no record claims it');
 });
 
+test('a run whose only work was the cleanup leaves the directory as it found it', async () => {
+  // The manifest recording nothing is a file this engine wrote and nothing
+  // needs. Writing the empty record back kept the interrupted run's last trace,
+  // and every later scan read the directory as one this tool owns.
+  const parent = await tmp();
+  const target = path.join(parent, 'skills');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(target, {
+    ...(await readManifestWithIdentity(target)).manifest,
+    pending: { 'demo-craft': { 'SKILL.md': await hashFile(orphan) } },
+  }, null);
+
+  const res = await installSkills({ repoRoot: REPO, targetDir: target, names: [], now: NOW });
+
+  assert.deepEqual(res.recovered, ['demo-craft/SKILL.md']);
+  assert.deepEqual(res.cleared, ['demo-craft']);
+  assert.ok(!(await exists(target)), 'nothing of this tool is left');
+});
+
+test('a clean failure withdraws the statement it committed', async () => {
+  // The undo compares the statement before withdrawing it, and it was given the
+  // statement merged with what the run had actually written. Those differ when
+  // the source changes under the run, so the comparison failed against this
+  // run's own statement and left it standing — and the next command then read a
+  // clean failure as an interrupted install.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const source = path.join(repo, 'skills', 'craft', 'demo-craft', 'SKILL.md');
+  const target = await tmp();
+
+  const original = fs.copyFile;
+  let swapped = false;
+  fs.copyFile = async (...args) => {
+    if (!swapped && String(args[0]) === source) {
+      swapped = true;
+      await fs.writeFile(source, '---\nname: demo-craft\n---\n\nA later edit.\n');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed in .* while this command was running/);
+  } finally {
+    fs.copyFile = original;
+  }
+
+  assert.equal((await readManifest(target)).pending, undefined);
+});
+
 // --- Two runs in one directory -------------------------------------------
 
 test('a second run in the same directory is refused, and changes nothing', async () => {

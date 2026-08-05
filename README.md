@@ -193,7 +193,9 @@ active.
 ```
 
 Remove that file when you are sure no other run is going, and the next command
-clears up after the killed one. Whether a run is still alive is the one thing
+clears up after the killed one. A command that finds a held directory while it
+works out what to do names it and moves on, rather than reading a record that
+another run may be changing. Whether a run is still alive is the one thing
 this tool cannot check for you, and guessing it wrong deletes files that a live
 run is still writing. `doctor` reports a held directory, so you can find one
 without hunting.
