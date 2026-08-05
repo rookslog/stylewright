@@ -13,6 +13,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   memory. No measurement stands behind it. Its `SOURCE.md` says so, and names
   the scenario a study would need.
 
+### Changed
+
+- The purity test parses each module in `src/` and inspects the syntax tree. It
+  matched text before, so `const bye = process.exit`, a `new Date` that spreads
+  an empty list, and a direct read of standard input all passed it. A reference
+  to `process`, `Date`, `performance` or the global object now counts wherever
+  it appears, and the test says in one place which constructs it rejects.
+  The test also reads what a module pulls in, so `node:perf_hooks` cannot
+  rename the clock and the `createRequire` in `node:module` cannot hide a
+  module list. `Intl.DateTimeFormat` reads the clock without naming `Date`, so
+  it counts too. Descriptor 0 counts through a reader the module aliased first,
+  and as an `fd` option that no argument position names.
+
 ### Fixed
 
 - **A skill name is unique across both tiers, and a collision is now an error
