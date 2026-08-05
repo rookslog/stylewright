@@ -22,7 +22,7 @@
   "bugs": { "url": "https://github.com/rookslog/stylewright/issues" },
   "bin": { "stylewright": "./bin/stylewright.mjs" },
   "engines": { "node": ">=20.11.0" },
-  "files": ["bin", "src", "skills", "README.md", "LICENSE"],
+  "files": ["bin", "src", "skills", "grounding", "README.md", "LICENSE"],
   "scripts": {
     "test": "node --test",
     "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md docs/ skills/",
