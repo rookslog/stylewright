@@ -23,9 +23,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paths it will write, commits that statement to the manifest, and copies after.
   The next `install`, `update`, or `uninstall` clears what an interrupted run
   left, and says which files it cleared. `doctor` reports the directory until
-  one of them runs. The cleanup takes only a path that no manifest records,
-  because a recorded path may hold your edit and no tool can tell that from half
-  of a copy.
+  one of them runs. The statement records what the run was going to write at
+  each path, and the cleanup removes a file only when it holds exactly that, so
+  a file you wrote at one of those paths stays. Each copy lands whole or not at
+  all, through a staging name and a rename.
 - **A manifest write answers to the read that preceded it.** `writeManifest`
   chose between creating and replacing by classifying the path afresh, which is
   a different question from whether the file is still the one the command read.

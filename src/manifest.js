@@ -107,10 +107,12 @@ function checkShape(manifest, targetDir) {
   // the same shape rule rather than trusted for being ours.
   if (manifest.pending !== undefined) {
     if (!isObject(manifest.pending)) refuse('"pending" is not an object');
-    for (const [name, rels] of Object.entries(manifest.pending)) {
-      if (!Array.isArray(rels)) refuse(`"pending" lists no paths for "${name}"`);
-      for (const rel of rels) {
-        if (typeof rel !== 'string') refuse(`"pending" lists a path that is not a string for "${name}"`);
+    for (const [name, stated] of Object.entries(manifest.pending)) {
+      if (!isObject(stated)) refuse(`"pending" lists no paths for "${name}"`);
+      for (const [rel, hash] of Object.entries(stated)) {
+        // The hash is what proves a file at that path is ours to delete, so a
+        // statement without one is a statement recovery cannot act on.
+        if (typeof hash !== 'string') refuse(`"pending" states no hash for "${name}/${rel}"`);
       }
     }
   }
@@ -147,12 +149,12 @@ function checkContained(manifest, targetDir) {
       }
     }
   }
-  for (const [name, rels] of Object.entries(manifest.pending ?? {})) {
+  for (const [name, stated] of Object.entries(manifest.pending ?? {})) {
     if (!nameContained(name)) {
       throw new Error(
         `Manifest in ${targetDir} awaits a skill name that is not a directory name: "${name}".`);
     }
-    for (const rel of rels) {
+    for (const rel of Object.keys(stated)) {
       if (!contained(rel)) {
         throw new Error(
           `Manifest in ${targetDir} awaits a path outside "${name}": "${rel}".`);
@@ -204,7 +206,7 @@ export async function readManifestWithIdentity(targetDir) {
         `Manifest in ${targetDir} changed while this command was reading it. Run again.`);
     }
     raw = await fh.readFile('utf8');
-    identity = { dev: byHandle.dev, ino: byHandle.ino };
+    identity = identityOf(byHandle);
   } finally {
     await fh.close();
   }
@@ -255,13 +257,17 @@ function tmpPath(abs) {
   return `${abs}.tmp`;
 }
 
+function identityOf(st) {
+  return { dev: st.dev, ino: st.ino };
+}
+
 async function identityAt(abs, targetDir) {
   if (await regularOrAbsent(abs, targetDir) === 'absent') return null;
   const st = await fs.lstat(abs).catch((err) => {
     if (err.code === 'ENOENT') return null;
     throw err;
   });
-  return st?.isFile() ? { dev: st.dev, ino: st.ino } : null;
+  return st?.isFile() ? identityOf(st) : null;
 }
 
 /**
@@ -319,12 +325,25 @@ export async function writeManifest(targetDir, manifest, expected) {
   // WHICH operation this is comes from `expected`, not from the path. A read
   // that found nothing creates, and it creates whatever appeared since.
   if (expected === null) {
-    await fs.writeFile(abs, body, { flag: 'wx' }).catch((err) => {
+    let fh;
+    try {
+      fh = await fs.open(abs, 'wx');
+    } catch (err) {
       if (err.code !== 'EEXIST') throw err;
       throw stale(
         `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
-    });
-    return identityAt(abs, targetDir);
+    }
+    try {
+      await fh.writeFile(body);
+      // The identity comes from the HANDLE, which names the file this call
+      // created. Reading the path again after the write returns whatever stands
+      // there by then, and a reviewer reproduced the consequence: the caller
+      // carried another run's identity, its next write passed the comparison,
+      // and it overwrote that run's record.
+      return identityOf(await fh.stat());
+    } finally {
+      await fh.close();
+    }
   }
 
   // Replacing. Write beside it and rename over it, so no reader sees half a
@@ -338,13 +357,25 @@ export async function writeManifest(targetDir, manifest, expected) {
   // the file it replaces. Creating first and narrowing afterwards left that
   // window open, and a crash inside it left the widened file behind.
   const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
+  let fh;
   try {
-    await fs.writeFile(tmp, body, mode === null ? { flag: 'wx' } : { flag: 'wx', mode });
+    fh = await fs.open(tmp, 'wx', mode ?? undefined);
   } catch (err) {
     if (err.code !== 'EEXIST') throw err;
     throw stale(
       `Another run is writing the manifest in ${targetDir}. Run again, `
       + `or remove ${tmp} if no other run is active.`);
+  }
+  let identity;
+  try {
+    await fh.writeFile(body);
+    // Taken from the handle before the rename, and a rename carries the file
+    // rather than copying it, so this is the identity of the manifest this call
+    // commits. Reading the path afterwards would return whatever another run
+    // put there in the meantime.
+    identity = identityOf(await fh.stat());
+  } finally {
+    await fh.close();
   }
   try {
     // Compared while the exclusion is held, and released by the rename that
@@ -364,7 +395,7 @@ export async function writeManifest(targetDir, manifest, expected) {
     await fs.rm(tmp, { force: true });
     throw err;
   }
-  return identityAt(abs, targetDir);
+  return identity;
 }
 
 /**

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { hashFile } from './manifest.js';
 import { destinationState, removeAt, pruneEmpty, reachability } from './tree.js';
 
 /**
@@ -9,11 +10,11 @@ import { destinationState, removeAt, pruneEmpty, reachability } from './tree.js'
  * record at the end, so a run that died after the copies left files on disk
  * that nothing named, and `uninstall` removes only what the manifest records.
  *
- * The order is the fix. A run states which paths it is about to write, commits
- * that statement to the manifest, and only then copies. Every file it can
- * create is therefore named by a record that was on disk before the file was,
- * whatever kills the run and however far it got. The next command deletes what
- * the interrupted one left.
+ * The order is the fix. A run states which paths it is about to write AND what
+ * it is about to write there, commits that statement, and only then copies.
+ * Every file it can create is therefore named by a record that was on disk
+ * before the file was, whatever kills the run and however far it got. The next
+ * command deletes what the interrupted one left.
  *
  * This is not a rollback. A rollback runs inside the process that failed, and
  * the failure that matters here — the process being killed — is the one that
@@ -24,15 +25,37 @@ import { destinationState, removeAt, pruneEmpty, reachability } from './tree.js'
  * files cannot be written in one step, and whichever order they were written in
  * would leave a window: a statement withdrawn first orphans the files it named,
  * and a record written first is a record of an install that may still fail.
+ *
+ * **The statement carries a hash per path, and that hash is what proves the
+ * file is ours to delete.** Two review rounds went into the ownership question
+ * and each answer was a guess: "every pending path is mine" deletes a file the
+ * user created at one of those paths after the interrupted run, and "no
+ * recorded path is mine" leaves a file this engine wrote at a path some other
+ * run had recorded. A content match is not a guess. The engine copies a file
+ * whole, through a staging name and a rename, so a path either holds the bytes
+ * the run intended or holds something the run did not put there.
  */
+
+/**
+ * Where a copy lands before it is renamed into place.
+ *
+ * `copyFile` writes into the destination and can be interrupted half way, which
+ * leaves a fragment that nothing can identify. Staging and renaming means the
+ * destination only ever holds a whole file, and the staging path is derived
+ * from the destination rather than recorded, so recovery can find it from the
+ * statement alone.
+ */
+export function stagingPath(abs) {
+  return `${abs}.stylewright-part`;
+}
 
 export function hasPending(manifest) {
   return Object.keys(manifest.pending ?? {}).length > 0;
 }
 
-/** The manifest, plus the statement that `name` is about to receive `rels`. */
-export function addPending(manifest, name, rels) {
-  return { ...manifest, pending: { ...manifest.pending, [name]: [...rels] } };
+/** The manifest, plus the statement that `name` is about to receive `files`. */
+export function addPending(manifest, name, files) {
+  return { ...manifest, pending: { ...manifest.pending, [name]: { ...files } } };
 }
 
 /** The manifest, with the statement about `name` withdrawn. */
@@ -45,43 +68,48 @@ export function clearPending(manifest, name) {
 }
 
 /**
- * Delete each of `rels` under `<targetDir>/<name>` that no record names, and
- * report what went.
+ * Delete what an interrupted run left under `<targetDir>/<name>`, and report
+ * what went.
  *
- * One rule decides every case: **a path the manifest records is never touched
- * here.** The defect being closed is a file that no record names, so a recorded
- * path is not an instance of it — `uninstall` reaches it, `install` compares it
- * against its hash, and both already know what to do with whatever it holds.
+ * One rule decides every case: **a file goes when it holds exactly what the
+ * statement said would be written there, and the manifest does not record that
+ * same content.** Both halves carry weight.
  *
- * An earlier draft of this went further and removed a recorded path whose
- * content no longer matched its hash, on the reasoning that a killed `copyFile`
- * leaves a fragment. Nothing on disk distinguishes that fragment from an edit
- * the user made after the interrupted run, so the rule deleted the user's work
- * without `--force` — the one thing this tool promises never to do. The cost of
- * the narrower rule is that an interrupted update can leave a fragment at a
- * recorded path, which install then refuses as locally modified and `--force`
- * overwrites. A refusal the user can act on beats a deletion they cannot undo.
+ * - The content match is the proof of ownership. A file the user wrote at a
+ *   pending path does not match, so it stays and the ordinary collision check
+ *   reports it. A file this engine wrote matches, whoever recorded the path.
+ * - The record check keeps a file another run committed. When two runs install
+ *   the same version, the winner's file is byte for byte what the loser meant
+ *   to write, and deleting it would leave the winner's record naming nothing.
  *
- * What is NOT a file is left alone as well: this engine writes files, so a
- * directory or a link at a pending path is something it did not put there. The
- * paths are walked through `reachability` for the same reason every other
- * consumer is — a deletion must not travel through a symbolic link that
- * appeared in the middle of a recorded path.
+ * Anything else is left where it is: a fragment cannot exist at a destination,
+ * because a copy is staged and renamed, and a directory or a link at a pending
+ * path is something this engine did not put there. The staging path itself is
+ * removed whatever it holds — its name belongs to this tool.
+ *
+ * The paths are walked through `reachability` for the same reason every other
+ * consumer is: a deletion must not travel through a symbolic link that appeared
+ * in the middle of a recorded path.
  */
-export async function discardUnrecorded(targetDir, name, rels, manifest) {
+export async function discardStated(targetDir, name, stated, manifest) {
   const destDir = path.join(targetDir, name);
   const recorded = manifest.skills?.[name]?.files ?? {};
+  const rels = Object.keys(stated ?? {});
   const { baseBlocked, reachable } = await reachability(destDir, rels);
   if (baseBlocked) return []; // The skill directory is not ours. Nothing under it is either.
 
   const removed = [];
   for (const rel of reachable) {
-    if (Object.hasOwn(recorded, rel)) continue;
     const abs = path.join(destDir, rel);
-    if (await destinationState(abs) !== 'file') continue;
-    await removeAt(abs);
+    const staged = stagingPath(abs);
+    if (await destinationState(staged) === 'file') await removeAt(staged);
+    if (await destinationState(abs) === 'file'
+      && await hashFile(abs) === stated[rel]
+      && recorded[rel] !== stated[rel]) {
+      await removeAt(abs);
+      removed.push(`${name}/${rel}`);
+    }
     await pruneEmpty(path.dirname(abs), destDir);
-    removed.push(`${name}/${rel}`);
   }
   // Only when no record keeps the directory alive. A skill the manifest still
   // holds keeps its directory even when every file under it went, because the
@@ -91,7 +119,7 @@ export async function discardUnrecorded(targetDir, name, rels, manifest) {
 }
 
 /**
- * Clear every pending statement in `manifest`, and report what was deleted.
+ * Clear every statement in `manifest`, and report what was deleted.
  *
  * It deletes first and returns the cleared manifest for the caller to write,
  * rather than writing first and deleting after. A run interrupted here has to
@@ -101,8 +129,8 @@ export async function discardUnrecorded(targetDir, name, rels, manifest) {
 export async function recoverPending(targetDir, manifest) {
   const removed = [];
   let out = manifest;
-  for (const [name, rels] of Object.entries(manifest.pending ?? {})) {
-    removed.push(...await discardUnrecorded(targetDir, name, rels, manifest));
+  for (const [name, stated] of Object.entries(manifest.pending ?? {})) {
+    removed.push(...await discardStated(targetDir, name, stated, manifest));
     out = clearPending(out, name);
   }
   return { manifest: out, removed: removed.sort() };

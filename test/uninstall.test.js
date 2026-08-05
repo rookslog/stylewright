@@ -9,9 +9,11 @@ import {
   readManifest, readManifestWithIdentity, writeManifest, hashFile, MANIFEST_NAME,
 } from '../src/manifest.js';
 import { VERSION } from '../src/version.js';
+import crypto from 'node:crypto';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
+const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-uninst-'));
 const exists = (p) => fs.access(p).then(() => true, () => false);
 
@@ -295,6 +297,42 @@ test('an uninstall that has already deleted records the deletion', async () => {
   assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
 });
 
+test('a skill another run reinstalled keeps its record', async () => {
+  // The deletion happened, and then another run put the skill back. Taking the
+  // entry out by name would leave its files on disk with nothing naming them —
+  // the same defect this change closes, arriving from the other direction. What
+  // decides is the tree: a record whose files are there is not this command's
+  // to withdraw.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const original = fs.rm;
+  let raced = false;
+  fs.rm = async (...args) => {
+    const result = await original.apply(fs, args);
+    // The reinstall lands after this command has deleted the last file.
+    if (!raced && String(args[0]).endsWith('guide.md')) {
+      raced = true;
+      await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+    }
+    return result;
+  };
+  try {
+    await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  } finally {
+    fs.rm = original;
+  }
+
+  assert.ok(raced, 'the race must have been injected');
+  const mf = await readManifest(target);
+  assert.deepEqual(Object.keys(mf.skills), ['demo-craft'], 'the reinstall keeps its record');
+  for (const [rel, hash] of Object.entries(mf.skills['demo-craft'].files)) {
+    const abs = path.join(target, 'demo-craft', rel);
+    assert.ok(await exists(abs), `${rel} is on disk and recorded`);
+    assert.equal(await hashFile(abs), hash);
+  }
+});
+
 test('the last uninstall keeps a manifest that now holds another run\'s statement', async () => {
   // The manifest goes when the last skill goes. A statement another run wrote
   // meanwhile names files it is about to create, so the file that would reach
@@ -310,7 +348,9 @@ test('the last uninstall keeps a manifest that now holds another run\'s statemen
       raced = true;
       const { manifest, identity } = await readManifestWithIdentity(target);
       await writeManifest(
-        target, { ...manifest, pending: { 'demo-standard': ['SKILL.md'] } }, identity);
+        target,
+        { ...manifest, pending: { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } } },
+        identity);
     }
     return result;
   };
@@ -322,7 +362,7 @@ test('the last uninstall keeps a manifest that now holds another run\'s statemen
 
   const mf = await readManifest(target);
   assert.deepEqual(mf.skills, {});
-  assert.deepEqual(mf.pending, { 'demo-standard': ['SKILL.md'] });
+  assert.deepEqual(mf.pending, { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } });
 });
 
 test('the record catches up even when the manifest changes twice', async () => {
@@ -404,7 +444,10 @@ test('an uninstall clears what an interrupted install left', async () => {
   await fs.writeFile(orphan, 'half a copy\n');
   const { manifest, identity } = await readManifestWithIdentity(target);
   await writeManifest(target, {
-    ...manifest, pending: { 'demo-standard': ['LICENSE', 'SKILL.md'] },
+    ...manifest,
+    pending: {
+      'demo-standard': { LICENSE: sha256('a licence\n'), 'SKILL.md': sha256('half a copy\n') },
+    },
   }, identity);
 
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });

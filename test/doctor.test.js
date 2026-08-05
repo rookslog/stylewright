@@ -92,7 +92,7 @@ test('reports an install that did not finish, once per directory', async () => {
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
   const { manifest, identity } = await readManifestWithIdentity(target);
   await writeManifest(target, {
-    ...manifest, pending: { 'demo-craft': ['SKILL.md'] },
+    ...manifest, pending: { 'demo-craft': { 'SKILL.md': 'a'.repeat(64) } },
   }, identity);
 
   const findings = await doctor({ repoRoot: REPO, home, cwd: await tmp() });

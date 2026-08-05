@@ -368,9 +368,9 @@ that record in the same write that records the files. **Added 2026-08-05 (issue
 record from disagreeing with the tree, because the copies happened before it.
 A run states its paths first, so every file it can create is named by a record
 that reached disk before the file did, and the next command clears what an
-interrupted run left. What the cleanup takes is a path no record names, and
-never a recorded one, because a recorded path may hold an edit the user made
-after the interruption. The write that commits the record refuses a manifest
+interrupted run left. The statement records the content as well as the path, and
+the cleanup removes a file only when it holds exactly what the interrupted run
+was going to write there, so a file the user wrote at one of those paths stays. The write that commits the record refuses a manifest
 that appeared or changed since the read, and it compares while a temporary file
 with a fixed name holds off every other writer. That is what stops two runs in
 one directory from each recording half the tree.

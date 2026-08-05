@@ -3,18 +3,22 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { installSkills } from '../src/install.js';
 import { readManifestWithIdentity, emptyManifest, writeManifest } from '../src/manifest.js';
-import { recoverPending, addPending, clearPending, hasPending } from '../src/journal.js';
+import {
+  recoverPending, addPending, clearPending, hasPending, stagingPath,
+} from '../src/journal.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-jrnl-'));
 const exists = (p) => fs.access(p).then(() => true, () => false);
+const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
 
 /**
- * The state an interrupted run leaves: a manifest that states what it was about
- * to write, and whatever of it reached the disk.
+ * The state an interrupted run leaves: a manifest stating what it was about to
+ * write and what it was about to write there, and whatever reached the disk.
  */
 async function interrupted(target, { pending, manifest = emptyManifest() }) {
   const { identity } = await readManifestWithIdentity(target);
@@ -25,6 +29,7 @@ async function interrupted(target, { pending, manifest = emptyManifest() }) {
 async function put(abs, body) {
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, body);
+  return sha(body);
 }
 
 test('a file an interrupted run copied and never recorded goes', async () => {
@@ -32,10 +37,14 @@ test('a file an interrupted run copied and never recorded goes', async () => {
   // at the end, so a run that died in between left files that nothing named.
   // `uninstall` removes what the manifest records, so nothing could reach them.
   const target = await tmp();
-  await put(path.join(target, 'demo-craft', 'SKILL.md'), 'half a copy\n');
-  await put(path.join(target, 'demo-craft', 'references', 'guide.md'), 'half a copy\n');
+  const skill = await put(path.join(target, 'demo-craft', 'SKILL.md'), 'the skill\n');
+  const guide = await put(path.join(target, 'demo-craft', 'references', 'guide.md'), 'a guide\n');
   const manifest = await interrupted(target, {
-    pending: { 'demo-craft': ['LICENSE', 'SKILL.md', 'references/guide.md'] },
+    pending: {
+      'demo-craft': {
+        LICENSE: sha('a licence\n'), 'SKILL.md': skill, 'references/guide.md': guide,
+      },
+    },
   });
 
   const done = await recoverPending(target, manifest);
@@ -45,74 +54,86 @@ test('a file an interrupted run copied and never recorded goes', async () => {
   assert.equal(hasPending(done.manifest), false);
 });
 
-test('a recorded file the run had not reached stays', async () => {
-  // The other half of the same rule. An update states every path it will write,
-  // and a run that died before it touched one must not take the installed copy
-  // with it.
+test('a file the user wrote at a stated path stays', async () => {
+  // The statement is committed BEFORE the bytes, so a path it names may never
+  // have been written at all. Treating every stated path as this engine's
+  // deleted whatever the user put there in the meantime. The content is the
+  // proof of ownership, and theirs does not match.
+  const target = await tmp();
+  const mine = path.join(target, 'demo-craft', 'SKILL.md');
+  await put(mine, 'my own work\n');
+  const manifest = await interrupted(target, {
+    pending: { 'demo-craft': { 'SKILL.md': sha('what the release ships\n') } },
+  });
+
+  const done = await recoverPending(target, manifest);
+
+  assert.deepEqual(done.removed, []);
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own work\n');
+});
+
+test('a file another run committed at a stated path stays', async () => {
+  // Two runs installing one version state the same bytes, so the winner's file
+  // is byte for byte what the loser meant to write. Deleting it would leave the
+  // winner's record naming nothing, which is the defect arriving from the other
+  // side.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
   const { manifest } = await readManifestWithIdentity(target);
-  const recorded = Object.keys(manifest.skills['demo-craft'].files);
+  const recorded = manifest.skills['demo-craft'].files;
 
-  const done = await recoverPending(
-    target, { ...manifest, pending: { 'demo-craft': recorded } });
+  const done = await recoverPending(target, { ...manifest, pending: { 'demo-craft': recorded } });
 
   assert.deepEqual(done.removed, []);
-  for (const rel of recorded) {
+  for (const rel of Object.keys(recorded)) {
     assert.ok(await exists(path.join(target, 'demo-craft', rel)), `${rel} survives`);
   }
 });
 
-test('a recorded path is left alone, whatever it now holds', async () => {
-  // A killed `copyFile` leaves a fragment, and nothing on disk tells a fragment
-  // apart from an edit the user made after the interrupted run. Both are at a
-  // path the manifest records, so both are reachable and neither is this
-  // function's to delete. An earlier version compared the hash and deleted the
-  // mismatch, which deleted the user's work without `--force`.
+test('a file this engine wrote goes even where another run recorded the path', async () => {
+  // Two runs from different releases. The loser's bytes sit at a path the
+  // winner recorded with a different hash, so the record and the file disagree
+  // and every later command reads the file as one the user edited. The loser's
+  // bytes are provably the loser's, and removing them leaves a record the next
+  // install restores from.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
   const { manifest } = await readManifestWithIdentity(target);
-  const edited = path.join(target, 'demo-craft', 'SKILL.md');
-  await fs.writeFile(edited, 'my own words\n');
+  const abs = path.join(target, 'demo-craft', 'SKILL.md');
+  const theirs = await put(abs, 'the other release\n');
 
   const done = await recoverPending(target, {
-    ...manifest,
-    pending: { 'demo-craft': Object.keys(manifest.skills['demo-craft'].files) },
+    ...manifest, pending: { 'demo-craft': { 'SKILL.md': theirs } },
   });
 
-  assert.deepEqual(done.removed, []);
-  assert.equal(await fs.readFile(edited, 'utf8'), 'my own words\n');
-  assert.deepEqual(
-    Object.keys(done.manifest.skills['demo-craft'].files).sort(),
-    ['LICENSE', 'SKILL.md', 'references/guide.md']);
+  assert.deepEqual(done.removed, ['demo-craft/SKILL.md']);
+  assert.ok(!(await exists(abs)));
+  assert.ok(
+    Object.hasOwn(done.manifest.skills['demo-craft'].files, 'SKILL.md'),
+    'and the record that restores it stays');
 });
 
-test('a path the same statement names but no record does go', async () => {
-  // The two halves of one statement. A skill being updated states every path it
-  // will write, and a path the previous version never shipped is a path only
-  // this interrupted run could have created.
+test('a staging file goes, whatever it holds', async () => {
+  // A copy that stopped part way left it, and its name belongs to this tool.
+  // Nothing else can be at that path by accident, and a fragment is exactly
+  // what cannot be identified by content.
   const target = await tmp();
-  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
-  const { manifest } = await readManifestWithIdentity(target);
-  const fresh = path.join(target, 'demo-craft', 'references', 'added.md');
-  await fs.writeFile(fresh, 'from the release that did not finish\n');
-
-  const done = await recoverPending(target, {
-    ...manifest,
-    pending: {
-      'demo-craft': [...Object.keys(manifest.skills['demo-craft'].files), 'references/added.md'],
-    },
+  const abs = path.join(target, 'demo-craft', 'SKILL.md');
+  await put(stagingPath(abs), 'half of a co');
+  const manifest = await interrupted(target, {
+    pending: { 'demo-craft': { 'SKILL.md': sha('the whole thing\n') } },
   });
 
-  assert.deepEqual(done.removed, ['demo-craft/references/added.md']);
-  assert.ok(!(await exists(fresh)));
-  assert.ok(await exists(path.join(target, 'demo-craft', 'references', 'guide.md')));
+  await recoverPending(target, manifest);
+
+  assert.ok(!(await exists(stagingPath(abs))));
+  assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'and the emptied tree is pruned');
 });
 
 test('what the engine could not have written is left alone', async () => {
-  // This engine copies files. A directory or a link at a pending path is
-  // something else's, and a recovery that removed it would be destroying work
-  // on the strength of a record that never named it.
+  // This engine copies files. A directory or a link at a stated path is
+  // something else's, and a recovery that removed it would be destroying work on
+  // the strength of a statement that never named it.
   const target = await tmp();
   const outside = path.join(await tmp(), 'theirs.md');
   await fs.writeFile(outside, 'mine\n');
@@ -120,18 +141,19 @@ test('what the engine could not have written is left alone', async () => {
   await fs.writeFile(path.join(target, 'demo-craft', 'LICENSE', 'note.md'), 'mine\n');
   await fs.symlink(outside, path.join(target, 'demo-craft', 'SKILL.md'));
   const manifest = await interrupted(target, {
-    pending: { 'demo-craft': ['LICENSE', 'SKILL.md'] },
+    pending: { 'demo-craft': { LICENSE: sha('a licence\n'), 'SKILL.md': sha('mine\n') } },
   });
 
   const done = await recoverPending(target, manifest);
 
   assert.deepEqual(done.removed, []);
-  assert.equal(await fs.readFile(path.join(target, 'demo-craft', 'LICENSE', 'note.md'), 'utf8'), 'mine\n');
+  assert.equal(
+    await fs.readFile(path.join(target, 'demo-craft', 'LICENSE', 'note.md'), 'utf8'), 'mine\n');
   assert.equal(await fs.readFile(outside, 'utf8'), 'mine\n');
   assert.ok((await fs.lstat(path.join(target, 'demo-craft', 'SKILL.md'))).isSymbolicLink());
 });
 
-test('a pending path is not deleted through a symbolic link', async () => {
+test('a stated path is not deleted through a symbolic link', async () => {
   // Recovery is a delete instruction read from a file anyone can edit, so it
   // inherits the rule every other consumer of a recorded path follows: a
   // directory component that is a link is refused, not walked.
@@ -142,7 +164,7 @@ test('a pending path is not deleted through a symbolic link', async () => {
   await fs.mkdir(path.join(target, 'demo-craft'), { recursive: true });
   await fs.symlink(outsideDir, path.join(target, 'demo-craft', 'extra'));
   const manifest = await interrupted(target, {
-    pending: { 'demo-craft': ['extra/gone.md'] },
+    pending: { 'demo-craft': { 'extra/gone.md': sha('not ours\n') } },
   });
 
   const done = await recoverPending(target, manifest);
@@ -158,10 +180,11 @@ test('a skill directory replaced by a link to another install is refused', async
   const target = await tmp();
   const other = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: other, names: ['demo-craft'], now: NOW });
+  const { manifest: theirs } = await readManifestWithIdentity(other);
   await fs.mkdir(target, { recursive: true });
   await fs.symlink(path.join(other, 'demo-craft'), path.join(target, 'demo-craft'));
   const manifest = await interrupted(target, {
-    pending: { 'demo-craft': ['SKILL.md'] },
+    pending: { 'demo-craft': { 'SKILL.md': theirs.skills['demo-craft'].files['SKILL.md'] } },
   });
 
   const done = await recoverPending(target, manifest);
@@ -172,14 +195,14 @@ test('a skill directory replaced by a link to another install is refused', async
 
 test('a statement is added and withdrawn without mutating the manifest', async () => {
   const before = emptyManifest();
-  const pended = addPending(before, 'demo', ['SKILL.md']);
+  const stated = addPending(before, 'demo', { 'SKILL.md': sha('x') });
   assert.equal(before.pending, undefined);
-  assert.deepEqual(pended.pending, { demo: ['SKILL.md'] });
+  assert.deepEqual(stated.pending, { demo: { 'SKILL.md': sha('x') } });
 
-  const cleared = clearPending(pended, 'demo');
+  const cleared = clearPending(stated, 'demo');
   assert.equal(cleared.pending, undefined, 'an empty statement leaves no key behind');
-  assert.deepEqual(pended.pending, { demo: ['SKILL.md'] });
+  assert.deepEqual(stated.pending, { demo: { 'SKILL.md': sha('x') } });
 
-  const two = addPending(addPending(before, 'a', ['x']), 'b', ['y']);
-  assert.deepEqual(clearPending(two, 'a').pending, { b: ['y'] });
+  const two = addPending(addPending(before, 'a', { x: '1' }), 'b', { y: '2' });
+  assert.deepEqual(clearPending(two, 'a').pending, { b: { y: '2' } });
 });

@@ -194,13 +194,20 @@ Two consequences for a change you propose here:
   Every file the engine can create is therefore named by a record that reached
   disk first, whatever kills the run, and the next command clears what an
   interrupted one left. A change that moves a write ahead of its record reopens
-  issue #49: an orphan no command can reach. `pending` is read as a list of
-  files to delete, so it is validated exactly as the `skills` map is.
-- **The cleanup removes only a path no record names.** A recorded path is not an
-  orphan, and what sits at one after an interrupted run is either a fragment of
-  a copy or the user's own edit. Nothing on disk tells those apart, so comparing
-  the hash and deleting the mismatch deleted the user's work without `--force`.
-  A refusal the user can act on beats a deletion they cannot undo.
+  issue #49: an orphan no command can reach. `pending` is read as an instruction
+  to delete, so it is validated exactly as the `skills` map is.
+- **The statement carries the content, and the content is what proves the file
+  is ours to delete.** Two review rounds went into the ownership question and
+  each weaker answer was a guess: "every stated path is mine" deletes a file the
+  user created at one of those paths after the interrupted run, and "no recorded
+  path is mine" abandons a file this engine wrote at a path another run had
+  recorded. A file goes when it holds exactly what the statement said would be
+  written there AND the manifest does not record that same content — the second
+  half is what keeps a file another run committed.
+- **A copy is staged and renamed, never written into place.** `copyFile` can
+  stop half way, and a fragment at a destination is a file nothing can identify
+  afterwards. The staging name is derived from the destination, so recovery
+  finds it from the statement alone and removes it whatever it holds.
 - **A write to the manifest answers to the read that preceded it.**
   `writeManifest` takes the identity that `readManifestWithIdentity` returned,
   and there is no default for it. Classifying the path afresh is a different
@@ -217,6 +224,13 @@ Two consequences for a change you propose here:
   `uninstall` removes files and then takes its entries out of a fresh read, and
   retries on a stale one. Refusing there would leave the manifest claiming files
   that are gone. Install refuses instead, because it refuses before it copies.
+  The reconcile withdraws an entry only where the tree agrees it is gone: a
+  skill another run reinstalled meanwhile keeps its record, or its files would
+  be the next orphan.
+- **An identity comes from the handle that wrote the file, never from a second
+  look at the path.** Reading the path again after a write returns whatever
+  stands there by then, and a caller carrying another run's identity overwrites
+  that run's record on its next write.
 - A check and the call it guards are two steps, so the file is identified by the
   open handle and not by the path. The scaffold records what it created from the
   handle, and the manifest read compares the handle against the path before it

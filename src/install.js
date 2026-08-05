@@ -5,7 +5,7 @@ import {
   hashFile, readManifestWithIdentity, writeManifest, recordSkill,
 } from './manifest.js';
 import {
-  hasPending, addPending, clearPending, recoverPending, discardUnrecorded,
+  hasPending, addPending, clearPending, recoverPending, discardStated, stagingPath,
 } from './journal.js';
 import {
   walk, pruneEmpty, destinationState, removeAt, ensureDir, reachability,
@@ -103,9 +103,9 @@ function retiredFiles(recorded, sourceRels) {
  * It reads the manifest fresh, because the run that overtook us wrote it, and
  * its record is what decides which of these paths are now somebody's.
  */
-async function undo(targetDir, name, rels) {
+async function undo(targetDir, name, stated) {
   const { manifest, identity } = await readManifestWithIdentity(targetDir);
-  await discardUnrecorded(targetDir, name, rels, manifest);
+  await discardStated(targetDir, name, stated, manifest);
   // Ours to withdraw only while it is still ours. A run that overtook us
   // cleared it already, and clearing it twice would write over that run's
   // record on a stale reading.
@@ -205,9 +205,19 @@ export async function installSkills({
     // in which files exist that no record names, and `uninstall` removes only
     // what the manifest records — so a run interrupted inside that window left
     // files nothing could reach. The window is now empty of writes.
-    manifest = addPending(manifest, name, rels);
+    //
+    // The statement carries the content, not just the path. What proves a file
+    // at one of these paths belongs to this run is that it holds these bytes,
+    // and nothing weaker survived review: the path alone claims a file the user
+    // wrote there afterwards, and "no recorded path is mine" abandons a file
+    // this run wrote at a path another run had recorded.
+    const stated = {};
+    for (const rel of rels) stated[rel] = await hashFile(path.join(skill.dir, rel));
+    manifest = addPending(manifest, name, stated);
     identity = await writeManifest(targetDir, manifest, identity);
 
+    // Named out here so the undo below knows what this run actually wrote.
+    const files = {};
     try {
       // Retire BEFORE copying, not after. A release can replace a directory of
       // files with a single file of the same name, and `copyFile` cannot write
@@ -248,20 +258,28 @@ export async function installSkills({
         await pruneEmpty(path.dirname(abs), destDir);
       }
 
-      const files = {};
       for (const rel of rels) {
         const from = path.join(skill.dir, rel);
         const to = path.join(destDir, rel);
-        // Clear anything `copyFile` cannot write over or would write THROUGH. A
-        // plain file it overwrites in place; a link it follows, out of the tree.
+        // Clear anything the write cannot replace or would write THROUGH. A
+        // plain file the rename below replaces; a link it also replaces, rather
+        // than following it out of the tree, and a directory it cannot touch.
         // Without --force the checks above refused every one of these, so only
         // the emptied leftovers of retirement reach here. With --force the user
         // asked to overwrite whatever sits in the way.
         const state = await destinationState(to);
         if (state !== 'absent' && state !== 'file') await removeAt(to);
         await ensureDir(path.dirname(to), destDir);
-        await fs.copyFile(from, to);
-        files[rel] = await hashFile(to);
+        // Staged and renamed, never copied into place. `copyFile` writes into
+        // the destination and can stop half way, and a fragment at a
+        // destination is a file nothing can identify afterwards — not the
+        // user's, not this run's, and not safe to delete on either reading. A
+        // rename means the destination holds a whole file or none.
+        const staged = stagingPath(to);
+        await removeAt(staged);
+        await fs.copyFile(from, staged, fs.constants.COPYFILE_EXCL);
+        files[rel] = await hashFile(staged);
+        await fs.rename(staged, to);
       }
 
       // The commit. It records the files and withdraws the statement about them
@@ -276,7 +294,7 @@ export async function installSkills({
       // undo leaves the pending statement on disk, which is exactly the state
       // the next command recovers from, so it is not worth reporting over the
       // error that caused it.
-      await undo(targetDir, name, rels).catch(() => {});
+      await undo(targetDir, name, { ...stated, ...files }).catch(() => {});
       throw err;
     }
   }

@@ -359,6 +359,90 @@ test('a manifest that arrives between the comparison and the rename is not overw
   assert.deepEqual(await fs.readdir(dir), [MANIFEST_NAME], 'and it leaves no temporary file');
 });
 
+test('the identity a write returns names the file that write created', async () => {
+  // Reading the path again after the write returns whatever stands there by
+  // then. A reviewer reproduced the consequence: another run committed in that
+  // gap, this caller carried away ITS identity, and the next write therefore
+  // passed the comparison and overwrote that run's record.
+  const dir = await tmp();
+  const theirs = recordSkill(emptyManifest(), {
+    name: 'theirs', tier: 'craft', pathway: 'engine', files: {}, now: '2026-01-01T00:00:00.000Z',
+  });
+  const abs = path.join(dir, MANIFEST_NAME);
+
+  const original = fs.open;
+  let raced = false;
+  fs.open = async (...args) => {
+    const fh = await original.apply(fs, args);
+    const write = fh.writeFile.bind(fh);
+    fh.writeFile = async (...body) => {
+      const result = await write(...body);
+      // Another run replaces the manifest the moment this one has written it,
+      // and before it looks at the path again.
+      if (!raced && String(args[0]) === abs) {
+        raced = true;
+        const { identity: theirIdentity } = await readManifestWithIdentity(dir);
+        await writeManifest(dir, theirs, theirIdentity);
+      }
+      return result;
+    };
+    return fh;
+  };
+  let mine;
+  try {
+    mine = await writeManifest(dir, emptyManifest(), null);
+  } finally {
+    fs.open = original;
+  }
+
+  assert.ok(raced, 'the race must have been injected');
+  const now = await readManifestWithIdentity(dir);
+  assert.deepEqual(Object.keys(now.manifest.skills), ['theirs']);
+  assert.notDeepEqual(mine, now.identity, 'the write must not report their file as its own');
+  await assert.rejects(
+    writeManifest(dir, emptyManifest(), mine), /changed while this command was running/);
+  assert.deepEqual(Object.keys((await readManifest(dir)).skills), ['theirs']);
+});
+
+test('the identity a replacement returns names the file it renamed into place', async () => {
+  // The same defect on the other branch. The rename releases the exclusion, so
+  // another run can commit before this one looks at the path again — and it
+  // would then carry away that run's identity and overwrite its record on the
+  // next write. The identity comes from the handle instead, taken before the
+  // rename that carries the file into place.
+  const dir = await tmp();
+  const first = await writeManifest(dir, emptyManifest(), null);
+  const theirs = recordSkill(emptyManifest(), {
+    name: 'theirs', tier: 'craft', pathway: 'engine', files: {}, now: '2026-01-01T00:00:00.000Z',
+  });
+
+  const original = fs.rename;
+  let raced = false;
+  fs.rename = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced) {
+      raced = true;
+      const { identity: theirIdentity } = await readManifestWithIdentity(dir);
+      await writeManifest(dir, theirs, theirIdentity);
+    }
+    return result;
+  };
+  let mine;
+  try {
+    mine = await writeManifest(dir, emptyManifest(), first);
+  } finally {
+    fs.rename = original;
+  }
+
+  assert.ok(raced, 'the race must have been injected');
+  const now = await readManifestWithIdentity(dir);
+  assert.deepEqual(Object.keys(now.manifest.skills), ['theirs']);
+  assert.notDeepEqual(mine, now.identity, 'the write must not report their file as its own');
+  await assert.rejects(
+    writeManifest(dir, emptyManifest(), mine), /changed while this command was running/);
+  assert.deepEqual(Object.keys((await readManifest(dir)).skills), ['theirs']);
+});
+
 test('a second writer is refused while the first holds the temporary file', async () => {
   const dir = await tmp();
   const identity = await writeManifest(dir, emptyManifest(), null);
@@ -410,16 +494,18 @@ test('a pending statement is held to the shape and the containment rules', async
   await write('{"schema":1,"skills":{},"pending":[]}\n');
   await assert.rejects(readManifest(dir), /"pending" is not an object/);
 
-  await write('{"schema":1,"skills":{},"pending":{"a":"SKILL.md"}}\n');
+  await write('{"schema":1,"skills":{},"pending":{"a":["SKILL.md"]}}\n');
   await assert.rejects(readManifest(dir), /"pending" lists no paths for "a"/);
 
-  await write('{"schema":1,"skills":{},"pending":{"a":[7]}}\n');
-  await assert.rejects(readManifest(dir), /not a string/);
+  // The hash is what proves a file at that path belongs to the interrupted run,
+  // so a statement without one is a statement recovery cannot act on.
+  await write('{"schema":1,"skills":{},"pending":{"a":{"SKILL.md":null}}}\n');
+  await assert.rejects(readManifest(dir), /"pending" states no hash for "a\/SKILL.md"/);
 
-  await write('{"schema":1,"skills":{},"pending":{"a":["../../victim"]}}\n');
+  await write('{"schema":1,"skills":{},"pending":{"a":{"../../victim":"ab"}}}\n');
   await assert.rejects(readManifest(dir), /awaits a path outside "a"/);
 
-  await write('{"schema":1,"skills":{},"pending":{"..":["SKILL.md"]}}\n');
+  await write('{"schema":1,"skills":{},"pending":{"..":{"SKILL.md":"ab"}}}\n');
   await assert.rejects(readManifest(dir), /awaits a skill name that is not a directory name/);
 });
 

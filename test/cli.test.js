@@ -4,9 +4,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { run } from '../src/cli.js';
+import crypto from 'node:crypto';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
+const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-cli-'));
 
 function capture() {
@@ -221,7 +223,9 @@ test('update clears what an interrupted first install left, and says it changed'
   await fs.mkdir(path.dirname(orphan), { recursive: true });
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
-    target, { ...emptyManifest(), pending: { 'demo-craft': ['SKILL.md'] } }, null);
+    target,
+    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
 
   const out = capture();
   const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
@@ -247,7 +251,9 @@ test('install reports a cleanup that wrote no skill as a change', async () => {
   await fs.mkdir(path.dirname(orphan), { recursive: true });
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
-    target, { ...emptyManifest(), pending: { 'demo-standard': ['SKILL.md'] } }, null);
+    target,
+    { ...emptyManifest(), pending: { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
 
   const out = capture();
   const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
@@ -266,7 +272,9 @@ test('uninstall reports a cleanup that removed no skill as a change', async () =
   await fs.mkdir(path.dirname(orphan), { recursive: true });
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
-    target, { ...emptyManifest(), pending: { 'demo-craft': ['SKILL.md'] } }, null);
+    target,
+    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
 
   const out = capture();
   const code = await run(['uninstall', '--all', '--platform', 'claude'],
@@ -413,7 +421,7 @@ test('install says what it cleared from an interrupted run', async () => {
   await fs.writeFile(orphan, 'half a copy\n');
   const { manifest, identity } = await readManifestWithIdentity(target);
   await writeManifest(target, {
-    ...manifest, pending: { 'demo-standard': ['SKILL.md'] },
+    ...manifest, pending: { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } },
   }, identity);
 
   const out = capture();

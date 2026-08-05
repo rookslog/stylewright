@@ -157,6 +157,18 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
   return { removed, missing, skipped, recovered };
 }
 
+/** Does any file this entry records still stand where it says? */
+async function anyFilePresent(targetDir, name, entry) {
+  const destDir = path.join(targetDir, name);
+  const rels = Object.keys(entry?.files ?? {});
+  const { baseBlocked, reachable } = await reachability(destDir, rels);
+  if (baseBlocked) return true; // Not ours to judge, so not ours to unrecord.
+  for (const rel of reachable) {
+    if (await destinationState(path.join(destDir, rel)) !== 'absent') return true;
+  }
+  return false;
+}
+
 /**
  * Take `names` out of the manifest, reading it again for each attempt.
  *
@@ -169,7 +181,15 @@ async function reapply(targetDir, names, attempts = 3) {
   for (let attempt = 1; ; attempt++) {
     const { manifest, identity } = await readManifestWithIdentity(targetDir);
     const skills = { ...manifest.skills };
-    for (const name of names) delete skills[name];
+    for (const name of names) {
+      // Only where the record still names nothing. Another run can reinstall a
+      // skill between the deletion above and this write, and its files are on
+      // disk under its record — so taking the entry out would strand every one
+      // of them, which is the defect this whole change exists to close,
+      // arriving from the other direction. The tree decides, not the name.
+      if (await anyFilePresent(targetDir, name, skills[name])) continue;
+      delete skills[name];
+    }
     try {
       // The manifest is a file the installer wrote, so a full uninstall must
       // take it too. Leaving it behind with an empty skills map contradicts the
