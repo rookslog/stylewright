@@ -305,6 +305,10 @@ today can lose a file outside the install root. That governs the order below.
 
 ### 0.2.1, a correctness release
 
+**Shipped 2026-08-04.** The tag is `v0.2.1`, the chore commit is `3846929`, and
+the registry holds the version with a provenance attestation. Issue 45 records
+the checklist that got it there.
+
 Contains cluster 1, cluster 3, and cluster 5 in full. These reach a user's disk.
 
 It also contains the parts of two other clusters that state something false in
