@@ -97,7 +97,10 @@ A matrix is an audit record for a person. It is not context for an agent. Four
 of the six install pathways copy skill directories whole, so **location** is the
 only thing keeping a matrix out of an installed tree.
 
-A matrix inside `skills/` is a defect, even when every row is correct.
+A matrix inside `skills/` is a defect, even when every row is correct. The
+matrices do ship at the root of the npm package, where the published `ground`
+command reads them. That is deliberate, and `test/package.test.js` asserts the
+line that matters: no matrix reaches an installed tree.
 
 ### Impurity in `src/`
 
