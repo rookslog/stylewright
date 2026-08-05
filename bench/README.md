@@ -82,7 +82,7 @@ warning on stderr is lost the moment anyone redirects or pastes the output.
 26-word CLI warning landed inside the word counts of two arms and no others. It
 reversed the direction of the comparison those arms existed to make. The runner
 now takes `--output-format json` and lifts the answer out of the `result` field,
-so no harness line can reach a sample; stderr goes to a sibling `.err`. It also
+so no harness line can reach a sample. Stderr goes to a sibling `.err`. It also
 refuses to keep a sample from a run that reported `is_error`, because a failed
 invocation leaves a short file, and short is the direction every treatment here
 is meant to move.
@@ -184,6 +184,13 @@ It is still the symptom rather than the defect, which is why the reading rule
 above is not optional. The numbers tell you which sample to open. The reason a
 reply is bad is always in the text.
 
+Read every figure in this file as unaudited. The full arms behind them were
+not kept, because `.gitignore` excludes the whole of `bench/out/`. A partial
+subset survived on one machine, and a later pass over it put the control
+median at 171, without provenance sidecars. That pass is not the same
+measurement as the 173 above, so neither number corrects the other. Name a
+retained sample store before the next figure is published.
+
 ### `echo` runs backwards, and here is the measurement
 
 It was built to catch a reply that hands the request back before answering it.
@@ -206,3 +213,8 @@ a style metric starts rewarding empty writing. Anthropic has published one
 episode in which brevity instructions reduced coding quality, recorded as `A6`
 in the source file beside `compressed-deliberation`. Score `words` alongside a
 correctness judgment, never instead of one.
+
+The bench also delivers a treatment by appending it to the system prompt, while
+the product installs a directory that a harness must choose to load. These
+figures therefore measure injection, and never installation. Issue #43 carries
+the installed-activation scenario.
