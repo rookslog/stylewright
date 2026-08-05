@@ -464,6 +464,26 @@ test('a manifest write a killed run left half done does not stop a removal', asy
   assert.ok(!(await exists(target)), 'the record kept up with the deletion');
 });
 
+test('an uninstall whose only work was the cleanup leaves nothing behind', async () => {
+  // The record of nothing is the interrupted run's last trace, and this command
+  // returned before it could go.
+  const parent = await tmp();
+  const target = path.join(parent, 'skills');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(target, {
+    schema: 1, skills: {}, pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } },
+  }, null);
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+
+  assert.deepEqual(res.removed, []);
+  assert.deepEqual(res.cleared, ['demo-craft']);
+  assert.deepEqual(res.recovered, ['demo-craft/SKILL.md']);
+  assert.ok(!(await exists(target)), 'nothing of this tool is left');
+});
+
 test('an uninstall clears what an interrupted install left', async () => {
   // This command's promise is that it removes what the installer wrote. The
   // leavings of an install that did not come back belong to no skill entry, so

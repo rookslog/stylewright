@@ -479,6 +479,89 @@ test('a command that reads manifests to plan its work refuses a held directory',
   assert.match(removed.text(), /held: .*skills\./);
 });
 
+test('a held directory is not reported as a skill that is not installed', async () => {
+  // This command refused to read that manifest, so it cannot say the skill is
+  // missing there — and a withdrawn skill installed only in the held directory
+  // was reported as unknown.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['update', '--platform', 'claude', '--scope', 'user', '--skill', 'demo-craft'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 1, out.text());
+  assert.match(out.text(), /held: /);
+  assert.doesNotMatch(out.text(), /Not installed anywhere/);
+  assert.doesNotMatch(out.text(), /Unknown skill/);
+});
+
+test('a name only a statement carries is not unknown', async () => {
+  // The catalog does not ship it and no record holds it, so the name is known
+  // only from the statement an interrupted run left. Refusing it as unknown
+  // made the cleanup impossible to ask for.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'withdrawn', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { withdrawn: { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'withdrawn'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.doesNotMatch(out.text(), /Unknown skill/);
+  assert.match(out.text(), /cleared the unfinished install of withdrawn/);
+});
+
+test('a name this command would not look for is not unknown either', async () => {
+  // The one directory that could hold it is held, and this command refused to
+  // read that manifest. Calling the name unknown asserts something it did not
+  // check.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'withdrawn'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 1, out.text());
+  assert.doesNotMatch(out.text(), /Unknown skill/);
+  assert.match(out.text(), /held: /);
+});
+
+test('a targeted update clears a skill that exists only as a statement', async () => {
+  // `--skill X` where X is what an interrupted run left. The name is carried by
+  // a statement rather than a record, and reporting it as installed nowhere
+  // told the user their cleanup had matched nothing.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'demo-craft'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of demo-craft/);
+  await assert.rejects(fs.access(target), 'and nothing of this tool is left');
+});
+
 test('an unknown skill is still rejected on install', async () => {
   const out = capture();
   const code = await run(['install', '--skill', 'nonesuch', '--platform', 'claude'],

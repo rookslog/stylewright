@@ -62,8 +62,8 @@ export async function findInstalls({ home, cwd, platforms, scopes }) {
       // nothing was installed and leave the files that run had copied — while
       // the README promised update as one of the three commands that clear
       // them.
-      const pending = Object.keys(manifest.pending ?? {}).length > 0;
-      if (!names.length && !pending) continue;
+      const pending = Object.keys(manifest.pending ?? {});
+      if (!names.length && !pending.length) continue;
       seen.add(targetDir);
       found.push({ platform, scope, targetDir, names, pending });
     }
@@ -83,9 +83,15 @@ export async function updateSkills({
   //
   // A withdrawn skill is still a valid name here, because it is installed and
   // the user may be asking about exactly that.
+  //
+  // A name a statement carries counts as installed here too, because a skill an
+  // interrupted run left behind is exactly what a targeted cleanup names.
   if (names?.length) {
-    const installedNames = new Set(installs.flatMap((i) => i.names));
-    const bad = names.filter((n) => !known.has(n) && !installedNames.has(n));
+    const installedNames = new Set(installs.flatMap((i) => [...i.names, ...i.pending]));
+    // Nothing is unknown while a directory is held. This command refused to
+    // read that manifest, so it cannot say the skill is not installed there.
+    const bad = locked.length
+      ? [] : names.filter((n) => !known.has(n) && !installedNames.has(n));
     if (bad.length) {
       throw new Error(
         `Unknown skill: ${bad.join(', ')}. Not in this repository, and not installed.`);
@@ -97,8 +103,11 @@ export async function updateSkills({
   // unsupported platform-and-scope pair an error: a request that selected
   // nothing must not report success. This is its third instance, so it is
   // stated once here over everything the caller named.
-  const unmatched = (names ?? [])
-    .filter((n) => !installs.some((i) => i.names.includes(n))).sort();
+  // And nothing is unmatched while a directory is held, for the same reason:
+  // the skill may well be installed in the one this command would not read.
+  const unmatched = locked.length ? [] : (names ?? [])
+    .filter((n) => !installs.some(
+      (i) => i.names.includes(n) || i.pending.includes(n))).sort();
 
   const results = [];
 
@@ -110,14 +119,14 @@ export async function updateSkills({
     // matched nothing printed nothing and exited zero, looking like success.
     // A statement left by an interrupted run is work whichever skills were
     // named, because the files it left belong to no skill entry at all.
-    if (!wanted.length && !install.pending) continue;
+    if (!wanted.length && !install.pending.length) continue;
 
     // A skill can be renamed or withdrawn between releases. Its files stay on
     // disk and its manifest row stays valid, so report it rather than throwing.
     const orphaned = wanted.filter((n) => !known.has(n));
     const fresh = wanted.filter((n) => known.has(n));
 
-    const res = (fresh.length || install.pending)
+    const res = (fresh.length || install.pending.length)
       ? await installSkills({ repoRoot, targetDir: install.targetDir, names: fresh, now, force })
       : { installed: [], skipped: [], recovered: [], cleared: [] };
 

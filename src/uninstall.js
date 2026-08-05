@@ -163,7 +163,15 @@ async function remove({ targetDir, names, force = false }) {
   // Removing nothing writes nothing. `writeManifest` creates the directory it
   // writes into, so uninstalling a skill from a machine that never had one
   // used to leave behind a skills directory and an empty manifest.
-  if (!removed.length) return { removed, missing, skipped, recovered, cleared, emptied: false };
+  if (!removed.length) {
+    // Unless clearing up after an interrupted run was the work. What is left
+    // then is a record of nothing, which is a file this engine wrote and
+    // nothing needs — the interrupted run's last trace.
+    const spent = cleared.length && !Object.keys(manifest.skills).length
+      && !hasPending(manifest) && identity !== null;
+    if (spent) await removeManifest(targetDir, identity);
+    return { removed, missing, skipped, recovered, cleared, emptied: Boolean(spent) };
+  }
 
   // The files are gone by now, so the record has to catch up rather than
   // refuse. A refusal here is not the harmless one install gets: install

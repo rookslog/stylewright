@@ -6,6 +6,7 @@ import path from 'node:path';
 import { installSkills } from '../src/install.js';
 import { doctor } from '../src/doctor.js';
 import { readManifestWithIdentity, writeManifest } from '../src/manifest.js';
+import { installedSkills } from '../src/detect.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -121,6 +122,20 @@ test('reports a directory a killed run left locked', async () => {
   assert.equal(findings.length, 1, JSON.stringify(findings));
   assert.equal(findings[0].code, 'locked-directory');
   assert.match(findings[0].message, /stylewright-lock/);
+});
+
+test('the guided dialogue passes over a held directory rather than parsing it', async () => {
+  // The dialogue marks what is already installed, and it read every target
+  // manifest to do so — including one a killed run left mid-write, which
+  // reached the user as a JSON parse error rather than the lock message.
+  const home = await tmp();
+  const target = path.join(home, '.claude/skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+  await fs.writeFile(path.join(target, '.stylewright-manifest.json'), '');
+
+  const found = await installedSkills({ home, cwd: await tmp(), scope: 'user' });
+  assert.deepEqual([...found.keys()], []);
 });
 
 test('does not report a duplicate when cwd equals home', async () => {

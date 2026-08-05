@@ -223,7 +223,10 @@ Two consequences for a change you propose here:
   manifests to work out what to do — which is a read of a picture that a run may
   be changing, and reached the user as a JSON parse error. `isLocked` is the
   question, and `doctor`, `update`'s discovery and the uninstall selection all
-  ask it first.
+  ask it first, and so does the guided dialogue. A held directory is named and
+  passed over rather than parsed, and nothing it might have held counts as
+  missing: a command that would not read a manifest cannot say what is not in
+  it.
 - **A write to the manifest answers to the read that preceded it.**
   `writeManifest` takes the identity that `readManifestWithIdentity` returned,
   and there is no default for it. Classifying the path afresh is a different

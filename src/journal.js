@@ -105,7 +105,12 @@ export async function discardStated(targetDir, name, stated, manifest) {
     const abs = path.join(destDir, rel);
     const staged = stagingPath(abs);
     let took = false;
-    if (await destinationState(staged) === 'file') {
+    // A recorded file is never a staging leftover, whatever its name ends with.
+    // The suffix belongs to this tool, but a manifest that records a path
+    // spelled that way records an installed file, and removing it would leave
+    // the record naming nothing.
+    if (!Object.hasOwn(recorded, `${rel}${STAGING_SUFFIX}`)
+      && await destinationState(staged) === 'file') {
       await removeAt(staged);
       took = true;
     }

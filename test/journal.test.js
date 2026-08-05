@@ -130,6 +130,28 @@ test('a staging file goes, whatever it holds', async () => {
   assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'and the emptied tree is pruned');
 });
 
+test('a recorded file is not a staging leftover, whatever it is called', async () => {
+  // The suffix belongs to this tool, but a manifest that records a path spelled
+  // that way records an installed file. Removing it left the record naming
+  // nothing.
+  const target = await tmp();
+  const odd = await put(path.join(target, 'demo-craft', 'A.stylewright-part'), 'a real file\n');
+  const manifest = await interrupted(target, {
+    manifest: {
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', files: { 'A.stylewright-part': odd } } },
+    },
+    pending: { 'demo-craft': { A: sha('what the release ships\n') } },
+  });
+
+  const done = await recoverPending(target, manifest);
+
+  assert.deepEqual(done.removed, []);
+  assert.equal(
+    await fs.readFile(path.join(target, 'demo-craft', 'A.stylewright-part'), 'utf8'),
+    'a real file\n');
+});
+
 test('what the engine could not have written is left alone', async () => {
   // This engine copies files. A directory or a link at a stated path is
   // something else's, and a recovery that removed it would be destroying work on
