@@ -408,8 +408,9 @@ export async function run(argv, ctx) {
     }
 
     const tier = flags.tier ?? 'all';
-    const fromCatalog = catalog
-      .filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name);
+    const fromCatalog = command === 'install'
+      ? catalog.filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name)
+      : [];
     if (command === 'install' && !flags.skill.length && !fromCatalog.length) {
       say('No skills selected.');
       return 2;
