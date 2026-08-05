@@ -5,10 +5,10 @@
   "plugins": [
     {
       "name": "stylewright-standards",
-      "source": "./",
+      "source": "./skills",
       "strict": false,
-      "skills": ["./skills/standards"],
-      "description": "Writing skills distilled from published standards. Every statement in a skill traces to a numbered rule you can read at a public URL, and the trace is checked in CI.",
+      "skills": ["./standards"],
+      "description": "Writing skills distilled from published standards. A grounding matrix accounts for every statement: it cites a numbered rule in the source, or it is marked as our own guidance, or as narrative. CI checks the trace.",
       "author": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
       "repository": "https://github.com/rookslog/stylewright",
       "license": "MIT",
@@ -17,10 +17,10 @@
     },
     {
       "name": "stylewright-craft",
-      "source": "./",
+      "source": "./skills",
       "strict": false,
-      "skills": ["./skills/craft"],
-      "description": "Writing discipline with no external standard behind it. The authority is ours, each skill says so, and bench/ holds the measurement protocol behind every rule.",
+      "skills": ["./craft"],
+      "description": "Writing discipline with no external standard behind it. The authority is ours, and each skill says so. bench/ in the repository holds the protocol for measuring what a skill does.",
       "author": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
       "repository": "https://github.com/rookslog/stylewright",
       "license": "MIT",

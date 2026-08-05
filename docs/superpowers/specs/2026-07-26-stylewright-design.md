@@ -391,9 +391,14 @@ conflict that the platform does not have.
 against this repository, then an install of each tier, loaded exactly the
 declared skills under the plugin namespace: `stylewright-standards:plain-language`,
 `stylewright-standards:simplified-technical-english`, and
-`stylewright-craft:compressed-deliberation`. Each plugin's `source` is the
-marketplace root, so the cache holds the whole repository, and the `skills`
-field in each entry selects the one tier that loads from it.
+`stylewright-craft:compressed-deliberation`. Each plugin's `source` is
+`./skills`, so the cache holds the skills tree and nothing else. The `skills`
+field in each entry then selects the one tier that loads from it.
+
+The first draft pointed `source` at the marketplace root. Its cache held the
+whole repository, grounding matrices included, which is the defect section 2.2
+exists to prevent. Review caught it, and the retest of the scoped form found
+no `grounding` path in either plugin cache.
 
 ## 6. Testing
 
