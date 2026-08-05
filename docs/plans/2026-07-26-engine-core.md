@@ -114,7 +114,7 @@ node_modules/
 *.tgz
 ```
 
-Create `LICENSE` containing the standard MIT License text, copyright `2026 Logan Rooks`.
+Create `LICENSE` containing the standard MIT License text, with the owner's copyright line.
 
 - [ ] **Step 4: Run test to verify it passes**
 

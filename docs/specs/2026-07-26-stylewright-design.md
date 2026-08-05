@@ -2,7 +2,6 @@
 
 **Date:** 2026-07-26
 **Status:** design approved. Licenses verified. Not yet implemented.
-**Author:** Logan Rooks (with Claude)
 
 ## 1. What this is
 
