@@ -14,8 +14,9 @@ import { VERSION } from './version.js';
 
 const USAGE = `stylewright ${VERSION}
 
-  install    [--tier standards|craft|all] [--skill <name>]...
+  install    [--tier standards|craft|all | --skill <name>...]
              [--platform ${PLATFORMS.join(',')}] [--scope user|project] [--force]
+             One selection at a time. Omit both to take everything.
   update     [--skill <name>]... [--platform ...] [--scope ...] [--force]
              With no flags, covers user scope plus THIS directory. Installs in
              other projects are not discoverable, so run it there too.

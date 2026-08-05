@@ -700,6 +700,22 @@ test('uninstall takes one selection, not several', async () => {
   assert.match(out.text(), /takes one of --tier, --all/);
 });
 
+test('the install usage offers the selectors the grammar accepts', async () => {
+  // The selector check covers install too, so a usage line that showed --tier
+  // and --skill as independent optionals advertised a rejected command.
+  const out = capture();
+  await run(['help'], { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  const line = out.text().split('\n').find((l) => l.trim().startsWith('install'));
+  assert.match(line, /\[--tier standards\|craft\|all \| --skill <name>\.\.\.\]/);
+
+  const said = capture();
+  const code = await run(
+    ['install', '--tier', 'craft', '--skill', 'demo-standard', '--platform', 'claude'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: said, now: NOW });
+  assert.equal(code, 2);
+  assert.match(said.text(), /install takes one of --skill, --tier, not several/);
+});
+
 test('a command rejects a flag it does not read', async () => {
   const out = capture();
   assert.equal(await run(['list', '--force'],
