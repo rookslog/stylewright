@@ -12,9 +12,14 @@ const repoRoot = path.dirname(import.meta.dirname);
 // The published artifact is not the checkout. CI runs every other test
 // against the checkout, so a file the tarball omits fails only on a user's
 // machine. This suite packs the artifact, extracts it, and runs every
-// command the help text advertises against the extracted copy.
+// command the help text advertises, in its flag-driven shape, against the
+// extracted copy. It does not install the tarball's dependencies, so a
+// wrong dependency manifest passes here, and the interactive dialogue is
+// never reached. It also needs `npm` and `tar` on PATH, which CI's
+// ubuntu runners have and a Windows runner would not.
 test('the packed artifact serves every advertised command', async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'stylewright-pack-'));
+  t.after(() => fs.rm(tmp, { recursive: true, force: true }));
   const home = path.join(tmp, 'home');
   const project = path.join(tmp, 'project');
   await fs.mkdir(home, { recursive: true });
@@ -83,6 +88,8 @@ test('the packed artifact serves every advertised command', async (t) => {
   await t.test('update covers the same tree', async () => {
     const r = await cli(['update', '--platform', 'claude', '--scope', 'project']);
     assert.equal(r.code, 0, r.stdout + r.stderr);
+    // "Nothing to update" also exits zero, so the assertion needs the name.
+    assert.match(r.stdout, /updated plain-language/);
   });
 
   await t.test('uninstall removes what it names', async () => {
@@ -97,6 +104,4 @@ test('the packed artifact serves every advertised command', async (t) => {
     await fs.access(path.join(pkgRoot, 'skills', 'craft', 'packed-demo', 'SKILL.md'));
     await fs.access(path.join(pkgRoot, 'grounding', 'craft', 'packed-demo.md'));
   });
-
-  await fs.rm(tmp, { recursive: true, force: true });
 });

@@ -23,8 +23,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The published package ships `grounding/`, so `ground --check --all` has
   matrices to read after an npm install. The packed tarball held none, and the
   advertised command reported every skill as missing its matrix. A new suite
-  packs the artifact, extracts it, and runs every advertised command against
-  the extracted copy.
+  packs the artifact, extracts it, and runs every advertised command, in its
+  flag-driven shape, against the extracted copy.
 
 ## 0.2.0 — 2026-07-27
 
