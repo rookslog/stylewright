@@ -385,3 +385,20 @@ test('rollback leaves a directory it did not create', async () => {
 
   assert.deepEqual(await fs.readdir(outside), ['demo']);
 });
+
+test('a source name containing a pipe still produces a matrix that passes', async () => {
+  // The check learned to read `\\|` and this generator never learned to write
+  // it, so the scaffold produced a matrix that failed its own first check.
+  const repo = await tmp();
+  await scaffoldSkill({
+    repoRoot: repo,
+    name: 'piped',
+    tier: 'standards',
+    description: 'A demo skill.',
+    source: 'ACME | Standard',
+    url: 'https://example.invalid/x',
+    license: 'CC BY 4.0',
+  });
+  const all = await checkAll(repo);
+  assert.deepEqual(all.piped, []);
+});

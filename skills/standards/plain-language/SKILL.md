@@ -98,7 +98,9 @@ Standard: [Federal Plain Language Guidelines](https://github.com/GSA/plainlangua
 The original site at `plainlanguage.gov` now redirects to `digital.gov`. The
 archived guidelines in the repository above are the source of record.
 
-Every statement above is traced to a named guideline. The trace lives in the
+Every statement above is accounted for in a public trace. Each one either cites a
+named guideline, or is marked as our own editorial guidance, or is marked as
+narrative that asserts no rule. The trace lives in the
 [stylewright repository](https://github.com/rookslog/stylewright/blob/main/grounding/standards/plain-language.md). It is not
 installed with this skill.
 

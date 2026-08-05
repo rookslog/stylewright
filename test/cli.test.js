@@ -558,3 +558,233 @@ test('the same scope named twice is one scope', async () => {
     { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
   assert.equal(code, 0, out.text());
 });
+
+// `install` and `uninstall` shared one selection block, so an omitted
+// selection meant "everything" for both. For install that is a file you can
+// delete. For uninstall it was the whole catalogue, with nothing on the command
+// line saying so.
+
+const at = (home) => path.join(home, '.claude', 'skills');
+
+test('uninstall with no selection removes nothing and says what to pass', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const before = await fs.readdir(at(home));
+
+  const out = capture();
+  const code = await run(['uninstall', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /needs to know what to remove/);
+  assert.deepEqual(await fs.readdir(at(home)), before);
+});
+
+test('uninstall --all removes everything, because it was typed', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const code = await run(['uninstall', '--all', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  await assert.rejects(fs.readdir(at(home)));
+});
+
+test('uninstall --tier removes one tier and leaves the other', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  assert.deepEqual((await fs.readdir(at(home))).sort(),
+    ['.stylewright-manifest.json', 'demo-standard']);
+});
+
+test('uninstall --tier removes a withdrawn skill the manifest still records', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  // Rename the installed craft skill to one this repository no longer ships,
+  // as a withdrawal would leave it.
+  const skills = at(home);
+  const mf = path.join(skills, '.stylewright-manifest.json');
+  const m = JSON.parse(await fs.readFile(mf, 'utf8'));
+  m.skills.gone = m.skills['demo-craft'];
+  delete m.skills['demo-craft'];
+  await fs.writeFile(mf, JSON.stringify(m, null, 2));
+  await fs.rename(path.join(skills, 'demo-craft'), path.join(skills, 'gone'));
+
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  assert.deepEqual((await fs.readdir(skills)).sort(),
+    ['.stylewright-manifest.json', 'demo-standard']);
+});
+
+test('a tier uninstall reads each target manifest, not one shared list', async () => {
+  const home = await tmp();
+  await run(['install', '--platform', 'claude,codex', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  // Record the same withdrawn name under two tiers: craft under claude, and
+  // standards under codex. Only the claude copy is in the selected tier.
+  const withdraw = async (dir, from) => {
+    const mf = path.join(dir, '.stylewright-manifest.json');
+    const m = JSON.parse(await fs.readFile(mf, 'utf8'));
+    m.skills.gone = m.skills[from];
+    delete m.skills[from];
+    await fs.writeFile(mf, JSON.stringify(m, null, 2));
+    await fs.rename(path.join(dir, from), path.join(dir, 'gone'));
+  };
+  const claude = path.join(home, '.claude', 'skills');
+  const codex = path.join(home, '.codex', 'skills');
+  await withdraw(claude, 'demo-craft');
+  await withdraw(codex, 'demo-standard');
+
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--platform', 'claude,codex', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  assert.deepEqual((await fs.readdir(claude)).sort(),
+    ['.stylewright-manifest.json', 'demo-standard']);
+  // The codex manifest records `gone` as standards, so --tier craft removed the
+  // craft skill there and left it. One shared list took it from claude's tier.
+  assert.deepEqual((await fs.readdir(codex)).sort(),
+    ['.stylewright-manifest.json', 'gone']);
+});
+
+test('a tier uninstall places a skill by the manifest, not by the catalogue', async () => {
+  // The catalogue says which tier this repository ships a skill in now. The
+  // manifest says which tier it was installed under. A skill that moved tiers
+  // is one name with two answers, and the removal takes the target's own.
+  const home = await tmp();
+  await run(['install', '--platform', 'claude,codex', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const codex = path.join(home, '.codex', 'skills');
+  const mf = path.join(codex, '.stylewright-manifest.json');
+  const m = JSON.parse(await fs.readFile(mf, 'utf8'));
+  m.skills['demo-craft'].tier = 'standards';
+  await fs.writeFile(mf, JSON.stringify(m, null, 2));
+
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--platform', 'claude,codex', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  assert.equal(code, 0);
+  assert.deepEqual((await fs.readdir(path.join(home, '.claude', 'skills'))).sort(),
+    ['.stylewright-manifest.json', 'demo-standard']);
+  assert.deepEqual((await fs.readdir(codex)).sort(),
+    ['.stylewright-manifest.json', 'demo-craft', 'demo-standard']);
+});
+
+test('uninstall --tier all is not a way to remove everything', async () => {
+  // `all` is a tier to install and is not one to remove. The usage says
+  // `standards|craft` and reserves the whole target for --all, and the tier
+  // value went unchecked, so this deleted everything anyway.
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const before = (await fs.readdir(at(home))).sort();
+
+  const out = capture();
+  const code = await run(
+    ['uninstall', '--tier', 'all', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /--tier standards\|craft, not "all"/);
+  assert.match(out.text(), /Use --all/);
+  assert.deepEqual((await fs.readdir(at(home))).sort(), before);
+});
+
+test('a word that is not a flag is a typing mistake, not a selection', async () => {
+  // `uninstall --all demo-craft` named one skill and removed every one. The
+  // schema declared the flags a command reads and not the arguments, so the
+  // word reached no consumer and no check.
+  const home = await tmp();
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  const before = (await fs.readdir(at(home))).sort();
+
+  const out = capture();
+  const code = await run(
+    ['uninstall', '--all', 'demo-craft', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /uninstall takes no arguments, and got "demo-craft"/);
+  assert.deepEqual((await fs.readdir(at(home))).sort(), before);
+});
+
+test('a bare uninstall in a terminal never runs the install dialogue', async () => {
+  const out = capture();
+  const code = await run(['uninstall'], {
+    home: '/h',
+    cwd: '/c',
+    repoRoot: REPO,
+    stdout: out,
+    now: NOW,
+    interactive: true,
+    promptTargets: async () => { throw new Error('the install dialogue must not run here'); },
+  });
+  assert.equal(code, 2);
+  assert.match(out.text(), /needs to know what to remove/);
+});
+
+test('a command name from the prototype chain is not a command', async () => {
+  // A plain object lookup found Object.prototype.constructor, and `.has` on a
+  // function threw a type error at what is only a typing mistake.
+  const out = capture();
+  const code = await run(['constructor', '--force'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /stylewright/);
+});
+
+test('a single-value flag given twice is an error', async () => {
+  const out = capture();
+  const code = await run(
+    ['uninstall', '--tier', 'craft', '--tier', 'standards', '--platform', 'claude'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /--tier was given more than once/);
+});
+
+test('uninstall takes one selection, not several', async () => {
+  const out = capture();
+  const code = await run(
+    ['uninstall', '--all', '--tier', 'craft', '--platform', 'claude', '--scope', 'user'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2);
+  assert.match(out.text(), /takes one of --tier, --all/);
+});
+
+test('the install usage offers the selectors the grammar accepts', async () => {
+  // The selector check covers install too, so a usage line that showed --tier
+  // and --skill as independent optionals advertised a rejected command.
+  const out = capture();
+  await run(['help'], { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  const line = out.text().split('\n').find((l) => l.trim().startsWith('install'));
+  assert.match(line, /\[--tier standards\|craft\|all \| --skill <name>\.\.\.\]/);
+
+  const said = capture();
+  const code = await run(
+    ['install', '--tier', 'craft', '--skill', 'demo-standard', '--platform', 'claude'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: said, now: NOW });
+  assert.equal(code, 2);
+  assert.match(said.text(), /install takes one of --skill, --tier, not several/);
+});
+
+test('a command rejects a flag it does not read', async () => {
+  const out = capture();
+  assert.equal(await run(['list', '--force'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW }), 2);
+  assert.match(out.text(), /list does not take --force/);
+
+  const said = capture();
+  assert.equal(await run(['update', '--all'],
+    { home: '/h', cwd: '/c', repoRoot: REPO, stdout: said, now: NOW }), 2);
+  assert.match(said.text(), /update does not take --all/);
+});
