@@ -62,6 +62,11 @@ For a skill with no external source:
 node bin/stylewright.mjs new-skill readme-craft --tier craft
 ```
 
+The two tiers share one namespace, so pick a name that neither tier holds. Every
+command selects a skill by name alone. The scaffold refuses a name the other
+tier already holds, and the catalog refuses to load a repository that carries
+the same name twice.
+
 Then do this:
 
 1. Replace the placeholder rule in `SKILL.md`. Write one instruction in each line.

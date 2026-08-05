@@ -3,6 +3,20 @@
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- **A skill name is unique across both tiers, and a collision is now an error
+  that names both directories.** The two tiers share one flat namespace, and
+  every consumer selects by name alone. Install built a map keyed on the name,
+  where the later tier won, so `--tier standards` could copy the craft skill of
+  that name and record it as craft. `loadCatalog` now refuses a name that two
+  tiers carry, which reaches install, update, `list`, and `ground --check` in one
+  place. `new-skill` refuses a name the other tier already holds. `uninstall`
+  reports the collision and carries on, because it answers what a target has
+  installed and the manifest is the only thing that knows.
+
 ## 0.2.1 — 2026-08-04
 
 ### Added

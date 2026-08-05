@@ -199,6 +199,18 @@ export async function scaffoldSkill({
   if (await destinationState(path.join(repoRoot, dir)) !== 'absent') {
     throw new Error(`Cannot scaffold "${name}": ${dir} already exists.`);
   }
+  // The OTHER tiers hold the same namespace. Checking the selected tier alone
+  // let this command write the second skill of a name that `loadCatalog` then
+  // refuses to read, which turns one mistyped tier into a repository no command
+  // can load. The catalog is the enforcement, and this is the early word.
+  for (const other of TIERS.filter((t) => t !== tier)) {
+    const taken = path.join('skills', other, name);
+    if (await destinationState(path.join(repoRoot, taken)) !== 'absent') {
+      throw new Error(
+        `Cannot scaffold "${name}": ${taken} already holds that name. `
+        + 'A skill name is unique across tiers.');
+    }
+  }
   for (const rel of rels) {
     const state = await destinationState(path.join(repoRoot, rel));
     if (state !== 'absent') {
