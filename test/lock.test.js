@@ -75,6 +75,19 @@ test('a target directory that is a link is held, not skipped', async () => {
   assert.ok(await exists(path.join(real, 'demo-craft', 'SKILL.md')), 'and nothing was removed');
 });
 
+test('a target that is a file is left alone, not crashed on', async () => {
+  // The user has something else at that path. Nothing of ours is under it, so
+  // there is nothing to hold and nothing to clear, and the command reports the
+  // skill as not installed rather than throwing about a directory that is not.
+  const parent = await tmp();
+  const target = path.join(parent, 'skills');
+  await fs.writeFile(target, 'mine\n');
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.deepEqual(res.missing, ['demo-craft']);
+  assert.equal(await fs.readFile(target, 'utf8'), 'mine\n');
+});
+
 test('a finished command leaves no lock behind', async () => {
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });

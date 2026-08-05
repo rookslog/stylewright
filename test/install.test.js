@@ -771,6 +771,23 @@ test('a source that changes under the run stops it before anything lands', async
   assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'and the staging file went');
 });
 
+test('a skill that ships a name this tool stages under is refused', async () => {
+  // The staging name is the destination plus a suffix, so a skill shipping both
+  // `A` and `A.stylewright-part` would have the copy of `A` clear the second as
+  // if it were this engine's leavings. The shape is refused where it enters.
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'odd');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'SKILL.md'), '---\nname: odd\ndescription: d\n---\n\n# odd\n');
+  await fs.writeFile(path.join(dir, 'A.stylewright-part'), 'shipped\n');
+  const target = await tmp();
+
+  await assert.rejects(
+    installSkills({ repoRoot: repo, targetDir: target, names: ['odd'], now: NOW }),
+    /A\.stylewright-part.*Rename the file/s);
+  assert.ok(!(await exists(path.join(target, 'odd'))), 'and nothing landed');
+});
+
 test('a file at the staging name is a collision, not something to clear', async () => {
   // The copy clears whatever stands at the staging path, so a file the user
   // happened to put at that name was deleted by a write no check had inspected.

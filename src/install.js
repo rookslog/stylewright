@@ -195,6 +195,17 @@ async function installUnderLock(byName, {
     const destDir = path.join(targetDir, name);
     const recorded = manifest.skills[name]?.files;
     const rels = await walk(skill.dir);
+    // The staging name is the destination plus a suffix, so a skill that
+    // shipped both `A` and `A.stylewright-part` would have the copy of `A` use
+    // the second one as scratch space and clear it. That is a shipped file
+    // treated as this engine's leavings, and no message could make it right, so
+    // the shape is refused where it enters rather than handled where it bites.
+    const reserved = rels.filter((rel) => rel.endsWith(STAGING_SUFFIX));
+    if (reserved.length) {
+      throw new Error(
+        `Skill "${name}" ships ${reserved.join(', ')}, and "${STAGING_SUFFIX}" is the suffix `
+        + 'this tool stages a copy under. Rename the file.');
+    }
 
     // The skill's own directory is the outermost ancestor of every path it
     // ships, and it is the one `ancestorsOf` cannot name, because the paths it

@@ -464,17 +464,24 @@ export async function run(argv, ctx) {
     // the lock themselves, but the SELECTION above them parses manifests to
     // work out what to remove, and a held directory is one whose manifest may
     // be changing under that read.
-    const held = [];
-    for (const [, dir] of targetDirs) {
-      if (await isLocked(dir)) held.push(dir);
+    //
+    // A held directory is reported and passed over, not treated as a reason to
+    // do nothing anywhere. `--platform claude,codex` names two directories on
+    // purpose, and one of them being held says nothing about the other.
+    const open = [];
+    let held = 0;
+    for (const entry of targetDirs) {
+      if (await isLocked(entry[1])) {
+        sayLocked(entry[1]);
+        held++;
+        continue;
+      }
+      open.push(entry);
     }
-    if (held.length) {
-      for (const dir of held) sayLocked(dir);
-      return 1;
-    }
+    if (!open.length) return 1;
 
     const selections = [];
-    for (const [, dir] of targetDirs) {
+    for (const [, dir] of open) {
       if (flags.skill.length) {
         selections.push([dir, flags.skill]);
         continue;
@@ -496,7 +503,7 @@ export async function run(argv, ctx) {
     // against the catalog alone made that advice impossible to follow, so
     // uninstall also accepts any name a selected manifest records.
     if (command === 'uninstall') {
-      for (const [, dir] of targetDirs) {
+      for (const [, dir] of open) {
         for (const n of Object.keys((await readManifest(dir)).skills)) known.add(n);
       }
     }
@@ -514,7 +521,7 @@ export async function run(argv, ctx) {
     // and an `install` that refused every skill was indistinguishable from one
     // that wrote them all.
     let changed = 0;
-    let refused = 0;
+    let refused = held;
     for (const [targetDir, selected] of selections) {
       if (command === 'install') {
         const res = await installSkills({

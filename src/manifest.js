@@ -384,7 +384,14 @@ export async function writeManifest(targetDir, manifest, expected) {
  * run that was writing would have held that first.
  */
 export async function clearStaleWrite(targetDir) {
-  await fs.rm(tmpPath(path.join(targetDir, MANIFEST_NAME)), { force: true });
+  await fs.rm(tmpPath(path.join(targetDir, MANIFEST_NAME)), { force: true })
+    // `force` covers a path that is not there. It does not cover a path whose
+    // PARENT is a file rather than a directory, which is a target the user has
+    // something else at — nothing of ours is under it, so there is nothing to
+    // clear, and `uninstall` reports the skill as not installed as it should.
+    .catch((err) => {
+      if (err.code !== 'ENOTDIR') throw err;
+    });
 }
 
 /**

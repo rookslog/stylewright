@@ -479,6 +479,23 @@ test('a command that reads manifests to plan its work refuses a held directory',
   assert.match(removed.text(), /held: .*skills\./);
 });
 
+test('a held directory does not stop the targets that are free', async () => {
+  // `--platform claude,codex` names two directories on purpose, and one being
+  // held says nothing about the other.
+  const home = await tmp();
+  const claude = path.join(home, '.claude', 'skills');
+  await fs.mkdir(claude, { recursive: true });
+  await fs.writeFile(path.join(claude, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude,codex'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /held: .*\.claude/);
+  await fs.access(path.join(home, '.codex', 'skills', 'demo-craft', 'SKILL.md'));
+  await assert.rejects(fs.access(path.join(claude, 'demo-craft')), 'and the held one is untouched');
+});
+
 test('a held directory is not reported as a skill that is not installed', async () => {
   // This command refused to read that manifest, so it cannot say the skill is
   // missing there — and a withdrawn skill installed only in the held directory
