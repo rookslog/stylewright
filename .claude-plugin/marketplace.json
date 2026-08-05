@@ -1,0 +1,31 @@
+{
+  "name": "stylewright",
+  "owner": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
+  "description": "Writing skills for coding agents, distilled from named standards.",
+  "plugins": [
+    {
+      "name": "stylewright-standards",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/standards"],
+      "description": "Writing skills distilled from published standards. Every statement in a skill traces to a numbered rule you can read at a public URL, and the trace is checked in CI.",
+      "author": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
+      "repository": "https://github.com/rookslog/stylewright",
+      "license": "MIT",
+      "category": "writing",
+      "keywords": ["technical-writing", "asd-ste100", "simplified-technical-english", "plain-language", "documentation"]
+    },
+    {
+      "name": "stylewright-craft",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/craft"],
+      "description": "Writing discipline with no external standard behind it. The authority is ours, each skill says so, and bench/ holds the measurement protocol behind every rule.",
+      "author": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
+      "repository": "https://github.com/rookslog/stylewright",
+      "license": "MIT",
+      "category": "writing",
+      "keywords": ["anti-slop", "compressed-deliberation", "concision", "agent-output", "style"]
+    }
+  ]
+}
