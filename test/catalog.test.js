@@ -9,10 +9,10 @@ const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-cat-'));
 
-/** A repository holding one skill of this name in each tier named. */
-async function repoWith(names) {
+/** A repository holding one skill for each `[tier, name]` pair given. */
+async function repoWith(pairs) {
   const repo = await tmp();
-  for (const [tier, name] of names) {
+  for (const [tier, name] of pairs) {
     const dir = path.join(repo, 'skills', tier, name);
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
