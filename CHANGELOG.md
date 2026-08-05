@@ -5,6 +5,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- The `navigable-references` skill, in the craft tier. It asks a writer to give
+  every named thing a form the reader can follow, in the form the medium
+  renders, and to find a line at the moment of citing it rather than from
+  memory. No measurement stands behind it. Its `SOURCE.md` says so, and names
+  the scenario a study would need.
+
 ### Fixed
 
 - **A skill name is unique across both tiers, and a collision is now an error
