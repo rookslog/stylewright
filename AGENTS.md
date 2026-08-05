@@ -166,6 +166,10 @@ same page that carry a decision. This was written here on 2026-07-27 and broken
 twice the same day, both times on the accept rows, which is why the table
 replaced the prose.
 
+The branch ruleset blocks a merge into `main` while any review thread stays
+unresolved. Post the verdict, then resolve the thread. Resolution records that
+the finding has a disposition. It does not record agreement.
+
 The same economy governs issues. A fix that needs no deliberation needs no
 written case. Open an issue when the decision is open, or when the work must
 wait, and not to record a change you are about to make anyway.
