@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { loadCatalog } from './catalog.js';
+import { loadCatalog, TIERS } from './catalog.js';
 import { resolveTarget, PLATFORMS } from './targets.js';
 import { installSkills } from './install.js';
 import { uninstallSkills } from './uninstall.js';
@@ -59,6 +59,12 @@ const COMMAND_FLAGS = new Map(Object.entries({
 // looked up a function and `allowed.has` threw a type error at a typing
 // mistake. A Map holds only what was put in it.
 }));
+
+// Which commands read a word that is not a flag. Declaring the flags and not
+// the arguments left half a schema: `uninstall --all demo-craft` named one
+// skill and removed every one, because nothing read the word and nothing
+// rejected it. A command that reads no arguments takes none.
+const COMMAND_ARGS = new Set(['lint', 'new-skill']);
 
 function splitList(value) {
   return String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -131,6 +137,11 @@ export async function run(argv, ctx) {
       .filter((k) => k !== '_' && !allowed.has(k) && !(k === 'skill' && !flags.skill.length));
     if (stray.length) {
       say(`${command} does not take ${stray.sort().map((k) => `--${k}`).join(', ')}.`);
+      say(USAGE);
+      return 2;
+    }
+    if (flags._.length && !COMMAND_ARGS.has(command)) {
+      say(`${command} takes no arguments, and got ${flags._.map((a) => `"${a}"`).join(', ')}.`);
       say(USAGE);
       return 2;
     }
@@ -310,7 +321,7 @@ export async function run(argv, ctx) {
       say('');
       say('  --skill <name>            one skill, repeatable');
       say('  --tier standards|craft    every skill in one tier');
-      say('  --all                     every skill this repository ships');
+      say('  --all                     every skill the target has installed');
       say('');
       say('Add --platform to say where. Run `stylewright doctor` to see what is installed.');
       return 2;
@@ -364,6 +375,16 @@ export async function run(argv, ctx) {
       say(`${command} takes one of ${selectors.join(', ')}, not several.`);
       return 2;
     }
+    // A tier value nothing checked. `all` is a tier to install and is not one
+    // to remove, because uninstall reserves the whole target for `--all`, and
+    // `uninstall --tier all` walked past that and deleted everything anyway.
+    // The usage says `standards|craft` there, so the grammar now says it too.
+    const tiers = command === 'install' ? [...TIERS, 'all'] : TIERS;
+    if (flags.tier && !tiers.includes(flags.tier)) {
+      say(`${command} takes --tier ${tiers.join('|')}, not "${flags.tier}".`);
+      if (command === 'uninstall') say('Use --all to remove every skill in the target.');
+      return 2;
+    }
 
     const targetDirs = flags.platform
       .map((platform) => [platform, resolveTarget({ platform, scope, home, cwd })]);
@@ -380,7 +401,7 @@ export async function run(argv, ctx) {
       say('');
       say('  --skill <name>            one skill, repeatable');
       say('  --tier standards|craft    every skill in one tier');
-      say('  --all                     every skill this repository ships');
+      say('  --all                     every skill the target has installed');
       say('');
       say('Run `stylewright doctor` to see what is installed.');
       return 2;
@@ -389,40 +410,34 @@ export async function run(argv, ctx) {
     const tier = flags.tier ?? 'all';
     const fromCatalog = catalog
       .filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name);
-    // A tier is resolved once per target, never once for all of them. Each
-    // manifest records the tier its own skills were installed under, and two
-    // targets can record one name under two tiers. Collecting into a single
-    // list let a craft entry found in the first manifest carry the name into
-    // the second target, where the same skill is a standards installation the
-    // selection never named.
+    if (command === 'install' && !flags.skill.length && !fromCatalog.length) {
+      say('No skills selected.');
+      return 2;
+    }
+
+    // Install and uninstall answer two different questions, and one catalogue
+    // lookup answered both. The catalogue says what this repository ships NOW
+    // and which tier it ships it in. A removal asks what is installed HERE and
+    // which tier it was installed under, and only this target's manifest knows
+    // that. Seeding a removal from the catalogue crossed the boundary twice:
+    // it missed a withdrawn skill the manifest still placed in the tier, and it
+    // removed a skill from a target whose manifest placed it outside the tier,
+    // because a skill that moved tiers is one name under two answers.
     const selections = [];
     for (const [, dir] of targetDirs) {
       if (flags.skill.length) {
         selections.push([dir, flags.skill]);
         continue;
       }
-      const names = [...fromCatalog];
-      // A skill this repository withdrew is still on disk, and this target's
-      // manifest records the tier it was installed under. Deriving the set from
-      // the catalogue alone left it behind while the help said the tier was
-      // gone.
-      if (command === 'uninstall') {
-        const seen = new Set(names);
-        for (const [n, entry] of Object.entries((await readManifest(dir)).skills)) {
-          if (!seen.has(n) && (tier === 'all' || entry.tier === tier)) {
-            seen.add(n);
-            names.push(n);
-          }
-        }
+      if (command === 'install') {
+        selections.push([dir, fromCatalog]);
+        continue;
+      }
+      const names = [];
+      for (const [n, entry] of Object.entries((await readManifest(dir)).skills)) {
+        if (flags.all || entry.tier === flags.tier) names.push(n);
       }
       selections.push([dir, names]);
-    }
-    const names = flags.skill.length
-      ? flags.skill
-      : [...new Set([fromCatalog, ...selections.map(([, n]) => n)].flat())];
-    if (!names.length) {
-      say('No skills selected.');
-      return 2;
     }
 
     const known = new Set(catalog.map((s) => s.name));
@@ -435,7 +450,8 @@ export async function run(argv, ctx) {
         for (const n of Object.keys((await readManifest(dir)).skills)) known.add(n);
       }
     }
-    const unknown = names.filter((n) => !known.has(n));
+    const selected = [...new Set([...flags.skill, ...selections.flatMap(([, n]) => n)])];
+    const unknown = selected.filter((n) => !known.has(n));
     if (unknown.length) {
       say(`Unknown skill: ${unknown.join(', ')}.`);
       say(`Available: ${[...known].sort().join(', ')}.`);
