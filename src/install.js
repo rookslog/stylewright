@@ -200,7 +200,11 @@ async function installUnderLock(byName, {
     // the second one as scratch space and clear it. That is a shipped file
     // treated as this engine's leavings, and no message could make it right, so
     // the shape is refused where it enters rather than handled where it bites.
-    const reserved = rels.filter((rel) => rel.endsWith(STAGING_SUFFIX));
+    // Every segment, not the whole path. `A.stylewright-part/B` puts the
+    // reserved name on a DIRECTORY, and the copy of a sibling `A` clears that
+    // directory as its own scratch space — the same collision, one level up.
+    const reserved = rels.filter(
+      (rel) => rel.split(/[\\/]/).some((part) => part.endsWith(STAGING_SUFFIX)));
     if (reserved.length) {
       throw new Error(
         `Skill "${name}" ships ${reserved.join(', ')}, and "${STAGING_SUFFIX}" is the suffix `

@@ -479,6 +479,46 @@ test('a command that reads manifests to plan its work refuses a held directory',
   assert.match(removed.text(), /held: .*skills\./);
 });
 
+test('uninstall does not call a name unknown while a selected target is held', async () => {
+  // The one manifest that could carry a withdrawn name is the one this command
+  // refused to read. `install` reads its names from the catalog, which no lock
+  // hides, so only the removal needs this.
+  const home = await tmp();
+  const claude = path.join(home, '.claude', 'skills');
+  await fs.mkdir(claude, { recursive: true });
+  await fs.writeFile(path.join(claude, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'withdrawn', '--platform', 'claude,codex'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.notEqual(code, 2, out.text());
+  assert.match(out.text(), /held: /);
+  assert.doesNotMatch(out.text(), /Unknown skill/);
+});
+
+test('uninstall accepts a withdrawn name that only a statement carries', async () => {
+  // An interrupted install of a skill this repository has since withdrawn is
+  // known from nothing but its statement, and that is exactly what a targeted
+  // cleanup names.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'withdrawn', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { withdrawn: { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'withdrawn', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of withdrawn/);
+  await assert.rejects(fs.access(target), 'and nothing of this tool is left');
+});
+
 test('a held directory does not stop the targets that are free', async () => {
   // `--platform claude,codex` names two directories on purpose, and one being
   // held says nothing about the other.

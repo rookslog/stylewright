@@ -786,6 +786,20 @@ test('a skill that ships a name this tool stages under is refused', async () => 
     installSkills({ repoRoot: repo, targetDir: target, names: ['odd'], now: NOW }),
     /A\.stylewright-part.*Rename the file/s);
   assert.ok(!(await exists(path.join(target, 'odd'))), 'and nothing landed');
+
+  // And on a DIRECTORY segment, which is the same collision one level up: the
+  // copy of a sibling `A` would clear that directory as its scratch space.
+  const nested = await tmp();
+  const dir2 = path.join(nested, 'skills', 'craft', 'odd', 'A.stylewright-part');
+  await fs.mkdir(dir2, { recursive: true });
+  await fs.writeFile(
+    path.join(nested, 'skills', 'craft', 'odd', 'SKILL.md'),
+    '---\nname: odd\ndescription: d\n---\n\n# odd\n');
+  await fs.writeFile(path.join(dir2, 'B'), 'shipped\n');
+
+  await assert.rejects(
+    installSkills({ repoRoot: nested, targetDir: await tmp(), names: ['odd'], now: NOW }),
+    /A\.stylewright-part\/B.*Rename the file/s);
 });
 
 test('a file at the staging name is a collision, not something to clear', async () => {

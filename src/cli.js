@@ -504,11 +504,21 @@ export async function run(argv, ctx) {
     // uninstall also accepts any name a selected manifest records.
     if (command === 'uninstall') {
       for (const [, dir] of open) {
-        for (const n of Object.keys((await readManifest(dir)).skills)) known.add(n);
+        const mf = await readManifest(dir);
+        // A statement's name counts too. An interrupted install of a skill this
+        // repository has since withdrawn is known from nothing else, and it is
+        // exactly what a targeted cleanup names.
+        for (const n of [...Object.keys(mf.skills), ...Object.keys(mf.pending ?? {})]) {
+          known.add(n);
+        }
       }
     }
     const selected = [...new Set([...flags.skill, ...selections.flatMap(([, n]) => n)])];
-    const unknown = selected.filter((n) => !known.has(n));
+    // A held directory proves nothing about a name. `install` reads its names
+    // from the catalog, which no lock hides, but `uninstall` reads them from
+    // the manifests — and it refused to read the one that could carry this one.
+    const unknown = command === 'uninstall' && held
+      ? [] : selected.filter((n) => !known.has(n));
     if (unknown.length) {
       say(`Unknown skill: ${unknown.join(', ')}.`);
       say(`Available: ${[...known].sort().join(', ')}.`);
