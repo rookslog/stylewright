@@ -1,0 +1,31 @@
+{
+  "name": "stylewright",
+  "owner": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
+  "description": "Writing skills for coding agents, distilled from named standards.",
+  "plugins": [
+    {
+      "name": "stylewright-standards",
+      "source": "./skills",
+      "strict": false,
+      "skills": ["./standards"],
+      "description": "Writing skills distilled from published standards. A grounding matrix accounts for every statement: it cites a numbered rule in the source, or it is marked as our own guidance, or as narrative. CI checks the trace.",
+      "author": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
+      "repository": "https://github.com/rookslog/stylewright",
+      "license": "MIT",
+      "category": "writing",
+      "keywords": ["technical-writing", "asd-ste100", "simplified-technical-english", "plain-language", "documentation"]
+    },
+    {
+      "name": "stylewright-craft",
+      "source": "./skills",
+      "strict": false,
+      "skills": ["./craft"],
+      "description": "Writing discipline with no external standard behind it. The authority is ours, and each skill says so. bench/ in the repository holds the protocol for measuring what a skill does.",
+      "author": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
+      "repository": "https://github.com/rookslog/stylewright",
+      "license": "MIT",
+      "category": "writing",
+      "keywords": ["anti-slop", "compressed-deliberation", "concision", "agent-output", "style"]
+    }
+  ]
+}

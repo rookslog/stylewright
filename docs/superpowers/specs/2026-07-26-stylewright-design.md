@@ -252,11 +252,11 @@ stylewright/
   plugins/
     standards/.codex-plugin/plugin.json
     craft/.codex-plugin/plugin.json
-    # UNRESOLVED: the Codex marketplace file. §5.2 records it as reported at
-    # `.agents/plugins/marketplace.json`, from a sample spec that contradicts
-    # itself elsewhere. It is not placed here, because an unverified path in an
-    # approved tree is worse than a gap someone has to close. Pathway 3 is
-    # blocked on verifying it — see issue #3.
+    # UNRESOLVED: the pathway 3 layout. The marketplace path is verified now,
+    # see §5.2. What is not verified is how a plugin at `plugins/<tier>/`
+    # would reach skills at `skills/<tier>/`: the documentation shows a
+    # plugin reading skills from its own root, and no documented field
+    # points one outside it. Blocked on a live experiment — see issue #3.
   bin/stylewright.mjs
   src/
   test/
@@ -326,12 +326,13 @@ plugins under one marketplace name, list them all in a single
 - A plugin's `source` path resolves against the **marketplace root**, the
   directory holding `.claude-plugin/`, not against `.claude-plugin/` itself.
   `metadata.pluginRoot` sets a prefix so entries can name a bare directory.
-- The Codex marketplace manifest is reported to live at
-  `.agents/plugins/marketplace.json`, not under `.codex-plugin/`. **Reported,
-  not verified** — the source is a sample spec in the `openai/codex`
-  repository, which also contradicts itself on whether `hooks` is a supported
-  field. Section 4 now marks the file unresolved rather than placing it, so
-  pathway 3 cannot be built from an unverified path.
+- The Codex marketplace manifest lives at `.agents/plugins/marketplace.json`.
+  **Verified 2026-08-04 against the OpenAI developer documentation** (issue
+  #3), which also resolves the sample spec's self-contradiction: `hooks` is a
+  supported field. What stays unverified is narrower. The documentation shows
+  a plugin reading skills from its own root, and no documented field points a
+  plugin at a directory outside that root. Skill paths must stay stable, so
+  pathway 3 is blocked on that question now, not on the manifest path.
 
 A per-plugin `.claude-plugin/plugin.json` is optional, and where present only
 `name` is required.
@@ -386,9 +387,18 @@ manifest cannot see a plugin-installed copy**, so `update` and `doctor` reason
 about half of what is on disk. `doctor` should say so, rather than report a
 conflict that the platform does not have.
 
-**Still untested.** Neither claim has been exercised live. The command that would
-test the first: `/plugin marketplace add rookslog/stylewright`, then
-`/plugin install stylewright-standards@<marketplace-name>`.
+**Tested 2026-08-04 (issue #3).** A local `claude plugin marketplace add`
+against this repository, then an install of each tier, loaded exactly the
+declared skills under the plugin namespace: `stylewright-standards:plain-language`,
+`stylewright-standards:simplified-technical-english`, and
+`stylewright-craft:compressed-deliberation`. Each plugin's `source` is
+`./skills`, so the cache holds the skills tree and nothing else. The `skills`
+field in each entry then selects the one tier that loads from it.
+
+The first draft pointed `source` at the marketplace root. Its cache held the
+whole repository, grounding matrices included, which is the defect section 2.2
+exists to prevent. Review caught it, and the retest of the scoped form found
+no `grounding` path in either plugin cache.
 
 ## 6. Testing
 
