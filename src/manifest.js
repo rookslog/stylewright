@@ -202,11 +202,18 @@ export async function writeManifest(targetDir, manifest) {
   // Replacing. Write beside it and rename over it, so no reader sees half a
   // manifest and no write passes through a link that appears after the check.
   const tmp = `${abs}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  // A rename replaces the file AND its mode. Somebody who set 0600 on their
+  // manifest had it widened to whatever the umask gives on the next update.
+  //
+  // The mode is read BEFORE the temporary file is created and passed to the
+  // creation, so the manifest body never sits on disk under a wider mode than
+  // the file it replaces. Creating first and narrowing afterwards left that
+  // window open, and a crash inside it left the widened file behind.
+  const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
   try {
-    await fs.writeFile(tmp, body, { flag: 'wx' });
-    // A rename replaces the file AND its mode. Somebody who set 0600 on their
-    // manifest had it widened to whatever the umask gives on the next update.
-    const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
+    await fs.writeFile(tmp, body, mode === null ? { flag: 'wx' } : { flag: 'wx', mode });
+    // The umask trims the creation mode and never widens it, so this restores
+    // a bit the umask took and cannot be the first thing to grant one.
     if (mode !== null) await fs.chmod(tmp, mode);
     await fs.rename(tmp, abs);
   } catch (err) {

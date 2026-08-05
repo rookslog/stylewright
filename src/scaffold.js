@@ -174,6 +174,7 @@ export async function scaffoldSkill({
   // after the fact is the honest end of what this can do.
   const written = [];
   const made = [];
+  const skillDir = path.join(repoRoot, dir);
   try {
     for (const [rel, body] of outputs) {
       let cur = repoRoot;
@@ -203,6 +204,18 @@ export async function scaffoldSkill({
         } else if (state !== 'directory') {
           throw new Error(
             `Cannot scaffold "${name}": ${path.relative(repoRoot, cur)} is a ${state}.`);
+        }
+        // The skill directory is not an ordinary ancestor. The preflight
+        // refuses one that already exists, because install pathways copy this
+        // directory whole and would ship whatever a stranger left inside it.
+        // One that appears after the preflight is the same directory and the
+        // same refusal, so this call must be the one that made it.
+        if (cur === skillDir) {
+          const st = await fs.lstat(cur);
+          const mine = made.find((m) => m.abs === cur);
+          if (!mine || mine.dev !== st.dev || mine.ino !== st.ino) {
+            throw new Error(`Cannot scaffold "${name}": ${dir} already exists.`);
+          }
         }
       }
       const abs = path.join(repoRoot, rel);

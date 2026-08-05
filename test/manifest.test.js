@@ -201,6 +201,34 @@ test('a manifest of the wrong shape is refused where it is read', async () => {
   await assert.rejects(readManifest(dir), /"a" records no hash for "SKILL.md"/);
 });
 
+test('the replacement carries the manifest permissions from the moment it exists', async () => {
+  const dir = await tmp();
+  await writeManifest(dir, emptyManifest());
+  const abs = path.join(dir, MANIFEST_NAME);
+  await fs.chmod(abs, 0o600);
+
+  const original = fs.chmod;
+  let atCreation = null;
+  fs.chmod = async (...args) => {
+    // What creation produced, before this call adjusts it. A crash here leaves
+    // that file behind, so it is the mode that matters. (The umask can only
+    // narrow a creation mode, so this reads 0600 under any umask once the mode
+    // is passed to the creation, and 0644 under the common one when it is not.)
+    if (atCreation === null && String(args[0]).endsWith('.tmp')) {
+      atCreation = (await fs.stat(args[0])).mode & 0o777;
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await writeManifest(dir, emptyManifest());
+  } finally {
+    fs.chmod = original;
+  }
+
+  assert.equal(atCreation, 0o600);
+  assert.equal((await fs.stat(abs)).mode & 0o777, 0o600);
+});
+
 test('a manifest linked away after the check is not read through', async () => {
   const dir = await tmp();
   const abs = path.join(dir, MANIFEST_NAME);

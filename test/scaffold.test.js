@@ -262,6 +262,35 @@ test('an ancestor that appears between the check and the mkdir stops the call', 
   assert.deepEqual(openedIn.filter((dir) => !isBelow(root, dir)), []);
 });
 
+test('a skill directory that appears after the preflight is refused', async () => {
+  const repo = await tmp();
+  const demo = path.join(repo, 'skills', 'craft', 'demo');
+
+  const original = fs.mkdir;
+  let fired = false;
+  fs.mkdir = async (...args) => {
+    // Another process creates the skill directory, with a file of its own in
+    // it, between the preflight and the write.
+    if (!fired && String(args[0]) === demo) {
+      fired = true;
+      await original.call(fs, demo, { recursive: true });
+      await fs.writeFile(path.join(demo, 'notes.md'), 'mine\n');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
+      /skills\/craft\/demo already exists/);
+  } finally {
+    fs.mkdir = original;
+  }
+
+  // Install pathways copy a skill directory whole, so a scaffold that adopted
+  // this directory would ship the note inside the generated skill.
+  assert.deepEqual(await fs.readdir(demo), ['notes.md']);
+});
+
 test('a write that fails part way takes its own empty file with it', async () => {
   const repo = await tmp();
   const first = path.join(repo, 'skills', 'craft', 'demo', 'SKILL.md');
