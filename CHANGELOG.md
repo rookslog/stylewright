@@ -13,7 +13,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   where the later tier won, so `--tier standards` could copy the craft skill of
   that name and record it as craft. `loadCatalog` now refuses a name that two
   tiers carry, which reaches install, update, `list`, and `ground --check` in one
-  place. `new-skill` refuses a name the other tier already holds.
+  place. `new-skill` refuses a name the other tier already holds. `uninstall`
+  reports the collision and carries on, because it answers what a target has
+  installed and the manifest is the only thing that knows.
 
 ## 0.2.1 — 2026-08-04
 

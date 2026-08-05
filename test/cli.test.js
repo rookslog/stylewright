@@ -292,6 +292,46 @@ test('uninstall accepts a skill this repository no longer ships', async () => {
   assert.match(out.text(), /removed withdrawn/);
 });
 
+/** A clone carrying the same skill name in both tiers. */
+async function collidingRepo() {
+  const repo = await tmp();
+  for (const tier of ['standards', 'craft']) {
+    const dir = path.join(repo, 'skills', tier, 'twinned');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'SKILL.md'),
+      `---\nname: twinned\ndescription: The ${tier} one.\n---\n\n# twinned\n`);
+  }
+  return repo;
+}
+
+test('a collision in the clone does not stop a removal, and is still said', async () => {
+  // uninstall answers what is installed HERE, and the manifest is the only
+  // thing that knows. A repository the user cannot fix, or is not looking at,
+  // must not strand a skill on their machine.
+  const home = await tmp();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: await collidingRepo(), stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /removed demo-craft/);
+  // Said out loud, because the clone still needs fixing.
+  assert.match(out.text(), /twinned/);
+  await assert.rejects(fs.access(path.join(home, '.claude', 'skills', 'demo-craft')));
+});
+
+test('a collision still stops an install', async () => {
+  const home = await tmp();
+  const repo = await collidingRepo();
+  await assert.rejects(
+    () => run(['install', '--skill', 'twinned', '--platform', 'claude'],
+      { home, cwd: '/c', repoRoot: repo, stdout: capture(), now: NOW }),
+    /twinned/);
+});
+
 test('an unknown skill is still rejected on install', async () => {
   const out = capture();
   const code = await run(['install', '--skill', 'nonesuch', '--platform', 'claude'],

@@ -179,6 +179,8 @@ Two consequences for a change you propose here:
   name alone. `loadCatalog` refuses a name that two tiers carry, and the scaffold
   refuses to write the second one. Install used to build a map keyed on the name,
   where the later tier won, so `--tier standards` could copy the craft skill.
+  `uninstall` is the one command that survives the refusal. It reads the target
+  manifest and not this clone, so a collision here prints and does not stop it.
 - **Every destination goes through `src/tree.js` before anything is written.**
   Two did not. The manifest was read and written with plain calls, and the
   scaffold checked the skill directory and then wrote six files including one

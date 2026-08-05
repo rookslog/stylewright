@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { loadCatalog, TIERS } from './catalog.js';
+import { loadCatalog, DuplicateSkillName, TIERS } from './catalog.js';
 import { resolveTarget, PLATFORMS } from './targets.js';
 import { installSkills } from './install.js';
 import { uninstallSkills } from './uninstall.js';
@@ -304,7 +304,20 @@ export async function run(argv, ctx) {
   }
 
   if (command === 'install' || command === 'uninstall') {
-    const catalog = await loadCatalog(repoRoot);
+    // The two commands read the catalog for two reasons, so a broken catalog
+    // stops one of them and not the other. Install copies out of this clone,
+    // and a name in two tiers leaves it nothing to copy. Uninstall answers what
+    // is installed on the user's machine, and only the target manifest knows
+    // that, so a collision in a clone the user may not own must not strand a
+    // skill on their disk. It is printed rather than swallowed, because the
+    // clone still needs fixing, and the catalog then contributes no names.
+    let catalog = [];
+    try {
+      catalog = await loadCatalog(repoRoot);
+    } catch (err) {
+      if (command === 'install' || !(err instanceof DuplicateSkillName)) throw err;
+      say(err.message);
+    }
 
     // The guided dialogue is the DEFAULT. Any flag that selects targets or
     // skills opts out of it, so a scripted command stays non-interactive.
