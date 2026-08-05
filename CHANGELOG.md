@@ -3,28 +3,7 @@
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
-
-### Fixed
-
-- **A manifest that is a symbolic link no longer carries a write out of its
-  directory.** `readManifest` and `writeManifest` used plain file calls, so the
-  one destination in the tool that never went through `src/tree.js` was the one
-  that could be redirected. A linked manifest was read through and replaced with
-  manifest JSON, the link survived, the outside file was lost, and the command
-  exited zero without `--force`. The manifest is now refused unless it is a
-  regular file, and it is written beside its destination and renamed over it.
-- **`new-skill` no longer writes through a link or over your work.** It checked
-  whether the skill directory existed and then wrote six files, one of them the
-  grounding matrix, which does not live under the skill directory and was never
-  checked at all. A linked grounding path was written through and an existing
-  draft was replaced without a word. Every destination and every ancestor is now
-  checked first, each file is created with a flag that refuses an existing path,
-  and a scaffold that fails part way takes back what it wrote.
-- **A manifest of the wrong shape is refused where it is read.** A file whose
-  JSON parsed and whose shape was wrong reached install and uninstall, and
-  surfaced as an unhandled type error naming nothing. The error now names the
-  file and the field.
+## 0.2.1 — 2026-08-04
 
 ### Added
 
@@ -46,6 +25,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   advertised command reported every skill as missing its matrix. A new suite
   packs the artifact, extracts it, and runs every advertised command, in its
   flag-driven shape, against the extracted copy.
+- **A manifest that is a symbolic link no longer carries a write out of its
+  directory.** `readManifest` and `writeManifest` used plain file calls, so the
+  one destination in the tool that never went through `src/tree.js` was the one
+  that could be redirected. A linked manifest was read through and replaced with
+  manifest JSON, the link survived, the outside file was lost, and the command
+  exited zero without `--force`. The manifest is now refused unless it is a
+  regular file, and it is written beside its destination and renamed over it.
+- **`new-skill` no longer writes through a link or over your work.** It checked
+  whether the skill directory existed and then wrote six files, one of them the
+  grounding matrix, which does not live under the skill directory and was never
+  checked at all. A linked grounding path was written through and an existing
+  draft was replaced without a word. Every destination and every ancestor is now
+  checked first, each file is created with a flag that refuses an existing path,
+  and a scaffold that fails part way takes back what it wrote.
+- **A manifest of the wrong shape is refused where it is read.** A file whose
+  JSON parsed and whose shape was wrong reached install and uninstall, and
+  surfaced as an unhandled type error naming nothing. The error now names the
+  file and the field.
 
 ## 0.2.0 — 2026-07-27
 
