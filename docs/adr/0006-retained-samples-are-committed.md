@@ -19,5 +19,7 @@ point: a skeptical reader re-reads the samples instead of trusting the
 number. Raw model output enters the tree, so promotion is a deliberate act
 with a review, never a glob.
 
-Decided on issue #43 (2026-08-04). The mechanism is the measurement design
-(`docs/specs/2026-08-04-measurement-design.md`, section 3).
+Decided on issue #43 (2026-08-04), which records the decision and the
+mechanism sketch. The full mechanism is the measurement design, which is in
+owner review and lands under `docs/specs/` with the measurement pull
+request.

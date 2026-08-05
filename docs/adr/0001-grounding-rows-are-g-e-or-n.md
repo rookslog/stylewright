@@ -20,6 +20,6 @@ ones shaped like bullets. Tables and fenced blocks carry content digests, so
 a block cannot be rewritten while its row stays clean.
 
 Decided in the design spec (`docs/specs/2026-07-26-stylewright-design.md`,
-section 2). Amended 2026-07-31 to remove every exemption and account for
-every unit (`75f80d3` and the commits around it). The operative rules live in
+section 2). Amended to remove every exemption and account for every unit in
+`17a5164`, the merge of PR #33 (2026-08-04). The operative rules live in
 `AGENTS.md`, under "A grounding matrix that lies".

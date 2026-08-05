@@ -9,6 +9,7 @@
 - [ ] `npm test`
 - [ ] `npm run lint:docs`
 - [ ] `npm run check:ground`
+- [ ] `npm run check:docs`
 
 ## If you added or changed a skill
 

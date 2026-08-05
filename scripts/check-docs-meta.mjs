@@ -142,15 +142,23 @@ export function checkCorpus(docs) {
   return problems;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const { fileURLToPath } = await import('node:url');
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const { readFileSync, readdirSync } = await import('node:fs');
   const path = await import('node:path');
   const docs = new Map();
-  for (const entry of readdirSync('docs', { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-    const rel = path.join('docs', path.relative('docs', path.join(entry.parentPath, entry.name)));
-    docs.set(rel.split(path.sep).join('/'), readFileSync(rel, 'utf8'));
-  }
+  // A hand-rolled walk, because `Dirent.parentPath` arrived in Node 20.12
+  // and the floor this repository advertises is 20.11.0.
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const rel = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(rel);
+      else if (entry.isFile() && entry.name.endsWith('.md')) {
+        docs.set(rel.split(path.sep).join('/'), readFileSync(rel, 'utf8'));
+      }
+    }
+  };
+  walk('docs');
   const problems = checkCorpus(docs);
   for (const p of problems) process.stderr.write(`${p}\n`);
   if (problems.length) process.exit(1);
