@@ -363,36 +363,31 @@ test('the identity a write returns names the file that write created', async () 
   // Reading the path again after the write returns whatever stands there by
   // then. A reviewer reproduced the consequence: another run committed in that
   // gap, this caller carried away ITS identity, and the next write therefore
-  // passed the comparison and overwrote that run's record.
+  // passed the comparison and overwrote that run's record. The identity comes
+  // from the handle, and the rename carries that file into place.
   const dir = await tmp();
   const theirs = recordSkill(emptyManifest(), {
     name: 'theirs', tier: 'craft', pathway: 'engine', files: {}, now: '2026-01-01T00:00:00.000Z',
   });
-  const abs = path.join(dir, MANIFEST_NAME);
 
-  const original = fs.open;
+  const original = fs.rename;
   let raced = false;
-  fs.open = async (...args) => {
-    const fh = await original.apply(fs, args);
-    const write = fh.writeFile.bind(fh);
-    fh.writeFile = async (...body) => {
-      const result = await write(...body);
-      // Another run replaces the manifest the moment this one has written it,
-      // and before it looks at the path again.
-      if (!raced && String(args[0]) === abs) {
-        raced = true;
-        const { identity: theirIdentity } = await readManifestWithIdentity(dir);
-        await writeManifest(dir, theirs, theirIdentity);
-      }
-      return result;
-    };
-    return fh;
+  fs.rename = async (...args) => {
+    const result = await original.apply(fs, args);
+    // Another run replaces the manifest the moment this one has committed it,
+    // and before it looks at the path again.
+    if (!raced) {
+      raced = true;
+      const { identity: theirIdentity } = await readManifestWithIdentity(dir);
+      await writeManifest(dir, theirs, theirIdentity);
+    }
+    return result;
   };
   let mine;
   try {
     mine = await writeManifest(dir, emptyManifest(), null);
   } finally {
-    fs.open = original;
+    fs.rename = original;
   }
 
   assert.ok(raced, 'the race must have been injected');

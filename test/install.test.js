@@ -619,8 +619,13 @@ async function killedInstall(target, hook) {
     import { installSkills } from ${JSON.stringify(new URL('../src/install.js', import.meta.url).href)};
     const real = fsp.${hook};
     fsp.${hook} = async (...args) => {
-      await real.apply(fsp, args);
-      process.kill(process.pid, 'SIGKILL');
+      const result = await real.apply(fsp, args);
+      // Not the manifest's own write, which uses the same two calls. This is
+      // about a skill file reaching, or not reaching, its destination.
+      if (!String(args[args.length - 1]).includes('.stylewright-manifest')) {
+        process.kill(process.pid, 'SIGKILL');
+      }
+      return result;
     };
     await installSkills({
       repoRoot: ${JSON.stringify(REPO)},

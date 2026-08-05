@@ -311,52 +311,24 @@ export async function writeManifest(targetDir, manifest, expected) {
   // inside the exclusion.
   await regularOrAbsent(abs, targetDir);
 
-  // Creating and replacing are different operations, and one mechanism cannot
-  // be both. `wx` creates and refuses an existing destination. A rename
-  // replaces and refuses nothing, so using it to create let two first-time
-  // installs into one directory each copy their files while the second
-  // manifest recorded only its own, orphaning the first install's.
+  // Creating and replacing are one write, and the difference between them is a
+  // comparison rather than a mechanism. Both go through the same temporary file
+  // and the same rename, so the manifest at its own path is never half written:
+  // a run killed between the open and the write used to leave a truncated file
+  // that every later command failed to parse.
   //
-  // An earlier version of this fix created through a hard link. That refuses
-  // correctly and does not exist on every filesystem, and the skill files are
-  // already copied by the time this runs, so a target that rejects links would
-  // have left every first install on disk with no manifest able to remove it.
-  //
-  // WHICH operation this is comes from `expected`, not from the path. A read
-  // that found nothing creates, and it creates whatever appeared since.
-  if (expected === null) {
-    let fh;
-    try {
-      fh = await fs.open(abs, 'wx');
-    } catch (err) {
-      if (err.code !== 'EEXIST') throw err;
-      throw stale(
-        `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
-    }
-    try {
-      await fh.writeFile(body);
-      // The identity comes from the HANDLE, which names the file this call
-      // created. Reading the path again after the write returns whatever stands
-      // there by then, and a reviewer reproduced the consequence: the caller
-      // carried another run's identity, its next write passed the comparison,
-      // and it overwrote that run's record.
-      return identityOf(await fh.stat());
-    } finally {
-      await fh.close();
-    }
-  }
-
-  // Replacing. Write beside it and rename over it, so no reader sees half a
-  // manifest and no write passes through a link that appears after the check.
+  // The temporary file is also the exclusion. Its name is fixed, so `wx` — the
+  // one test and set the filesystem offers — admits a single writer, the
+  // comparison happens while it is held, and the rename that commits the
+  // manifest is what releases it.
   //
   // A rename replaces the file AND its mode. Somebody who set 0600 on their
-  // manifest had it widened to whatever the umask gives on the next update.
-  //
-  // The mode is read BEFORE the temporary file is created and passed to the
+  // manifest had it widened to whatever the umask gives on the next update. The
+  // mode is read BEFORE the temporary file is created and passed to the
   // creation, so the manifest body never sits on disk under a wider mode than
-  // the file it replaces. Creating first and narrowing afterwards left that
-  // window open, and a crash inside it left the widened file behind.
+  // the file it replaces.
   const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
+  let identity;
   let fh;
   try {
     fh = await fs.open(tmp, 'wx', mode ?? undefined);
@@ -366,7 +338,6 @@ export async function writeManifest(targetDir, manifest, expected) {
       `Another run is writing the manifest in ${targetDir}. Run again, `
       + `or remove ${tmp} if no other run is active.`);
   }
-  let identity;
   try {
     await fh.writeFile(body);
     // Taken from the handle before the rename, and a rename carries the file
@@ -384,7 +355,12 @@ export async function writeManifest(targetDir, manifest, expected) {
     // second rename overwrote a record the first had just committed, stranding
     // the files that record named. The order here is what makes the answer
     // still true when it is acted on.
-    if (!sameFile(await identityAt(abs, targetDir), expected)) {
+    const observed = await identityAt(abs, targetDir);
+    if (expected === null && observed !== null) {
+      throw stale(
+        `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
+    }
+    if (expected !== null && !sameFile(observed, expected)) {
       throw stale(`Manifest in ${targetDir} changed while this command was running. Run again.`);
     }
     // The umask trims the creation mode and never widens it, so this restores
@@ -396,6 +372,19 @@ export async function writeManifest(targetDir, manifest, expected) {
     throw err;
   }
   return identity;
+}
+
+/**
+ * Clear a manifest write that a killed run left half done.
+ *
+ * The temporary file is the exclusion, so one left behind refuses every later
+ * write — including `uninstall`'s, which by then has already deleted the files
+ * and can only leave the record claiming them. It is only debris when nobody
+ * holds it, and the caller of this knows that: it holds the directory, and a
+ * run that was writing would have held that first.
+ */
+export async function clearStaleWrite(targetDir) {
+  await fs.rm(tmpPath(path.join(targetDir, MANIFEST_NAME)), { force: true });
 }
 
 /**

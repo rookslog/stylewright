@@ -45,7 +45,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   decision now comes from the read, and a manifest that appeared or changed
   since is refused rather than replaced. The comparison is made while a
   temporary file with a fixed name holds off every other writer, and the rename
-  that commits the manifest is what releases it. The same rule governs the
+  that commits the manifest is what releases it. Creating and replacing take the
+  same path, so the manifest is never half written: a run killed mid-write used
+  to leave a truncated file that every later command failed to parse. The same rule governs the
   removal of the manifest when the last skill goes. `uninstall` reconciles
   instead of refusing, because by then it has already deleted the files.
 

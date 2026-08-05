@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   hashFile, readManifestWithIdentity, writeManifest, removeManifest, isStale,
+  clearStaleWrite,
 } from './manifest.js';
 import { hasPending, recoverPending } from './journal.js';
 import { withTargetLock } from './lock.js';
@@ -74,11 +75,17 @@ export async function uninstallSkills(options) {
 }
 
 async function remove({ targetDir, names, force = false }) {
+  // Before anything is deleted, because this command cannot refuse afterwards.
+  // A manifest write a killed run left half done holds the exclusion that the
+  // record needs at the end, and this command holds the directory, so nobody
+  // else can be inside that write.
+  await clearStaleWrite(targetDir);
   let { manifest, identity } = await readManifestWithIdentity(targetDir);
   const removed = [];
   const missing = [];
   const skipped = [];
   const recovered = [];
+  const cleared = [];
 
   // An install that did not come back left files it had stated it would write.
   // This command's promise is that it removes what the installer wrote, so the
@@ -87,6 +94,7 @@ async function remove({ targetDir, names, force = false }) {
   if (hasPending(manifest)) {
     const done = await recoverPending(targetDir, manifest);
     recovered.push(...done.removed);
+    cleared.push(...done.cleared);
     manifest = done.manifest;
     identity = await writeManifest(targetDir, manifest, identity);
   }
@@ -155,7 +163,7 @@ async function remove({ targetDir, names, force = false }) {
   // Removing nothing writes nothing. `writeManifest` creates the directory it
   // writes into, so uninstalling a skill from a machine that never had one
   // used to leave behind a skills directory and an empty manifest.
-  if (!removed.length) return { removed, missing, skipped, recovered, emptied: false };
+  if (!removed.length) return { removed, missing, skipped, recovered, cleared, emptied: false };
 
   // The files are gone by now, so the record has to catch up rather than
   // refuse. A refusal here is not the harmless one install gets: install
@@ -168,7 +176,7 @@ async function remove({ targetDir, names, force = false }) {
   // command did: the entries for the skills it removed, and nothing else. A
   // skill another run installed meanwhile keeps its record.
   const emptied = await reapply(targetDir, removed);
-  return { removed, missing, skipped, recovered, emptied };
+  return { removed, missing, skipped, recovered, cleared, emptied };
 }
 
 /** Does any file this entry records still stand where it says? */

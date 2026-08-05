@@ -127,10 +127,11 @@ export async function run(argv, ctx) {
   // run stated it would write and never recorded, and clearing them without a
   // word is how a tool loses the right to be trusted with a delete. Said once
   // here, because install, update and uninstall all clear them.
-  const sayCleared = (files, dir) => {
-    for (const rel of files ?? []) {
-      say(`cleared ${rel} in ${dir}, left by an install that did not finish`);
+  const sayCleared = ({ recovered, cleared }, dir) => {
+    for (const name of cleared ?? []) {
+      say(`cleared the unfinished install of ${name} in ${dir}`);
     }
+    for (const rel of recovered ?? []) say(`  removed ${rel}`);
   };
   let flags;
   try {
@@ -288,7 +289,7 @@ export async function run(argv, ctx) {
     // uninstalled one rewrote files and then said only that the second was
     // missing. The exit code covered three outcomes and distinguished none.
     for (const r of update.results) {
-      sayCleared(r.recovered, r.targetDir);
+      sayCleared(r, r.targetDir);
       for (const n of r.installed) say(`updated ${n} -> ${r.targetDir}`);
       for (const s of r.skipped) {
         say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
@@ -310,7 +311,7 @@ export async function run(argv, ctx) {
     // Clearing what an interrupted run left IS a change. Counting only the
     // skills written told a script that a cleanup which deleted files had
     // failed.
-    if (!update.results.some((r) => r.installed.length || r.recovered?.length)) {
+    if (!update.results.some((r) => r.installed.length || r.cleared?.length)) {
       say('Nothing was updated.');
       return 1;
     }
@@ -498,20 +499,20 @@ export async function run(argv, ctx) {
         const res = await installSkills({
           repoRoot, targetDir, names: selected, now, force: Boolean(flags.force),
         });
-        sayCleared(res.recovered, targetDir);
+        sayCleared(res, targetDir);
         for (const n of res.installed) say(`installed ${n} -> ${targetDir}`);
         for (const s of res.skipped) {
           say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
         }
         // Clearing what an interrupted run left is a change, and a command
         // that deleted files must not report that nothing happened.
-        changed += res.installed.length + res.recovered.length;
+        changed += res.installed.length + res.cleared.length;
         refused += res.skipped.length;
       } else {
         const res = await uninstallSkills({
           targetDir, names: selected, force: Boolean(flags.force),
         });
-        sayCleared(res.recovered, targetDir);
+        sayCleared(res, targetDir);
         for (const n of res.removed) say(`removed ${n} from ${targetDir}`);
         for (const n of res.missing) say(`not installed: ${n} in ${targetDir}`);
         for (const s of res.skipped) {
@@ -525,7 +526,7 @@ export async function run(argv, ctx) {
             ? ' Use --force to remove it anyway.' : '';
           say(`kept ${s.name}: ${s.reason} (${s.files.join(', ')}).${remedy}`);
         }
-        changed += res.removed.length + res.recovered.length;
+        changed += res.removed.length + res.cleared.length;
         refused += res.skipped.length;
       }
     }

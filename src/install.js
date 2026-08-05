@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadCatalog } from './catalog.js';
 import {
-  hashFile, readManifestWithIdentity, writeManifest, recordSkill,
+  hashFile, readManifestWithIdentity, writeManifest, recordSkill, clearStaleWrite,
 } from './manifest.js';
 import {
   hasPending, addPending, clearPending, recoverPending, discardStated, stagingPath,
@@ -160,6 +160,9 @@ export async function installSkills(options) {
 async function installUnderLock(byName, {
   targetDir, names, pathway = 'engine', now, force = false,
 }) {
+  // This command holds the directory, so a half-finished manifest write can
+  // only be a killed run's. Left there it refuses every write below.
+  await clearStaleWrite(targetDir);
   // The identity travels from the read to every write this run makes. It is
   // what makes each write a statement about the file this command read, rather
   // than about whatever stands at the path by then.
@@ -167,6 +170,7 @@ async function installUnderLock(byName, {
   const installed = [];
   const skipped = [];
   const recovered = [];
+  const cleared = [];
 
   // An earlier run stated what it was about to write and did not come back.
   // Clearing its leavings before this run inspects the tree is what stops them
@@ -174,6 +178,7 @@ async function installUnderLock(byName, {
   if (hasPending(manifest)) {
     const done = await recoverPending(targetDir, manifest);
     recovered.push(...done.removed);
+    cleared.push(...done.cleared);
     manifest = done.manifest;
     identity = await writeManifest(targetDir, manifest, identity);
   }
@@ -358,5 +363,5 @@ async function installUnderLock(byName, {
   // that installed nothing has not, and the empty manifest it leaves behind is
   // what earlier releases wrote too.
   if (!installed.length) await writeManifest(targetDir, manifest, identity);
-  return { installed, skipped, recovered };
+  return { installed, skipped, recovered, cleared };
 }

@@ -100,7 +100,7 @@ test('an uninstall that removes nothing writes nothing', async () => {
   const target = path.join(await tmp(), 'skills');
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
   assert.deepEqual(res, {
-    removed: [], missing: ['demo-craft'], skipped: [], recovered: [],
+    removed: [], missing: ['demo-craft'], skipped: [], recovered: [], cleared: [],
   });
   assert.ok(!(await exists(target)), 'no directory may be created');
 });
@@ -447,6 +447,21 @@ test('an uninstall keeps a skill another run installed while it worked', async (
   for (const rel of Object.keys(mf.skills['demo-standard'].files)) {
     assert.ok(await exists(path.join(target, 'demo-standard', rel)), `${rel} survives`);
   }
+});
+
+test('a manifest write a killed run left half done does not stop a removal', async () => {
+  // The temporary file is the exclusion on the manifest, so one left behind
+  // refuses every later write — including this command's, which by then has
+  // already deleted the files and can only leave the record claiming them. This
+  // command holds the directory, so that file can only be a killed run's.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  await fs.writeFile(path.join(target, `${MANIFEST_NAME}.tmp`), 'half a manifest');
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+
+  assert.deepEqual(res.removed, ['demo-craft']);
+  assert.ok(!(await exists(target)), 'the record kept up with the deletion');
 });
 
 test('an uninstall clears what an interrupted install left', async () => {

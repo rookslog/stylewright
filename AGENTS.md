@@ -229,7 +229,9 @@ Two consequences for a change you propose here:
   admits one writer, and the rename that commits the manifest also releases it.
   Comparing the identity BEFORE taking it left a window where two runs both saw
   the file they had read and the second rename destroyed the first's record. A
-  random name reopens that window.
+  random name reopens that window. Creating and replacing go through it alike,
+  so the manifest is never half written — and a command that holds the directory
+  clears one a killed run left, because only a killed run could have left it.
 - **A command that has already deleted reconciles rather than refuses.**
   `uninstall` removes files and then takes its entries out of a fresh read, and
   retries on a stale one. Refusing there would leave the manifest claiming files

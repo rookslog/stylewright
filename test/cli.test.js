@@ -233,8 +233,28 @@ test('update clears what an interrupted first install left, and says it changed'
   // Zero, because the command changed the tree. Counting only the skills it
   // wrote told a script that a cleanup which deleted files had failed.
   assert.equal(code, 0, out.text());
-  assert.match(out.text(), /cleared demo-craft\/SKILL\.md/);
+  assert.match(out.text(), /cleared the unfinished install of demo-craft/);
+  assert.match(out.text(), /removed demo-craft\/SKILL\.md/);
   await assert.rejects(fs.access(path.join(target, 'demo-craft')));
+});
+
+test('a cleanup that removed no file is still a change', async () => {
+  // A run killed between its statement and its first copy leaves nothing on
+  // disk. Withdrawing the statement is still a change, and a command that
+  // reported otherwise told a script the cleanup had failed.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('never written\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of demo-craft/);
+  assert.equal((await (await import('../src/manifest.js')).readManifest(target)).pending, undefined);
 });
 
 test('install reports a cleanup that wrote no skill as a change', async () => {
@@ -259,7 +279,8 @@ test('install reports a cleanup that wrote no skill as a change', async () => {
   const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
     { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
   assert.equal(code, 0, out.text());
-  assert.match(out.text(), /cleared demo-standard\/SKILL\.md/);
+  assert.match(out.text(), /cleared the unfinished install of demo-standard/);
+  assert.match(out.text(), /removed demo-standard\/SKILL\.md/);
   assert.match(out.text(), /skipped demo-craft/);
   assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
 });
@@ -280,7 +301,8 @@ test('uninstall reports a cleanup that removed no skill as a change', async () =
   const code = await run(['uninstall', '--all', '--platform', 'claude'],
     { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
   assert.equal(code, 0, out.text());
-  assert.match(out.text(), /cleared demo-craft\/SKILL\.md/);
+  assert.match(out.text(), /cleared the unfinished install of demo-craft/);
+  assert.match(out.text(), /removed demo-craft\/SKILL\.md/);
   await assert.rejects(fs.access(path.join(target, 'demo-craft')));
 });
 
@@ -428,7 +450,8 @@ test('install says what it cleared from an interrupted run', async () => {
   const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
     { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
   assert.equal(code, 0, out.text());
-  assert.match(out.text(), /cleared demo-standard\/SKILL\.md/);
+  assert.match(out.text(), /cleared the unfinished install of demo-standard/);
+  assert.match(out.text(), /removed demo-standard\/SKILL\.md/);
 });
 
 test('an unknown skill is still rejected on install', async () => {

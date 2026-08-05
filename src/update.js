@@ -107,7 +107,7 @@ export async function updateSkills({
 
     const res = (fresh.length || install.pending)
       ? await installSkills({ repoRoot, targetDir: install.targetDir, names: fresh, now, force })
-      : { installed: [], skipped: [], recovered: [] };
+      : { installed: [], skipped: [], recovered: [], cleared: [] };
 
     results.push({ ...install, ...res, orphaned });
   }

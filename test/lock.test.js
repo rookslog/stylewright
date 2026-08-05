@@ -58,6 +58,23 @@ test('a command finds a locked directory and refuses without reading it', async 
   assert.ok(!(await exists(path.join(target, 'demo-standard'))));
 });
 
+test('a target directory that is a link is held, not skipped', async () => {
+  // `lstat` reads the link itself and calls it "not a directory", so the
+  // exclusion was skipped exactly where the work still happens — every other
+  // write in this tool follows the link. A live run holding the real directory
+  // could then have its files deleted underneath it.
+  const real = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: real, names: ['demo-craft'], now: NOW });
+  const linked = path.join(await tmp(), 'skills');
+  await fs.symlink(real, linked);
+  await fs.writeFile(path.join(real, LOCK_NAME), '');
+
+  await assert.rejects(
+    uninstallSkills({ targetDir: linked, names: ['demo-craft'] }),
+    /Another stylewright command is working/);
+  assert.ok(await exists(path.join(real, 'demo-craft', 'SKILL.md')), 'and nothing was removed');
+});
+
 test('a finished command leaves no lock behind', async () => {
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });

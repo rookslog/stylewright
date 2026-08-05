@@ -137,10 +137,16 @@ export async function discardStated(targetDir, name, stated, manifest) {
  */
 export async function recoverPending(targetDir, manifest) {
   const removed = [];
+  const cleared = [];
   let out = manifest;
   for (const [name, stated] of Object.entries(manifest.pending ?? {})) {
     removed.push(...await discardStated(targetDir, name, stated, manifest));
+    // Named whether or not a file went. A run killed between the statement and
+    // its first copy leaves nothing on disk, and withdrawing the statement is
+    // still a change to a tree that a command must not report as no change at
+    // all.
+    cleared.push(name);
     out = clearPending(out, name);
   }
-  return { manifest: out, removed: removed.sort() };
+  return { manifest: out, removed: removed.sort(), cleared: cleared.sort() };
 }

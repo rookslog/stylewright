@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { destinationState } from './tree.js';
+
 
 export const LOCK_NAME = '.stylewright-lock';
 
@@ -29,7 +29,13 @@ export const LOCK_NAME = '.stylewright-lock';
  */
 export async function withTargetLock(targetDir, run, { create = true } = {}) {
   const abs = path.join(targetDir, LOCK_NAME);
-  if (!create && await destinationState(targetDir) !== 'directory') {
+  // `stat`, which follows a link, and not `lstat`. A target directory that is a
+  // symbolic link is one every other write in this tool follows, so a lock that
+  // read the link itself as "not a directory" skipped the exclusion exactly
+  // where the work still happened — and a live run holding the real directory
+  // could then have its files deleted underneath it.
+  const there = await fs.stat(targetDir).then((st) => st.isDirectory(), () => false);
+  if (!create && !there) {
     // Nothing to hold. A directory that does not exist holds no work of ours,
     // and creating one to lock it is how `uninstall` used to leave a skills
     // directory behind on a machine that never had one.

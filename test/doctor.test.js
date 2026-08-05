@@ -111,6 +111,10 @@ test('reports a directory a killed run left locked', async () => {
   const target = path.join(home, '.claude/skills');
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
   await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+  // Killed mid-write, so the manifest is not parseable either. Reading it first
+  // reported that, where the answer the user needs is the name of the file to
+  // remove.
+  await fs.writeFile(path.join(target, '.stylewright-manifest.json'), '');
 
   const findings = await doctor({ repoRoot: REPO, home, cwd: await tmp() });
 

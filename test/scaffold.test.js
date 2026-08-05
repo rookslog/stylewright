@@ -382,9 +382,9 @@ test('a first write refuses a manifest that appeared meanwhile', async () => {
   let raced = false;
   fs.open = async (...args) => {
     // Another first-time install wins the race between the check and the
-    // create. Exclusive creation must refuse rather than replace, because a
-    // replacement orphans the other install's files.
-    if (!raced && String(args[0]) === abs) {
+    // create. A write that found no manifest must refuse one that appeared
+    // since, because replacing it orphans that install's files.
+    if (!raced && String(args[0]) === `${abs}.tmp`) {
       raced = true;
       await fs.writeFile(abs, '{"schema":1,"skills":{"theirs":{"files":{}}}}\n');
     }

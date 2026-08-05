@@ -47,12 +47,14 @@ export async function doctor({ home, cwd }) {
   for (const [platform, byPath] of targetsByAgent({ home, cwd })) {
     const seen = new Map();
     for (const [dir, labels] of byPath) {
-      const manifest = await readManifest(dir);
-      // A run killed while it held the directory leaves this behind, and every
-      // command then refuses. Telling a live run from a dead one is the one
-      // judgement this tool cannot make, so it reports the file and leaves the
-      // decision where it belongs.
-      if (!reported.has(dir) && await destinationState(path.join(dir, LOCK_NAME)) !== 'absent') {
+      // BEFORE the manifest is read. A run killed while it held the directory
+      // leaves this behind, and it may have been killed mid-write, so reading
+      // the manifest first reported a parse error where the answer the user
+      // needs is the name of the file to remove. Telling a live run from a dead
+      // one is the one judgement this tool cannot make, so it reports and
+      // leaves the decision where it belongs.
+      if (await destinationState(path.join(dir, LOCK_NAME)) !== 'absent') {
+        if (reported.has(dir)) continue;
         reported.add(dir);
         findings.push({
           level: 'warn',
@@ -61,7 +63,9 @@ export async function doctor({ home, cwd }) {
             + `Every command refuses until ${path.join(dir, LOCK_NAME)} goes. `
             + 'Remove it when no other run is active.',
         });
+        continue;
       }
+      const manifest = await readManifest(dir);
       // An install that did not come back states what it was about to write.
       // The files it left are reachable, and the next `install` or `uninstall`
       // clears them, but nothing said they were there.
