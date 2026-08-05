@@ -167,6 +167,11 @@ A file that an earlier version installed, and that this version no longer
 ships, is removed. Otherwise it stays on disk with no owner, and `uninstall`
 cannot reach it.
 
+An interrupted run leaves no file without an owner either. The installer records
+the paths it is about to write before it writes them. The next `install`,
+`update`, or `uninstall` clears what the interrupted run left, and names each
+file it clears. Run `doctor` to see whether a directory is waiting for that.
+
 Narrow it with `--skill`, `--platform`, or `--scope`. A skill that this
 repository no longer ships is reported and left alone. Uninstall it by name
 when you want it gone.

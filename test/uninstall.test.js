@@ -5,7 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { installSkills } from '../src/install.js';
 import { uninstallSkills } from '../src/uninstall.js';
-import { readManifest, writeManifest, hashFile, MANIFEST_NAME } from '../src/manifest.js';
+import {
+  readManifest, readManifestWithIdentity, writeManifest, hashFile, MANIFEST_NAME,
+} from '../src/manifest.js';
 import { VERSION } from '../src/version.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
@@ -95,7 +97,9 @@ test('an uninstall that removes nothing writes nothing', async () => {
   // an empty manifest: the tool recording its own absence as installed state.
   const target = path.join(await tmp(), 'skills');
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
-  assert.deepEqual(res, { removed: [], missing: ['demo-craft'], skipped: [] });
+  assert.deepEqual(res, {
+    removed: [], missing: ['demo-craft'], skipped: [], recovered: [],
+  });
   assert.ok(!(await exists(target)), 'no directory may be created');
 });
 
@@ -203,9 +207,9 @@ test('a directory whose name begins with two periods is pruned', async () => {
   const odd = path.join(target, 'demo-craft', '..cache');
   await fs.mkdir(odd);
   await fs.writeFile(path.join(odd, 'file.md'), 'x\n');
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills['demo-craft'].files['..cache/file.md'] = await hashFile(path.join(odd, 'file.md'));
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
   assert.deepEqual(res.removed, ['demo-craft'], JSON.stringify(res.skipped));
@@ -252,4 +256,26 @@ test('a file you edited is kept, and --force removes it', async () => {
   const forced = await uninstallSkills({ targetDir: target, names: ['demo-craft'], force: true });
   assert.deepEqual(forced.removed, ['demo-craft']);
   assert.ok(!(await exists(mine)));
+});
+
+test('an uninstall clears what an interrupted install left', async () => {
+  // This command's promise is that it removes what the installer wrote. The
+  // leavings of an install that did not come back belong to no skill entry, so
+  // this is the only command that can reach them, and it did not.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const orphan = path.join(target, 'demo-standard', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  await writeManifest(target, {
+    ...manifest, pending: { 'demo-standard': ['LICENSE', 'SKILL.md'] },
+  }, identity);
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+
+  assert.deepEqual(res.removed, ['demo-craft']);
+  assert.deepEqual(res.recovered, ['demo-standard/SKILL.md']);
+  assert.ok(!(await exists(path.join(target, 'demo-standard'))));
+  assert.ok(!(await exists(target)), 'and the emptied directory goes with the last skill');
 });

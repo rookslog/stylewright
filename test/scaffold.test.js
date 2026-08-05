@@ -180,10 +180,10 @@ test('an existing skill is refused, and so is a directory holding only your file
 
 test('a manifest keeps the permissions you gave it', async () => {
   const dir = await tmp();
-  await writeManifest(dir, emptyManifest());
+  const identity = await writeManifest(dir, emptyManifest(), null);
   const abs = path.join(dir, MANIFEST_NAME);
   await fs.chmod(abs, 0o600);
-  await writeManifest(dir, emptyManifest());
+  await writeManifest(dir, emptyManifest(), identity);
   assert.equal((await fs.stat(abs)).mode & 0o777, 0o600);
 });
 
@@ -391,7 +391,7 @@ test('a first write refuses a manifest that appeared meanwhile', async () => {
     return original.apply(fs, args);
   };
   try {
-    await assert.rejects(writeManifest(dir, emptyManifest()), /appeared while/);
+    await assert.rejects(writeManifest(dir, emptyManifest(), null), /appeared while/);
   } finally {
     fs.writeFile = original;
   }

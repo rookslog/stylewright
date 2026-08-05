@@ -39,11 +39,27 @@ function targetsByAgent({ home, cwd }) {
 
 export async function doctor({ home, cwd }) {
   const findings = [];
+  const reported = new Set();
 
   for (const [platform, byPath] of targetsByAgent({ home, cwd })) {
     const seen = new Map();
     for (const [dir, labels] of byPath) {
       const manifest = await readManifest(dir);
+      // An install that did not come back states what it was about to write.
+      // The files it left are reachable, and the next `install` or `uninstall`
+      // clears them, but nothing said they were there.
+      for (const name of Object.keys(manifest.pending ?? {})) {
+        const key = `${dir} :: ${name}`;
+        if (reported.has(key)) continue;
+        reported.add(key);
+        findings.push({
+          level: 'warn',
+          code: 'interrupted-install',
+          message: `An install of "${name}" in ${dir} did not finish. `
+            + 'Run `stylewright install` or `stylewright uninstall` against that '
+            + 'directory to clear what it left.',
+        });
+      }
       for (const name of Object.keys(manifest.skills)) {
         if (!seen.has(name)) seen.set(name, new Map());
         seen.get(name).set(dir, labels);

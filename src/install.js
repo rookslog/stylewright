@@ -1,7 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadCatalog } from './catalog.js';
-import { hashFile, readManifest, writeManifest, recordSkill } from './manifest.js';
+import {
+  hashFile, readManifestWithIdentity, writeManifest, recordSkill,
+} from './manifest.js';
+import {
+  hasPending, addPending, clearPending, recoverPending, discardUnrecorded,
+} from './journal.js';
 import {
   walk, pruneEmpty, destinationState, removeAt, ensureDir, reachability,
   ancestorsOf,
@@ -87,6 +92,27 @@ function retiredFiles(recorded, sourceRels) {
   return Object.keys(recorded ?? {}).filter((rel) => !shipping.has(rel)).sort();
 }
 
+/**
+ * What a live run does when its own commit is refused.
+ *
+ * The pending record covers the run that is killed, because a killed run
+ * executes nothing. It does not cover this case: another run that committed in
+ * between has already cleared our statement, so nothing on disk names the files
+ * we copied. The process is still alive and still knows them, so it says so.
+ *
+ * It reads the manifest fresh, because the run that overtook us wrote it, and
+ * its record is what decides which of these paths are now somebody's.
+ */
+async function undo(targetDir, name, rels) {
+  const { manifest, identity } = await readManifestWithIdentity(targetDir);
+  await discardUnrecorded(targetDir, name, rels, manifest);
+  // Ours to withdraw only while it is still ours. A run that overtook us
+  // cleared it already, and clearing it twice would write over that run's
+  // record on a stale reading.
+  if (!manifest.pending?.[name]) return;
+  await writeManifest(targetDir, clearPending(manifest, name), identity);
+}
+
 export async function installSkills({
   repoRoot, targetDir, names, pathway = 'engine', now, force = false,
 }) {
@@ -96,9 +122,23 @@ export async function installSkills({
     if (!byName.has(name)) throw new Error(`Unknown skill "${name}".`);
   }
 
-  let manifest = await readManifest(targetDir);
+  // The identity travels from the read to every write this run makes. It is
+  // what makes each write a statement about the file this command read, rather
+  // than about whatever stands at the path by then.
+  let { manifest, identity } = await readManifestWithIdentity(targetDir);
   const installed = [];
   const skipped = [];
+  const recovered = [];
+
+  // An earlier run stated what it was about to write and did not come back.
+  // Clearing its leavings before this run inspects the tree is what stops them
+  // from reading as the user's own files.
+  if (hasPending(manifest)) {
+    const done = await recoverPending(targetDir, manifest);
+    recovered.push(...done.removed);
+    manifest = done.manifest;
+    identity = await writeManifest(targetDir, manifest, identity);
+  }
 
   for (const name of names) {
     const skill = byName.get(name);
@@ -160,65 +200,90 @@ export async function installSkills({
       }
     }
 
-    // Retire BEFORE copying, not after. A release can replace a directory of
-    // files with a single file of the same name, and `copyFile` cannot write
-    // over a directory. Retiring afterwards made that transition impossible to
-    // complete, with or without --force.
-    //
-    // The checks above already proved each retired path is either gone or the
-    // unmodified file we wrote, so removing it discards nothing the user made.
-    //
-    // Under --force those checks did not run, and --force does not reach this
-    // far. The line it draws: force may destroy what stands in the way of
-    // something it must WRITE, and may not destroy what merely stands where
-    // nothing is going. Nothing is going to a retired path. So a directory the
-    // user built over one keeps its contents, which the manifest never recorded
-    // and this engine never wrote. The same rule uninstall applies, in the
-    // other consumer of removeAt.
-    for (const rel of retired) {
-      // Whose ancestors force did not clear, because it had no reason to. A
-      // deletion through a symbolic link is the defect this whole pull request
-      // opened on, and the retired half is the last place it could still reach.
-      if (ancestorsOf(rel).some((dir) => blockedRetire.has(dir))) continue;
-      const abs = path.join(destDir, rel);
-      const state = await destinationState(abs);
-      // Nothing is written here, so the boundary decides the whole question: a
-      // retired leaf goes only if it is still the thing we wrote. Without
-      // --force `alteredFiles` refused the skill outright, and WITH --force
-      // that check was skipped, so an edit at a retired path was deleted while
-      // the user was forcing an overwrite of some other, still-shipping file.
-      // An empty directory still goes, because removing it destroys nothing.
-      if (state === 'directory') {
-        if ((await fs.readdir(abs)).length) continue;
-      } else if (state === 'file') {
-        if (await hashFile(abs) !== recorded?.[rel]) continue;
-      } else if (state !== 'absent') {
-        continue; // A link. Nothing is written through it either.
+    // Everything below this line changes the tree, and the record of what it
+    // may change goes on disk first. Copying and then recording leaves a window
+    // in which files exist that no record names, and `uninstall` removes only
+    // what the manifest records — so a run interrupted inside that window left
+    // files nothing could reach. The window is now empty of writes.
+    manifest = addPending(manifest, name, rels);
+    identity = await writeManifest(targetDir, manifest, identity);
+
+    try {
+      // Retire BEFORE copying, not after. A release can replace a directory of
+      // files with a single file of the same name, and `copyFile` cannot write
+      // over a directory. Retiring afterwards made that transition impossible to
+      // complete, with or without --force.
+      //
+      // The checks above already proved each retired path is either gone or the
+      // unmodified file we wrote, so removing it discards nothing the user made.
+      //
+      // Under --force those checks did not run, and --force does not reach this
+      // far. The line it draws: force may destroy what stands in the way of
+      // something it must WRITE, and may not destroy what merely stands where
+      // nothing is going. Nothing is going to a retired path. So a directory the
+      // user built over one keeps its contents, which the manifest never recorded
+      // and this engine never wrote. The same rule uninstall applies, in the
+      // other consumer of removeAt.
+      for (const rel of retired) {
+        // Whose ancestors force did not clear, because it had no reason to. A
+        // deletion through a symbolic link is the defect this whole pull request
+        // opened on, and the retired half is the last place it could still reach.
+        if (ancestorsOf(rel).some((dir) => blockedRetire.has(dir))) continue;
+        const abs = path.join(destDir, rel);
+        const state = await destinationState(abs);
+        // Nothing is written here, so the boundary decides the whole question: a
+        // retired leaf goes only if it is still the thing we wrote. Without
+        // --force `alteredFiles` refused the skill outright, and WITH --force
+        // that check was skipped, so an edit at a retired path was deleted while
+        // the user was forcing an overwrite of some other, still-shipping file.
+        // An empty directory still goes, because removing it destroys nothing.
+        if (state === 'directory') {
+          if ((await fs.readdir(abs)).length) continue;
+        } else if (state === 'file') {
+          if (await hashFile(abs) !== recorded?.[rel]) continue;
+        } else if (state !== 'absent') {
+          continue; // A link. Nothing is written through it either.
+        }
+        await removeAt(abs);
+        await pruneEmpty(path.dirname(abs), destDir);
       }
-      await removeAt(abs);
-      await pruneEmpty(path.dirname(abs), destDir);
-    }
 
-    const files = {};
-    for (const rel of rels) {
-      const from = path.join(skill.dir, rel);
-      const to = path.join(destDir, rel);
-      // Clear anything `copyFile` cannot write over or would write THROUGH. A
-      // plain file it overwrites in place; a link it follows, out of the tree.
-      // Without --force the checks above refused every one of these, so only
-      // the emptied leftovers of retirement reach here. With --force the user
-      // asked to overwrite whatever sits in the way.
-      const state = await destinationState(to);
-      if (state !== 'absent' && state !== 'file') await removeAt(to);
-      await ensureDir(path.dirname(to), destDir);
-      await fs.copyFile(from, to);
-      files[rel] = await hashFile(to);
-    }
+      const files = {};
+      for (const rel of rels) {
+        const from = path.join(skill.dir, rel);
+        const to = path.join(destDir, rel);
+        // Clear anything `copyFile` cannot write over or would write THROUGH. A
+        // plain file it overwrites in place; a link it follows, out of the tree.
+        // Without --force the checks above refused every one of these, so only
+        // the emptied leftovers of retirement reach here. With --force the user
+        // asked to overwrite whatever sits in the way.
+        const state = await destinationState(to);
+        if (state !== 'absent' && state !== 'file') await removeAt(to);
+        await ensureDir(path.dirname(to), destDir);
+        await fs.copyFile(from, to);
+        files[rel] = await hashFile(to);
+      }
 
-    manifest = recordSkill(manifest, { name, tier: skill.tier, pathway, files, now });
-    installed.push(name);
+      // The commit. It records the files and withdraws the statement about them
+      // in one write, so no reader ever sees both, and a run that dies before
+      // it leaves the statement standing for the next one.
+      manifest = clearPending(
+        recordSkill(manifest, { name, tier: skill.tier, pathway, files, now }), name);
+      identity = await writeManifest(targetDir, manifest, identity);
+      installed.push(name);
+    } catch (err) {
+      // The original failure is the one the caller needs. A failure inside the
+      // undo leaves the pending statement on disk, which is exactly the state
+      // the next command recovers from, so it is not worth reporting over the
+      // error that caused it.
+      await undo(targetDir, name, rels).catch(() => {});
+      throw err;
+    }
   }
 
-  await writeManifest(targetDir, manifest);
-  return { installed, skipped };
+  // A run that committed each skill has already written this manifest. A run
+  // that installed nothing has not, and the empty manifest it leaves behind is
+  // what earlier releases wrote too.
+  if (!installed.length) await writeManifest(targetDir, manifest, identity);
+  return { installed, skipped, recovered };
 }

@@ -101,6 +101,19 @@ function checkShape(manifest, targetDir) {
       if (typeof hash !== 'string') refuse(`"${name}" records no hash for "${rel}"`);
     }
   }
+  // `pending` is the record a run writes BEFORE it copies, and recovery reads
+  // it as a list of files to delete. That makes it the same kind of thing the
+  // `skills` map is — a delete instruction executed verbatim — so it is held to
+  // the same shape rule rather than trusted for being ours.
+  if (manifest.pending !== undefined) {
+    if (!isObject(manifest.pending)) refuse('"pending" is not an object');
+    for (const [name, rels] of Object.entries(manifest.pending)) {
+      if (!Array.isArray(rels)) refuse(`"pending" lists no paths for "${name}"`);
+      for (const rel of rels) {
+        if (typeof rel !== 'string') refuse(`"pending" lists a path that is not a string for "${name}"`);
+      }
+    }
+  }
   return manifest;
 }
 
@@ -134,20 +147,49 @@ function checkContained(manifest, targetDir) {
       }
     }
   }
+  for (const [name, rels] of Object.entries(manifest.pending ?? {})) {
+    if (!nameContained(name)) {
+      throw new Error(
+        `Manifest in ${targetDir} awaits a skill name that is not a directory name: "${name}".`);
+    }
+    for (const rel of rels) {
+      if (!contained(rel)) {
+        throw new Error(
+          `Manifest in ${targetDir} awaits a path outside "${name}": "${rel}".`);
+      }
+    }
+  }
   return manifest;
 }
 
-export async function readManifest(targetDir) {
+/**
+ * The manifest, and the identity of the file it came out of.
+ *
+ * A command that writes has to know which file it read, because the decision
+ * between creating and replacing belongs to that reading and not to a fresh
+ * look. Taking a fresh look is what let two first-time installs into one
+ * directory both succeed: the second read absence, the first created the
+ * manifest, and the second then classified the file as existing and replaced
+ * it, recording only its own skills while the first install's files stayed on
+ * disk with nothing naming them.
+ *
+ * `null` means the read found no manifest. Otherwise it is the device and
+ * inode of the file whose bytes were parsed — taken from the open handle, so
+ * it names what was read and not what stands at the path now.
+ */
+export async function readManifestWithIdentity(targetDir) {
   const abs = path.join(targetDir, MANIFEST_NAME);
-  if (await regularOrAbsent(abs, targetDir) === 'absent') return emptyManifest();
+  const absent = { manifest: emptyManifest(), identity: null };
+  if (await regularOrAbsent(abs, targetDir) === 'absent') return absent;
   let raw;
+  let identity;
   let fh;
   try {
     fh = await fs.open(abs, 'r');
   } catch (err) {
     // The file was there a moment ago and is gone now. Treat it as absent
     // rather than as a crash, which is what a caller would see otherwise.
-    if (err.code === 'ENOENT') return emptyManifest();
+    if (err.code === 'ENOENT') return absent;
     throw err;
   }
   try {
@@ -162,10 +204,46 @@ export async function readManifest(targetDir) {
         `Manifest in ${targetDir} changed while this command was reading it. Run again.`);
     }
     raw = await fh.readFile('utf8');
+    identity = { dev: byHandle.dev, ino: byHandle.ino };
   } finally {
     await fh.close();
   }
-  return checkContained(checkShape(JSON.parse(raw), targetDir), targetDir);
+  return {
+    manifest: checkContained(checkShape(JSON.parse(raw), targetDir), targetDir),
+    identity,
+  };
+}
+
+export async function readManifest(targetDir) {
+  return (await readManifestWithIdentity(targetDir)).manifest;
+}
+
+/** Two readings of the manifest path that name the same file. */
+function sameFile(a, b) {
+  return a !== null && b !== null && a.dev === b.dev && a.ino === b.ino;
+}
+
+async function identityAt(abs, targetDir) {
+  if (await regularOrAbsent(abs, targetDir) === 'absent') return null;
+  const st = await fs.lstat(abs).catch((err) => {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  });
+  return st?.isFile() ? { dev: st.dev, ino: st.ino } : null;
+}
+
+/**
+ * What goes on disk: the release stamp, and no empty pending record.
+ *
+ * `pending` names files a run may have created and not yet recorded, so an
+ * empty one names nothing. Dropping the key here rather than at each writer
+ * keeps a finished run's manifest identical to the one the release before this
+ * wrote, which is what the conformance suite compares.
+ */
+function stamped(manifest) {
+  const out = { ...manifest, stylewrightVersion: VERSION };
+  if (!out.pending || Object.keys(out.pending).length === 0) delete out.pending;
+  return out;
 }
 
 /**
@@ -174,11 +252,23 @@ export async function readManifest(targetDir) {
  * can forget: install stamped the manifest and uninstall did not, so a partial
  * uninstall left the file claiming a release that had not touched it.
  */
-export async function writeManifest(targetDir, manifest) {
+export async function writeManifest(targetDir, manifest, expected) {
+  // The third argument is what the command read, and there is no default for
+  // it. A default would be the defect: `writeManifest` classified the path
+  // afresh, which is a different question from "is this still the file I read",
+  // and every caller inherited the wrong answer. A new caller now has to say.
+  if (expected === undefined) {
+    throw new TypeError(
+      'writeManifest needs the manifest identity its caller read. Pass null when the read found none.');
+  }
   await fs.mkdir(targetDir, { recursive: true });
   const abs = path.join(targetDir, MANIFEST_NAME);
-  const existed = await regularOrAbsent(abs, targetDir) === 'file';
-  const body = `${JSON.stringify({ ...manifest, stylewrightVersion: VERSION }, null, 2)}\n`;
+  const body = `${JSON.stringify(stamped(manifest), null, 2)}\n`;
+  // Before either branch, and on both of them: a manifest that is a link or a
+  // directory is refused whatever the caller read. Classifying only on the way
+  // to a replacement would have left the creating branch writing at a path
+  // nothing had inspected.
+  const observed = await identityAt(abs, targetDir);
 
   // Creating and replacing are different operations, and one mechanism cannot
   // be both. `wx` creates and refuses an existing destination. A rename
@@ -190,13 +280,28 @@ export async function writeManifest(targetDir, manifest) {
   // correctly and does not exist on every filesystem, and the skill files are
   // already copied by the time this runs, so a target that rejects links would
   // have left every first install on disk with no manifest able to remove it.
-  if (!existed) {
+  //
+  // WHICH operation this is comes from `expected`, not from the path. A read
+  // that found nothing creates, and it creates whatever appeared since.
+  if (expected === null) {
     await fs.writeFile(abs, body, { flag: 'wx' }).catch((err) => {
       if (err.code !== 'EEXIST') throw err;
       throw new Error(
         `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
     });
-    return;
+    return identityAt(abs, targetDir);
+  }
+
+  // Replacing, and only the file this command read. Another run that committed
+  // in between holds a record of files on disk, and replacing it would strand
+  // every one of them. The window between this check and the rename below is
+  // not closed by it: `rename` is atomic and unconditional, and POSIX offers no
+  // compare-and-swap. What closes the damage is the ORDER — a run writes its
+  // pending record before it copies anything, so a run that loses here has
+  // nothing on disk to strand.
+  if (!sameFile(observed, expected)) {
+    throw new Error(
+      `Manifest in ${targetDir} changed while this command was running. Run again.`);
   }
 
   // Replacing. Write beside it and rename over it, so no reader sees half a
@@ -220,6 +325,26 @@ export async function writeManifest(targetDir, manifest) {
     await fs.rm(tmp, { force: true });
     throw err;
   }
+  return identityAt(abs, targetDir);
+}
+
+/**
+ * Remove the manifest, and only the file the command read.
+ *
+ * `uninstall` deletes it when the last skill goes, and it deleted whatever
+ * stood at the path. A manifest another run created after this one read the
+ * directory names that run's files, so removing it orphans them — the same
+ * defect as replacing it, through the other door.
+ */
+export async function removeManifest(targetDir, expected) {
+  const abs = path.join(targetDir, MANIFEST_NAME);
+  const observed = await identityAt(abs, targetDir);
+  if (observed === null) return; // Already gone. Nothing to remove and nothing to refuse.
+  if (!sameFile(observed, expected)) {
+    throw new Error(
+      `Manifest in ${targetDir} changed while this command was running. Run again.`);
+  }
+  await fs.rm(abs, { force: true });
 }
 
 export function recordSkill(manifest, { name, tier, pathway, files, now }) {

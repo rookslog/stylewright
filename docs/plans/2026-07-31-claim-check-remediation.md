@@ -94,6 +94,15 @@ skill tree and commit it, or write a journal and recover from it on the next
 run. Then inject a failure at each boundary and prove the recovery. Tests that
 surround the current ordering measure the current ordering.
 
+**Settled 2026-08-05 (issue #49).** The journal won, and it lives in the
+manifest rather than beside it. A run states the paths it is about to write
+under `pending`, copies, and then records the files and withdraws the statement
+in one write. Staging the tree would have had to commit each skill by rename,
+which cannot merge with the retirement pass and leaves a staging directory that
+needs a journal of its own. The manifest write that commits a skill also carries
+the identity the command read, so the run that loses a race refuses before it
+copies. Recovery is proved at four boundaries and against a real `SIGKILL`.
+
 ### Cluster 2: grounding coverage and grounding truth
 
 Severity: critical for `D1`, major for `D2`.

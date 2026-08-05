@@ -278,11 +278,11 @@ test('uninstall accepts a skill this repository no longer ships', async () => {
     { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
 
   // Rename the recorded entry to a skill the catalog does not know.
-  const { readManifest, writeManifest } = await import('../src/manifest.js');
-  const m = await readManifest(target);
+  const { readManifestWithIdentity, writeManifest } = await import('../src/manifest.js');
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills.withdrawn = m.skills['demo-craft'];
   delete m.skills['demo-craft'];
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
   await fs.rename(path.join(target, 'demo-craft'), path.join(target, 'withdrawn'));
 
   const out = capture();
@@ -330,6 +330,30 @@ test('a collision still stops an install', async () => {
     () => run(['install', '--skill', 'twinned', '--platform', 'claude'],
       { home, cwd: '/c', repoRoot: repo, stdout: capture(), now: NOW }),
     /twinned/);
+});
+
+test('install says what it cleared from an interrupted run', async () => {
+  // A command that deletes files says which ones. Clearing them silently is the
+  // same defect as leaving them: the user cannot audit what the tool did.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const { readManifestWithIdentity, writeManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'demo-standard', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  await writeManifest(target, {
+    ...manifest, pending: { 'demo-standard': ['SKILL.md'] },
+  }, identity);
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared demo-standard\/SKILL\.md/);
 });
 
 test('an unknown skill is still rejected on install', async () => {
@@ -383,11 +407,11 @@ test('update accepts a withdrawn skill name that a manifest records', async () =
   const target = path.join(home, '.claude', 'skills');
   await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
     { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
-  const { readManifest, writeManifest } = await import('../src/manifest.js');
-  const m = await readManifest(target);
+  const { readManifestWithIdentity, writeManifest } = await import('../src/manifest.js');
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills.withdrawn = m.skills['demo-craft'];
   delete m.skills['demo-craft'];
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const out = capture();
   const code = await run(['update', '--skill', 'withdrawn'], {

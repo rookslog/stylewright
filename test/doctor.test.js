@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { installSkills } from '../src/install.js';
 import { doctor } from '../src/doctor.js';
+import { readManifestWithIdentity, writeManifest } from '../src/manifest.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -80,6 +81,26 @@ test('a single claude install is not a duplicate, despite the cowork alias', asy
     now: NOW,
   });
   assert.deepEqual(await doctor({ repoRoot: REPO, home, cwd }), []);
+});
+
+test('reports an install that did not finish, once per directory', async () => {
+  // The files an interrupted install left are reachable and the next install or
+  // uninstall clears them. Until one runs, nothing said they were there — and
+  // `doctor` is the command whose whole job is to say what is on disk.
+  const home = await tmp();
+  const target = path.join(home, '.claude/skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  await writeManifest(target, {
+    ...manifest, pending: { 'demo-craft': ['SKILL.md'] },
+  }, identity);
+
+  const findings = await doctor({ repoRoot: REPO, home, cwd: await tmp() });
+
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.equal(findings[0].code, 'interrupted-install');
+  assert.equal(findings[0].level, 'warn');
+  assert.match(findings[0].message, /demo-craft/);
 });
 
 test('does not report a duplicate when cwd equals home', async () => {

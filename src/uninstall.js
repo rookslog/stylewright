@@ -1,6 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { hashFile, readManifest, writeManifest, MANIFEST_NAME } from './manifest.js';
+import {
+  hashFile, readManifestWithIdentity, writeManifest, removeManifest,
+} from './manifest.js';
+import { hasPending, recoverPending } from './journal.js';
 import { pruneEmpty, removeAt, destinationState, reachability } from './tree.js';
 
 /**
@@ -57,10 +60,23 @@ async function altered(destDir, files) {
 }
 
 export async function uninstallSkills({ targetDir, names, force = false }) {
-  const manifest = await readManifest(targetDir);
+  let { manifest, identity } = await readManifestWithIdentity(targetDir);
   const removed = [];
   const missing = [];
   const skipped = [];
+  const recovered = [];
+
+  // An install that did not come back left files it had stated it would write.
+  // This command's promise is that it removes what the installer wrote, so the
+  // leavings of a half-finished install are its to clear — and clearing them is
+  // the only way anything can, because they belong to no skill entry.
+  if (hasPending(manifest)) {
+    const done = await recoverPending(targetDir, manifest);
+    recovered.push(...done.removed);
+    manifest = done.manifest;
+    identity = await writeManifest(targetDir, manifest, identity);
+  }
+
   const skills = { ...manifest.skills };
 
   for (const name of names) {
@@ -125,18 +141,18 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
   // Removing nothing writes nothing. `writeManifest` creates the directory it
   // writes into, so uninstalling a skill from a machine that never had one
   // used to leave behind a skills directory and an empty manifest.
-  if (!removed.length) return { removed, missing, skipped };
+  if (!removed.length) return { removed, missing, skipped, recovered };
 
   // The manifest is a file the installer wrote, so a full uninstall must take
   // it too. Leaving it behind with an empty skills map contradicts the promise
   // that uninstall removes only, and all of, what the installer wrote.
   if (Object.keys(skills).length === 0) {
-    await fs.rm(path.join(targetDir, MANIFEST_NAME), { force: true });
+    await removeManifest(targetDir, identity);
     // Only when nothing else is there. A hand-written skill in the same
     // directory keeps it alive, and that is correct.
     await fs.rmdir(targetDir).catch(() => {});
   } else {
-    await writeManifest(targetDir, { ...manifest, skills });
+    await writeManifest(targetDir, { ...manifest, skills }, identity);
   }
-  return { removed, missing, skipped };
+  return { removed, missing, skipped, recovered };
 }

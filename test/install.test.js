@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 import { installSkills } from '../src/install.js';
-import { readManifest, writeManifest, hashFile, MANIFEST_NAME } from '../src/manifest.js';
+import {
+  readManifest, readManifestWithIdentity, writeManifest, hashFile, MANIFEST_NAME,
+} from '../src/manifest.js';
 import { VERSION } from '../src/version.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
@@ -125,9 +128,9 @@ test('removes a file the previous version installed and this one does not', asyn
   const retired = path.join(target, 'demo-craft', 'references', 'gone.md');
   await fs.mkdir(path.dirname(retired), { recursive: true });
   await fs.writeFile(retired, 'from an older release\n');
-  const manifest = await readManifest(target);
+  const { manifest, identity } = await readManifestWithIdentity(target);
   manifest.skills['demo-craft'].files['references/gone.md'] = await hashFile(retired);
-  await writeManifest(target, manifest);
+  await writeManifest(target, manifest, identity);
 
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
@@ -184,11 +187,11 @@ test('a directory of retired files gives way to a file of the same name', async 
   await fs.rm(dir, { force: true });
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'part.md'), 'from an older release\n');
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   delete m.skills['demo-craft'].files['SKILL.md'];
   m.skills['demo-craft'].files['SKILL.md/part.md'] =
     await hashFile(path.join(dir, 'part.md'));
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
@@ -284,9 +287,9 @@ test('a DIRECTORY at a retired path stops nothing, and keeps its contents', asyn
   const retired = path.join(target, 'demo-craft', 'references', 'gone.md');
   await fs.mkdir(retired, { recursive: true });
   await fs.writeFile(path.join(retired, 'inside.md'), 'user content\n');
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills['demo-craft'].files['references/gone.md'] = 'f'.repeat(64);
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
@@ -339,10 +342,10 @@ test('a file a previous release shipped gives way to a directory of the same nam
   const dir = path.join(target, 'demo-craft', 'references');
   await fs.rm(dir, { recursive: true, force: true });
   await fs.writeFile(dir, 'from an older release\n');
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   delete m.skills['demo-craft'].files['references/guide.md'];
   m.skills['demo-craft'].files.references = await hashFile(dir);
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
@@ -410,9 +413,9 @@ test('a symlink above a RETIRED path is refused, and nothing is deleted through 
   await fs.symlink(outsideDir, link);
 
   // An older release shipped extra/gone.md. This one does not.
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills['demo-craft'].files['extra/gone.md'] = await hashFile(outsideFile);
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
@@ -432,9 +435,9 @@ test('force keeps an EDITED file at a retired path', async () => {
 
   const retired = path.join(target, 'demo-craft', 'notes.md');
   await fs.writeFile(retired, 'my edit\n');
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills['demo-craft'].files['notes.md'] = 'f'.repeat(64); // recorded, and not this content
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
@@ -455,9 +458,9 @@ test('force keeps a user file blocking only a retired path', async () => {
 
   const mine = path.join(target, 'demo-craft', 'extra');
   await fs.writeFile(mine, 'my own file\n');
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills['demo-craft'].files['extra/gone.md'] = 'f'.repeat(64);
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
@@ -482,9 +485,9 @@ test('force does not delete through OR clear a link above a retired path', async
   await fs.writeFile(outsideFile, 'not ours\n');
   const link = path.join(target, 'demo-craft', 'extra');
   await fs.symlink(outsideDir, link);
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills['demo-craft'].files['extra/gone.md'] = await hashFile(outsideFile);
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const res = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
@@ -523,9 +526,9 @@ test('a deeper component below a blocker is never inspected', async () => {
   // three callers that each have to remember.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
-  const m = await readManifest(target);
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills['demo-craft'].files['references/deep/file.md'] = 'f'.repeat(64);
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
   const refs = path.join(target, 'demo-craft', 'references');
   await fs.rm(refs, { recursive: true, force: true });
   await fs.symlink(refs, refs);
@@ -557,4 +560,210 @@ test('a name in both tiers stops the install rather than picking one', async () 
   // Nothing landed, and no manifest records one of the two as the skill asked
   // for.
   assert.deepEqual(await fs.readdir(target), []);
+});
+
+// --- The record goes on disk before the files do -------------------------
+
+test('the record names every path before the first byte is copied', async () => {
+  // The ordering IS the fix. Copying first and recording afterwards leaves a
+  // window in which files exist that no record names, and `uninstall` reaches
+  // only what the manifest records.
+  const target = await tmp();
+  const original = fs.copyFile;
+  let atFirstCopy = null;
+  fs.copyFile = async (...args) => {
+    atFirstCopy ??= await readManifest(target);
+    return original.apply(fs, args);
+  };
+  try {
+    await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  } finally {
+    fs.copyFile = original;
+  }
+
+  assert.deepEqual(atFirstCopy.pending, {
+    'demo-craft': ['LICENSE', 'SKILL.md', 'references/guide.md'],
+  });
+  assert.deepEqual(atFirstCopy.skills, {}, 'and nothing is recorded as installed yet');
+});
+
+test('a finished install leaves no statement behind', async () => {
+  // The manifest a successful run writes is the one earlier releases wrote. A
+  // leftover key would sit in every manifest and in the conformance suite's
+  // comparison, and it would give the next run a map with no territory.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const raw = await fs.readFile(path.join(target, MANIFEST_NAME), 'utf8');
+  assert.doesNotMatch(raw, /pending/);
+  assert.equal((await readManifest(target)).pending, undefined);
+});
+
+test('a run killed after a copy leaves nothing the next command cannot reach', async () => {
+  // A real kill, in a child process: no catch runs, no finally runs, and the
+  // undo this module performs in its own process is skipped entirely. This is
+  // the failure the deferred review finding named, and the only thing that
+  // answers it is a record written before the copy.
+  const target = await tmp();
+  const script = `
+    import fsp from 'node:fs/promises';
+    import { installSkills } from ${JSON.stringify(new URL('../src/install.js', import.meta.url).href)};
+    const real = fsp.copyFile;
+    fsp.copyFile = async (...args) => {
+      await real.apply(fsp, args);
+      process.kill(process.pid, 'SIGKILL');
+    };
+    await installSkills({
+      repoRoot: ${JSON.stringify(REPO)},
+      targetDir: ${JSON.stringify(target)},
+      names: ['demo-craft'],
+      now: ${JSON.stringify(NOW)},
+    });
+  `;
+  const died = await new Promise((resolve) => {
+    execFile(process.execPath, ['--input-type=module', '-e', script], (err) => resolve(err));
+  });
+  assert.equal(died?.signal, 'SIGKILL', 'the run must die rather than return');
+
+  const left = await readManifest(target);
+  assert.deepEqual(left.skills, {}, 'the killed run recorded no skill');
+  assert.deepEqual(left.pending, {
+    'demo-craft': ['LICENSE', 'SKILL.md', 'references/guide.md'],
+  });
+  assert.ok(await exists(path.join(target, 'demo-craft', 'LICENSE')), 'and it left a file');
+
+  // A later command with nothing to do with the interrupted skill clears it.
+  // Nothing about the recovery depends on installing that skill again.
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
+  });
+  assert.deepEqual(res.recovered, ['demo-craft/LICENSE']);
+  assert.ok(!(await exists(path.join(target, 'demo-craft'))));
+  assert.deepEqual(Object.keys((await readManifest(target)).skills), ['demo-standard']);
+});
+
+test('a recovered half-install is completed by the next install', async () => {
+  // Recovery deletes a fragment and keeps the record that names it, so the file
+  // comes back rather than being reported as one the user edited.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const skillFile = path.join(target, 'demo-craft', 'SKILL.md');
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  await fs.writeFile(skillFile, 'the first half of a copy\n');
+  await writeManifest(target, {
+    ...manifest,
+    pending: { 'demo-craft': Object.keys(manifest.skills['demo-craft'].files) },
+  }, identity);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+
+  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
+  assert.deepEqual(res.recovered, ['demo-craft/SKILL.md']);
+  const mf = await readManifest(target);
+  assert.equal(await hashFile(skillFile), mf.skills['demo-craft'].files['SKILL.md']);
+});
+
+// --- Two runs in one directory -------------------------------------------
+
+test('a first-time install that loses the race refuses before it copies', async () => {
+  // The reported defect: `writeManifest` decided between creating and replacing
+  // from a fresh classification, so the loser replaced the winner's manifest and
+  // the winner's files were left with nothing naming them. The decision now
+  // comes from the read, and the refusal arrives before this run has written
+  // anything at all.
+  const target = await tmp();
+  const original = fs.mkdir;
+  let raced = false;
+  // The other run arrives after this one read the directory and before this one
+  // looks at the path again. Injecting it any later would be a test of the
+  // classification rather than of the read the decision now comes from.
+  fs.mkdir = async (...args) => {
+    if (!raced && String(args[0]) === target) {
+      raced = true;
+      await installSkills({
+        repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
+      });
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /appeared while this command was writing it/);
+  } finally {
+    fs.mkdir = original;
+  }
+
+  assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'the loser copied nothing');
+  const mf = await readManifest(target);
+  assert.deepEqual(Object.keys(mf.skills), ['demo-standard']);
+  assert.equal(mf.pending, undefined);
+  assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
+});
+
+test('an install whose commit is refused leaves no unrecorded file', async () => {
+  // The other side of the same race, and the one the pending record cannot
+  // answer: the run that overtakes this one clears the statement, so nothing on
+  // disk names these files any more. This process is alive and still knows
+  // them, so it removes them itself.
+  const target = await tmp();
+  const original = fs.copyFile;
+  let raced = false;
+  // Another run arrives while this one is copying its last file, and finishes.
+  fs.copyFile = async (...args) => {
+    if (!raced && String(args[0]).endsWith('guide.md')) {
+      raced = true;
+      await installSkills({
+        repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
+      });
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed while this command was running/);
+  } finally {
+    fs.copyFile = original;
+  }
+
+  const mf = await readManifest(target);
+  assert.deepEqual(Object.keys(mf.skills), ['demo-standard']);
+  assert.equal(mf.pending, undefined, 'and it withdraws its own statement');
+  assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'nothing of the refused run is left');
+  assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
+});
+
+test('a run whose files another run cleared still leaves nothing behind', async () => {
+  // Two installs in one directory at one moment, at the worst interleaving: the
+  // second reads the first's statement, cannot tell a dead run from a live one,
+  // and clears the files the first is still writing. The first fails — the
+  // message is whatever the collision produced — and the guarantee that has to
+  // survive is the one about the tree, not the one about the error.
+  const target = await tmp();
+  const original = fs.copyFile;
+  let raced = false;
+  fs.copyFile = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced) {
+      raced = true;
+      await installSkills({
+        repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
+      });
+    }
+    return result;
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }));
+  } finally {
+    fs.copyFile = original;
+  }
+
+  const mf = await readManifest(target);
+  assert.deepEqual(Object.keys(mf.skills), ['demo-standard']);
+  assert.equal(mf.pending, undefined);
+  assert.ok(!(await exists(path.join(target, 'demo-craft'))));
+  assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
 });

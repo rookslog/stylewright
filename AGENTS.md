@@ -189,6 +189,19 @@ Two consequences for a change you propose here:
 - A file this tool creates is written with the `wx` flag. It refuses an existing
   path rather than truncating it, and it does not follow a link. A file this
   tool replaces is written beside its destination and renamed over it.
+- **The record goes on disk before the file does.** `installSkills` states the
+  paths it is about to write in the manifest, under `pending`, and copies after.
+  Every file the engine can create is therefore named by a record that reached
+  disk first, whatever kills the run, and the next command clears what an
+  interrupted one left. A change that moves a write ahead of its record reopens
+  issue #49: an orphan no command can reach. `pending` is read as a list of
+  files to delete, so it is validated exactly as the `skills` map is.
+- **A write to the manifest answers to the read that preceded it.**
+  `writeManifest` takes the identity that `readManifestWithIdentity` returned,
+  and there is no default for it. Classifying the path afresh is a different
+  question, and it is the one that let two first-time installs each record half
+  the tree. A run that loses that comparison refuses, and the ordering above is
+  what makes the refusal harmless: it has copied nothing yet.
 - A check and the call it guards are two steps, so the file is identified by the
   open handle and not by the path. The scaffold records what it created from the
   handle, and the manifest read compares the handle against the path before it

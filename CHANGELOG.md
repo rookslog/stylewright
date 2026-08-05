@@ -16,6 +16,22 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   place. `new-skill` refuses a name the other tier already holds. `uninstall`
   reports the collision and carries on, because it answers what a target has
   installed and the manifest is the only thing that knows.
+- **An install records what it is about to write before it writes it.** The
+  engine copied every file and wrote one record at the end, so a run that was
+  killed in between left files on disk that no record named. `uninstall` removes
+  what the manifest records, so nothing could reach them. A run now states which
+  paths it will write, commits that statement to the manifest, and copies after.
+  The next `install`, `update`, or `uninstall` clears what an interrupted run
+  left, and says which files it cleared. `doctor` reports the directory until
+  one of them runs.
+- **A manifest write answers to the read that preceded it.** `writeManifest`
+  chose between creating and replacing by classifying the path afresh, which is
+  a different question from whether the file is still the one the command read.
+  Two first-time installs into one directory therefore both succeeded, and the
+  second replaced the first's record while the first's files stayed on disk. The
+  decision now comes from the read, and a manifest that appeared or changed
+  since is refused rather than replaced. The same rule governs the removal of
+  the manifest when the last skill goes.
 
 ## 0.2.1 — 2026-08-04
 
