@@ -24,7 +24,19 @@ export function emptyManifest() {
  * verbatim, and a recorded `..` took the whole skills directory.
  */
 function contained(rel) {
-  if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel)) return false;
+  if (typeof rel !== 'string' || rel === '') return false;
+  // A manifest travels between machines, so a key carries one separator: `/`.
+  // `walk` records it, and every check here reads it. Where `path.sep` is `\`,
+  // a backslash key would be one component to these checks and two to
+  // `path.join`, so `..\victim` walks out of the tree with no `..` component
+  // to find. The colon is Win32's other resolver hazard: `C:victim` is
+  // relative to another drive's working directory, and `SKILL.md:payload` is
+  // an alternate data stream on SKILL.md. Every one of these spellings means
+  // something different to the one resolver that treats it specially, so all
+  // of them are refused rather than translated — on every platform, because a
+  // manifest written on one may be read on another.
+  if (rel.includes('\\') || rel.includes(':')) return false;
+  if (path.posix.isAbsolute(rel)) return false;
   // **The key must already be in normal form.** Every consumer joins the RAW
   // key, so a key that normalization would change is a key whose text and whose
   // effect disagree — and every containment escape found on this pull request
@@ -36,32 +48,26 @@ function contained(rel) {
   // Four review rounds went into rejecting those one shape at a time, and each
   // round found another shape. This states the rule instead: the recorded text
   // is the resolved path, or the manifest is refused.
-  //
-  // It settles the separator question too. Where `path.sep` is `\`, the key
-  // `link/file` is not in normal form, so it is refused rather than read as one
-  // component by a check that splits on `path.sep` and as two by `path.join` —
-  // which would walk a symlinked `link` that no ancestor check had inspected.
-  const norm = path.normalize(rel);
+  const norm = path.posix.normalize(rel);
   if (norm !== rel) return false;
   // Normal form is not by itself containment. `..`, `.` and `a/` are all
   // already normal, and none of them names a file below this directory.
-  if (norm.split(path.sep).includes('..')) return false;
-  if (norm === '.' || norm.endsWith(path.sep)) return false;
+  const parts = norm.split('/');
+  if (parts.includes('..')) return false;
+  if (norm === '.' || norm.endsWith('/')) return false;
   // Normal form is not enough for a second reason: `path.normalize` is not the
   // resolver the filesystem uses. Win32 strips trailing spaces and periods from
-  // a path component and `path.normalize` keeps them, so a key of `.. \victim`
+  // a path component and `path.normalize` keeps them, so a key of `.. /victim`
   // is already normal, has no component equal to `..`, and is still resolved
   // through the parent directory. Any component whose spelling would be trimmed
   // is ambiguous between our check and the resolver, so it is refused rather
-  // than interpreted. [REPORTED — the Win32 trimming rule is documented
-  // behaviour; this repository has never run its tests on Windows.]
-  return !norm.split(path.sep).some((part) => /[ .]+$/.test(part));
+  // than interpreted.
+  return !parts.some((part) => /[ .]+$/.test(part));
 }
 
 /** A skill name is one path segment, because it is joined as one. */
 function nameContained(name) {
-  return contained(name) && !name.includes('/') && !name.includes(path.sep)
-    && name !== '.';
+  return contained(name) && !name.includes('/') && name !== '.';
 }
 
 /**

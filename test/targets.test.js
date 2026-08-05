@@ -1,18 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { resolveTarget, PLATFORMS } from '../src/targets.js';
 
 const home = '/home/u';
 const cwd = '/work/proj';
 
 test('resolves every documented platform and scope pair', () => {
+  // Expectations are built with path.join because resolveTarget names a real
+  // directory on THIS machine, in the platform's own separator. Manifest keys
+  // are the paths that carry `/` everywhere; this is not one of them.
   const cases = [
-    [{ platform: 'claude', scope: 'user' }, '/home/u/.claude/skills'],
-    [{ platform: 'claude', scope: 'project' }, '/work/proj/.claude/skills'],
-    [{ platform: 'cowork', scope: 'user' }, '/home/u/.claude/skills'],
-    [{ platform: 'codex', scope: 'user' }, '/home/u/.codex/skills'],
-    [{ platform: 'codex', scope: 'project' }, '/work/proj/.codex/skills'],
-    [{ platform: 'agents', scope: 'user' }, '/home/u/.agents/skills'],
+    [{ platform: 'claude', scope: 'user' }, path.join(home, '.claude', 'skills')],
+    [{ platform: 'claude', scope: 'project' }, path.join(cwd, '.claude', 'skills')],
+    [{ platform: 'cowork', scope: 'user' }, path.join(home, '.claude', 'skills')],
+    [{ platform: 'codex', scope: 'user' }, path.join(home, '.codex', 'skills')],
+    [{ platform: 'codex', scope: 'project' }, path.join(cwd, '.codex', 'skills')],
+    [{ platform: 'agents', scope: 'user' }, path.join(home, '.agents', 'skills')],
   ];
   for (const [input, expected] of cases) {
     assert.equal(resolveTarget({ ...input, home, cwd }), expected, JSON.stringify(input));

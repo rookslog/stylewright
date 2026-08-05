@@ -69,7 +69,8 @@ async function untrackedCollisions(destDir, sourceRels, recorded) {
     // transition impossible to complete, even with --force.
     if (state === 'directory') {
       const under = await walk(abs);
-      if (under.length && under.every((sub) => known.has(path.join(rel, sub)))) continue;
+      // `/` and not path.join: these are manifest keys, spelled `/` everywhere.
+      if (under.length && under.every((sub) => known.has(`${rel}/${sub}`))) continue;
     }
 
     hits.add(rel);

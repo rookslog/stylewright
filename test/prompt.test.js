@@ -93,8 +93,10 @@ test('summarize names every destination path before anything is written', () => 
     home: '/h', cwd: '/c',
   });
   assert.match(text, /1 skill\(s\): demo-craft/);
-  assert.match(text, /\/h\/\.claude\/skills/);
-  assert.match(text, /\/h\/\.codex\/skills/);
+  // The summary shows real directories in this machine's own separator, so
+  // the expectation is built with path.join rather than spelled with `/`.
+  assert.ok(text.includes(path.join('/h', '.claude', 'skills')));
+  assert.ok(text.includes(path.join('/h', '.codex', 'skills')));
 });
 
 test('cancelling at the confirmation returns null', async () => {

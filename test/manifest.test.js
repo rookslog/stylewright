@@ -118,6 +118,37 @@ test('refuses a component whose Win32 spelling would be trimmed', async () => {
   }
 });
 
+test('refuses a component that contains a backslash', async () => {
+  // A manifest travels between machines, so a key carries one separator: `/`.
+  // Where path.sep is `\`, a backslash key names two components to the
+  // filesystem while a check that splits on `/` reads it as one, and
+  // `..\victim` walks out of the tree with no `..` component to find.
+  // Ambiguity between the check and the resolver is refused, not translated.
+  const dir = await tmp();
+  for (const rel of ['refs\\guide.md', '..\\victim', 'a\\..\\b']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
+test('refuses a component that contains a colon', async () => {
+  // Win32 reads `C:victim` as relative to another drive's working directory
+  // and `SKILL.md:payload` as an alternate data stream on SKILL.md. Neither
+  // spelling means what the containment checks read, on the one platform
+  // where the colon is special, so it is refused everywhere.
+  const dir = await tmp();
+  for (const rel of ['C:victim', 'refs/a:b.md', 'SKILL.md:payload']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
 test('an ordinary nested path is still accepted', async () => {
   const dir = await tmp();
   await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
