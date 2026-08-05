@@ -150,3 +150,120 @@ test('an absolute recorded path is refused too', async () => {
   }));
   await assert.rejects(() => readManifest(dir), /outside/);
 });
+
+// The manifest was the one destination that never went through the checks in
+// `src/tree.js`. Everything below reproduces what that cost, against the code
+// as published in 0.2.0.
+
+test('a symlinked manifest is refused on read, and never followed', async () => {
+  const dir = await tmp();
+  const outside = path.join(await tmp(), 'precious.json');
+  await fs.writeFile(outside, '{"schema":1,"skills":{}}\n');
+  await fs.symlink(outside, path.join(dir, MANIFEST_NAME));
+
+  await assert.rejects(readManifest(dir), /is a symlink, not a regular file/);
+});
+
+test('a symlinked manifest is refused on write, and its target survives', async () => {
+  const dir = await tmp();
+  const outside = path.join(await tmp(), 'precious.txt');
+  await fs.writeFile(outside, 'mine\n');
+  await fs.symlink(outside, path.join(dir, MANIFEST_NAME));
+
+  await assert.rejects(writeManifest(dir, emptyManifest()), /is a symlink/);
+  assert.equal(await fs.readFile(outside, 'utf8'), 'mine\n');
+});
+
+test('a manifest that is a directory is refused, not crashed on', async () => {
+  const dir = await tmp();
+  await fs.mkdir(path.join(dir, MANIFEST_NAME));
+  await assert.rejects(readManifest(dir), /is a directory, not a regular file/);
+});
+
+test('a manifest of the wrong shape is refused where it is read', async () => {
+  const dir = await tmp();
+  const write = async (body) => fs.writeFile(path.join(dir, MANIFEST_NAME), body);
+
+  await write('[]\n');
+  await assert.rejects(readManifest(dir), /does not hold an object/);
+
+  await write('{"schema":2,"skills":{}}\n');
+  await assert.rejects(readManifest(dir), /"schema" is 2, not 1/);
+
+  await write('{"schema":1}\n');
+  await assert.rejects(readManifest(dir), /"skills" is not an object/);
+
+  // The shape that reached uninstall as `Object.keys(undefined)`.
+  await write('{"schema":1,"skills":{"a":{"tier":"craft"}}}\n');
+  await assert.rejects(readManifest(dir), /"a" records no files/);
+
+  await write('{"schema":1,"skills":{"a":{"files":{"SKILL.md":null}}}}\n');
+  await assert.rejects(readManifest(dir), /"a" records no hash for "SKILL.md"/);
+});
+
+test('the replacement carries the manifest permissions from the moment it exists', async () => {
+  const dir = await tmp();
+  await writeManifest(dir, emptyManifest());
+  const abs = path.join(dir, MANIFEST_NAME);
+  await fs.chmod(abs, 0o600);
+
+  const original = fs.chmod;
+  let atCreation = null;
+  fs.chmod = async (...args) => {
+    // What creation produced, before this call adjusts it. A crash here leaves
+    // that file behind, so it is the mode that matters. (The umask can only
+    // narrow a creation mode, so this reads 0600 under any umask once the mode
+    // is passed to the creation, and 0644 under the common one when it is not.)
+    if (atCreation === null && String(args[0]).endsWith('.tmp')) {
+      atCreation = (await fs.stat(args[0])).mode & 0o777;
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await writeManifest(dir, emptyManifest());
+  } finally {
+    fs.chmod = original;
+  }
+
+  assert.equal(atCreation, 0o600);
+  assert.equal((await fs.stat(abs)).mode & 0o777, 0o600);
+});
+
+test('a manifest linked away after the check is not read through', async () => {
+  const dir = await tmp();
+  const abs = path.join(dir, MANIFEST_NAME);
+  await fs.writeFile(abs, '{"schema":1,"skills":{}}\n');
+  const outside = path.join(await tmp(), 'theirs.json');
+  await fs.writeFile(outside, '{"schema":1,"skills":{"theirs":{"files":{}}}}\n');
+
+  const original = fs.lstat;
+  let swapped = false;
+  fs.lstat = async (...args) => {
+    const st = await original.apply(fs, args);
+    // The classification passes, and the manifest becomes a link before the
+    // read. A read that follows it acts on somebody else's record.
+    if (!swapped && String(args[0]) === abs) {
+      swapped = true;
+      await fs.rm(abs);
+      await fs.symlink(outside, abs);
+    }
+    return st;
+  };
+  try {
+    await assert.rejects(readManifest(dir), /changed while this command was reading it/);
+  } finally {
+    fs.lstat = original;
+  }
+});
+
+test('a write leaves no temporary file behind, and replaces in one step', async () => {
+  const dir = await tmp();
+  await writeManifest(dir, emptyManifest());
+  await writeManifest(dir, emptyManifest());
+  assert.deepEqual(await fs.readdir(dir), [MANIFEST_NAME]);
+
+  // A rename does not follow a link, so the manifest cannot be the path that
+  // carries a write out of its directory.
+  const st = await fs.lstat(path.join(dir, MANIFEST_NAME));
+  assert.ok(st.isFile());
+});

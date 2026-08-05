@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { destinationState } from './tree.js';
 import { VERSION } from './version.js';
 
 export const MANIFEST_NAME = '.stylewright-manifest.json';
@@ -74,13 +75,59 @@ function nameContained(name) {
  * outside its own directory is not a manifest with one bad row; it is a file we
  * should not act on at all.
  */
+const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * The manifest holds what this tool wrote, in the shape this tool writes.
+ *
+ * Containment was checked before shape, and the containment walk reached every
+ * field through `?.`, so a file whose JSON parsed and whose shape was wrong
+ * passed it. The wrong shape then surfaced as an unhandled type error deep in
+ * install or uninstall — `Object.keys(entry.files)` on `undefined` — which
+ * tells a user nothing about the file that caused it. Refusing here names the
+ * file and the field.
+ */
+function checkShape(manifest, targetDir) {
+  const refuse = (what) => {
+    throw new Error(`Manifest in ${targetDir} is not one this tool wrote: ${what}.`);
+  };
+  if (!isObject(manifest)) refuse('the file does not hold an object');
+  if (manifest.schema !== 1) refuse(`"schema" is ${JSON.stringify(manifest.schema)}, not 1`);
+  if (!isObject(manifest.skills)) refuse('"skills" is not an object');
+  for (const [name, entry] of Object.entries(manifest.skills)) {
+    if (!isObject(entry)) refuse(`"${name}" is not an object`);
+    if (!isObject(entry.files)) refuse(`"${name}" records no files`);
+    for (const [rel, hash] of Object.entries(entry.files)) {
+      if (typeof hash !== 'string') refuse(`"${name}" records no hash for "${rel}"`);
+    }
+  }
+  return manifest;
+}
+
+/**
+ * The manifest is read through, written through, and acted on. A symbolic link
+ * standing where it belongs sends all three somewhere else.
+ *
+ * `src/tree.js` classifies every destination install and uninstall touch, and
+ * the manifest was the one path that never went through it. So a manifest
+ * linked to a file elsewhere on disk was read through and then replaced with
+ * manifest JSON, the link survived, and the command exited zero. No `--force`
+ * was involved, because no check was involved.
+ */
+async function regularOrAbsent(abs, targetDir) {
+  const state = await destinationState(abs);
+  if (state === 'absent' || state === 'file') return state;
+  throw new Error(
+    `Manifest in ${targetDir} is a ${state}, not a regular file. Remove it and run again.`);
+}
+
 function checkContained(manifest, targetDir) {
-  for (const [name, entry] of Object.entries(manifest?.skills ?? {})) {
+  for (const [name, entry] of Object.entries(manifest.skills)) {
     if (!nameContained(name)) {
       throw new Error(
         `Manifest in ${targetDir} records a skill name that is not a directory name: "${name}".`);
     }
-    for (const rel of Object.keys(entry?.files ?? {})) {
+    for (const rel of Object.keys(entry.files)) {
       if (!contained(rel)) {
         throw new Error(
           `Manifest in ${targetDir} records a path outside "${name}": "${rel}".`);
@@ -91,13 +138,34 @@ function checkContained(manifest, targetDir) {
 }
 
 export async function readManifest(targetDir) {
+  const abs = path.join(targetDir, MANIFEST_NAME);
+  if (await regularOrAbsent(abs, targetDir) === 'absent') return emptyManifest();
+  let raw;
+  let fh;
   try {
-    const raw = await fs.readFile(path.join(targetDir, MANIFEST_NAME), 'utf8');
-    return checkContained(JSON.parse(raw), targetDir);
+    fh = await fs.open(abs, 'r');
   } catch (err) {
+    // The file was there a moment ago and is gone now. Treat it as absent
+    // rather than as a crash, which is what a caller would see otherwise.
     if (err.code === 'ENOENT') return emptyManifest();
     throw err;
   }
+  try {
+    // The classification and the read are two calls, and a link put here
+    // between them is followed by the read. Comparing what the HANDLE holds
+    // against what stands at the path settles it: they differ exactly when
+    // the path is no longer the file that was classified.
+    const byHandle = await fh.stat();
+    const byPath = await fs.lstat(abs).catch(() => null);
+    if (!byHandle.isFile() || byHandle.dev !== byPath?.dev || byHandle.ino !== byPath?.ino) {
+      throw new Error(
+        `Manifest in ${targetDir} changed while this command was reading it. Run again.`);
+    }
+    raw = await fh.readFile('utf8');
+  } finally {
+    await fh.close();
+  }
+  return checkContained(checkShape(JSON.parse(raw), targetDir), targetDir);
 }
 
 /**
@@ -108,9 +176,50 @@ export async function readManifest(targetDir) {
  */
 export async function writeManifest(targetDir, manifest) {
   await fs.mkdir(targetDir, { recursive: true });
-  await fs.writeFile(
-    path.join(targetDir, MANIFEST_NAME),
-    `${JSON.stringify({ ...manifest, stylewrightVersion: VERSION }, null, 2)}\n`);
+  const abs = path.join(targetDir, MANIFEST_NAME);
+  const existed = await regularOrAbsent(abs, targetDir) === 'file';
+  const body = `${JSON.stringify({ ...manifest, stylewrightVersion: VERSION }, null, 2)}\n`;
+
+  // Creating and replacing are different operations, and one mechanism cannot
+  // be both. `wx` creates and refuses an existing destination. A rename
+  // replaces and refuses nothing, so using it to create let two first-time
+  // installs into one directory each copy their files while the second
+  // manifest recorded only its own, orphaning the first install's.
+  //
+  // An earlier version of this fix created through a hard link. That refuses
+  // correctly and does not exist on every filesystem, and the skill files are
+  // already copied by the time this runs, so a target that rejects links would
+  // have left every first install on disk with no manifest able to remove it.
+  if (!existed) {
+    await fs.writeFile(abs, body, { flag: 'wx' }).catch((err) => {
+      if (err.code !== 'EEXIST') throw err;
+      throw new Error(
+        `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
+    });
+    return;
+  }
+
+  // Replacing. Write beside it and rename over it, so no reader sees half a
+  // manifest and no write passes through a link that appears after the check.
+  const tmp = `${abs}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  // A rename replaces the file AND its mode. Somebody who set 0600 on their
+  // manifest had it widened to whatever the umask gives on the next update.
+  //
+  // The mode is read BEFORE the temporary file is created and passed to the
+  // creation, so the manifest body never sits on disk under a wider mode than
+  // the file it replaces. Creating first and narrowing afterwards left that
+  // window open, and a crash inside it left the widened file behind.
+  const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
+  try {
+    await fs.writeFile(tmp, body, mode === null ? { flag: 'wx' } : { flag: 'wx', mode });
+    // The umask trims the creation mode and never widens it, so this restores
+    // a bit the umask took and cannot be the first thing to grant one.
+    if (mode !== null) await fs.chmod(tmp, mode);
+    await fs.rename(tmp, abs);
+  } catch (err) {
+    await fs.rm(tmp, { force: true });
+    throw err;
+  }
 }
 
 export function recordSkill(manifest, { name, tier, pathway, files, now }) {

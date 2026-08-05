@@ -172,6 +172,18 @@ Two consequences for a change you propose here:
   skill name that a manifest still records.
 - Add a skill with the scaffold, never by hand:
   `node bin/stylewright.mjs new-skill <name> --tier <standards|craft>`.
+- **Every destination goes through `src/tree.js` before anything is written.**
+  Two did not. The manifest was read and written with plain calls, and the
+  scaffold checked the skill directory and then wrote six files including one
+  outside it. Both followed a symbolic link out of the tree and replaced what
+  they found. A new write surface inherits the check or repeats the defect.
+- A file this tool creates is written with the `wx` flag. It refuses an existing
+  path rather than truncating it, and it does not follow a link. A file this
+  tool replaces is written beside its destination and renamed over it.
+- A check and the call it guards are two steps, so the file is identified by the
+  open handle and not by the path. The scaffold records what it created from the
+  handle, and the manifest read compares the handle against the path before it
+  acts on the bytes.
 - Do not put a `!` pattern inside `any-glob-to-any-file` in
   `.github/labeler.yml`. It reads as "any file that does not match this", so it
   labels nearly every pull request.
