@@ -39,12 +39,17 @@ Install one tier, the other, or both.
 | `simplified-technical-english` | standards | ASD-STE100 Issue 9 (2025) | (c) ASD 2025. All rights reserved. See the skill `SOURCE.md`. |
 | `plain-language` | standards | Federal Plain Language Guidelines | CC0 1.0 Universal. Public domain. |
 | `compressed-deliberation` | craft | None. Anthropic documents the defaults, and our own baseline traces the inflation to the instruction stack above them. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
+| `navigable-references` | craft | None. The rule is ours, and no measurement stands behind it yet. See the skill `SOURCE.md`. | Not applicable. Nothing is reproduced. |
 
 A craft skill has no standard behind it, so measurement is the only evidence its
 rules can have. `bench/` holds that protocol, and `bench/README.md` states the
 one rule that matters most: run the no-guidance control first. Ours came back
 clean, which is how we learned the skill we were about to write would have been
 aimed at the wrong thing.
+
+Measurement is the evidence a craft rule can have, and not the evidence each one
+already has. `navigable-references` ships with none, and its `SOURCE.md` says so
+in those words. Read it as discipline that we assert.
 
 More skills are in progress. See `CONTRIBUTING.md` to add one.
 
