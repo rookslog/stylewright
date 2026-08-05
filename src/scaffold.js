@@ -182,15 +182,24 @@ export async function scaffoldSkill({
         const state = await destinationState(cur);
         if (state === 'absent') {
           const at = cur;
-          await fs.mkdir(at).then(async () => {
+          const created = await fs.mkdir(at).then(() => true, (e) => {
+            if (e.code !== 'EEXIST') throw e;
+            return false;
+          });
+          if (created) {
             // Identity, for the same reason the files carry it. Removing a
             // remembered NAME removes whatever now stands there, and what now
             // stands there may be a link into somebody else's tree.
             const st = await fs.lstat(at);
             made.push({ abs: at, dev: st.dev, ino: st.ino });
-          }, (e) => {
-            if (e.code !== 'EEXIST') throw e;
-          });
+          // EEXIST says something appeared between the classification and the
+          // call, and swallowing it accepted whatever appeared. A link there
+          // sent the next write out of the repository, and the scan after the
+          // last write reported it only once that file existed.
+          } else if (await destinationState(at) !== 'directory') {
+            throw new Error(
+              `Cannot scaffold "${name}": ${path.relative(repoRoot, at)} is not a directory.`);
+          }
         } else if (state !== 'directory') {
           throw new Error(
             `Cannot scaffold "${name}": ${path.relative(repoRoot, cur)} is a ${state}.`);

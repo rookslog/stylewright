@@ -8,6 +8,7 @@ import { MANIFEST_NAME, writeManifest, emptyManifest } from '../src/manifest.js'
 import { checkAll } from '../src/ground.js';
 import { loadCatalog } from '../src/catalog.js';
 import { lintText } from '../src/lint.js';
+import { isBelow } from '../src/tree.js';
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-scaf-'));
 
@@ -219,6 +220,46 @@ test('an ancestor swapped after the preflight stops the call', async () => {
   // it, so the chain is read again after the last write. Nothing was written
   // through the link.
   assert.deepEqual(await fs.readdir(outside), []);
+});
+
+test('an ancestor that appears between the check and the mkdir stops the call', async () => {
+  const repo = await tmp();
+  const outside = await tmp();
+  const craft = path.join(repo, 'skills', 'craft');
+
+  const openedIn = [];
+  const originalMkdir = fs.mkdir;
+  const originalOpen = fs.open;
+  let fired = false;
+  fs.mkdir = async (...args) => {
+    // Another process wins the race between the classification and the call,
+    // so mkdir throws EEXIST on a path that no check has inspected.
+    if (!fired && String(args[0]) === craft) {
+      fired = true;
+      await fs.symlink(outside, craft);
+    }
+    return originalMkdir.apply(fs, args);
+  };
+  // Where each write LANDS, recorded as it happens. Rollback removes an
+  // escaped file by identity, so the tree afterwards looks the same whether
+  // the write left the repository or never happened.
+  fs.open = async (...args) => {
+    openedIn.push(await fs.realpath(path.dirname(String(args[0]))));
+    return originalOpen.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      scaffoldSkill({ repoRoot: repo, name: 'demo', tier: 'craft', description: 'd' }),
+      /skills\/craft is not a directory/);
+  } finally {
+    fs.mkdir = originalMkdir;
+    fs.open = originalOpen;
+  }
+
+  // Swallowing EEXIST accepted whatever had appeared, and the next write
+  // resolved through it into somebody else's tree.
+  const root = await fs.realpath(repo);
+  assert.deepEqual(openedIn.filter((dir) => !isBelow(root, dir)), []);
 });
 
 test('a failed scaffold leaves no directory behind, so a retry works', async () => {
