@@ -24,17 +24,50 @@ them, so look for them first.
 
 ### A grounding matrix that lies
 
-Every statement in a `standards/` skill traces to a numbered rule in the
-published source. The trace lives in `grounding/<tier>/<skill>.md`.
+Every unit of content in a graded section of a skill is disposed of in
+`grounding/<tier>/<skill>.md`. Nothing enters a skill unclassified.
 
 - A **`G` row** claims the authority of the source. Its rule cell names the rule.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
+- An **`N` row** is narrative. It orients the reader and asserts no rule, so it
+  claims no authority at all. Its rule cell is empty.
 
 Labelling our own advice as a `G` row is the worst defect this repository can
 ship. It borrows authority the source never granted. Flag it as critical.
 
 A `G` row that cites a rule which does not say that is the same defect in a
-quieter form.
+quieter form. So is an `N` row over a sentence that tells the reader to do
+something, because it retires a statement from review by calling it scenery.
+
+The checker accounts for every unit a graded section carries, not for the ones
+whose shape looks normative. It used to read single-line `-` bullets alone and
+call that "every statement", so four numbered priorities and a prose directive
+entered the STE skill unclassified while `ground --check` reported clean. Any
+change that narrows what the checker sees reopens that hole, whatever it widens
+elsewhere.
+
+A table and a fenced block are units. Neither fits in a matrix cell, so each
+carries a designator such as `[table 8f3a2b1c]`, whose digest names the block
+CONTENTS. An ordinal named a position instead, so a table could be rewritten
+whole while the matrix stayed clean. Exempting these was the first attempt at
+this fix, and it was the same defect renamed. A rule written as a table is
+still a rule.
+
+There are no exempt headings and no exempt sections. A heading is a unit, so is
+anything above the first heading, and `Source`, `Boundary` and `Notice` grade
+like any other section. Each of those was a hiding place: an instruction under
+a heading called `Source` was disposed of by nothing. Front matter is the one
+thing outside the check, because it is metadata for the harness.
+
+Each row claims one occurrence. A skill that repeats a sentence needs a row for
+each time it says it.
+
+The checker reads Markdown a line at a time, and it models no container. A list
+item, a heading or a fence nested inside a blockquote or under an indent is read
+as the wrong unit. Issue 37 carries the four shapes that reproduce, and it
+carries the design decision that closes the class. Report a fifth shape there
+rather than as a new finding, because patching one variant has produced the next
+one five rounds running.
 
 ### A skill that substitutes for its source
 

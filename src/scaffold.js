@@ -1,8 +1,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TIERS } from './catalog.js';
+import { contentUnits } from './ground.js';
 
 const NAME_RULE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+
+// One constant, quoted into the skill and into its matrix row, because the two
+// must be identical for `ground --check` to pass. Written twice, they drift on
+// the first edit to either — and the scaffold is the one place a drift is
+// inherited by every skill made after it.
+const RULE = 'Replace this line with your first rule. Write one instruction in each line.';
+const PURPOSE = 'Replace this paragraph. State what a writer achieves with this skill,'
+  + ' and when to reach for it.';
 
 /**
  * The scaffold generates a skill whose statement and grounding row already
@@ -19,9 +28,11 @@ rule text from the source. It does not replace the official source.
 
 Standard: [${source}](${url})
 
-Every statement above is traced to the source. The trace lives in the
-stylewright repository at \`grounding/${tier}/${name}.md\`. It is not installed
-with this skill.
+Every unit of content above is accounted for in a public trace. Each one either
+cites a rule in the source, or is marked as our own editorial guidance, or is
+marked as narrative that asserts no rule. The trace lives in the stylewright
+repository at \`grounding/${tier}/${name}.md\`. It is not installed with this
+skill.
 
 ## Notice
 
@@ -30,8 +41,9 @@ source above.
 `
     : `## Boundary
 
-This skill has no external standard behind it. Every statement is our own
-editorial guidance. The trace lives in the stylewright repository at
+This skill has no external standard behind it. Every rule in it is our own
+editorial guidance, and the trace marks the rest as narrative that asserts no
+rule. The trace lives in the stylewright repository at
 \`grounding/${tier}/${name}.md\`. It is not installed with this skill.
 `;
 
@@ -44,27 +56,56 @@ description: ${description}
 
 ## Purpose
 
-Replace this paragraph. State what a writer achieves with this skill, and when
-to reach for it.
+${PURPOSE}
 
 ## Rules
 
-- Replace this line with your first rule. Write one instruction in each line.
+- ${RULE}
 
 ${boundary}`;
 }
 
-function groundingMd({ name, tier, source }) {
-  const first = tier === 'standards'
-    ? '| G-01 | Replace this line with your first rule. Write one instruction in each line. | Rules | RULE-ID | Section |'
-    : '| E-01 | Replace this line with your first rule. Write one instruction in each line. | Rules |  | Our own guidance |';
+/**
+ * The scaffold builds its matrix from the SAME extractor the check uses, so a
+ * fresh skill cannot start with a row the check does not want or miss one it
+ * does. A hand-written template drifted from the extractor twice.
+ *
+ * The KINDS are still a judgment, and the scaffold only guesses. It marks the
+ * rule placeholder and the purpose placeholder as instructions, because both
+ * tell a reader to do something, and everything else as narrative. A
+ * contributor revises those as the skill fills in. Marking an instruction `N`
+ * is the defect `AGENTS.md` calls critical, so the scaffold must not seed one.
+ */
+function groundingMd({ name, tier, skillText, source }) {
+  // A pipe in a cell ends the cell. The check learned to read `\\|`, and this
+  // generator never learned to write it, so a source named `ACME | Standard`
+  // produced a matrix that failed its own first check.
+  const cell = (v) => String(v).replace(/\|/g, '\\|');
+  const instructs = new Set([PURPOSE, RULE]);
+  const counts = { G: 0, E: 0, N: 0 };
+  const rows = contentUnits(skillText).map((u) => {
+    let kind = 'N';
+    let note = u.text === u.anchor ? 'Section title, asserts no rule' : 'Asserts no rule';
+    if (instructs.has(u.text)) {
+      kind = u.text === RULE && tier === 'standards' ? 'G' : 'E';
+      note = kind === 'G' ? 'Section' : 'Our own guidance';
+    }
+    counts[kind] += 1;
+    const rule = kind === 'G' ? 'RULE-ID' : '';
+    return `| ${kind}-${String(counts[kind]).padStart(2, '0')} | ${cell(u.text)} | ${cell(u.anchor)} | ${rule} | ${note} |`;
+  });
 
   return `# Grounding: ${name}
 
-Traces every statement in \`skills/${tier}/${name}/SKILL.md\`${tier === 'standards' ? ` to ${source}` : ''}.
+Disposes of every unit of content in \`skills/${tier}/${name}/SKILL.md\`${tier === 'standards' ? `, against ${source}` : ''}.
 
 - A **\`G\` row** traces to an external source. Its rule cell names the rule.
 - An **\`E\` row** is our own editorial guidance. Its rule cell is empty.
+- An **\`N\` row** is narrative. It orients the reader and asserts no rule, so it
+  claims no authority at all. Its rule cell is empty.
+
+A row that tells the reader to do something is never an \`N\` row. The kinds
+below are a starting guess. Revise them as you write the skill.
 
 This file stays in the repository. It does not install with the skill.
 
@@ -72,7 +113,7 @@ Checked by \`stylewright ground --check --skill ${name}\`.
 
 | ID | Our guidance | Our anchor | Source rule | Source location |
 |---|---|---|---|---|
-${first}
+${rows.join('\n')}
 `;
 }
 
@@ -135,8 +176,8 @@ export async function scaffoldSkill({
     written.push(path.relative(repoRoot, abs));
   };
 
-  await write(path.join(skillDir, 'SKILL.md'),
-    skillMd({ name, tier, description: desc, source, url }));
+  const skillText = skillMd({ name, tier, description: desc, source, url });
+  await write(path.join(skillDir, 'SKILL.md'), skillText);
   await write(path.join(skillDir, 'agents', 'openai.yaml'),
     agentsYaml({ name, description: desc }));
   await write(path.join(skillDir, 'LICENSE'),
@@ -150,7 +191,7 @@ export async function scaffoldSkill({
   }
 
   await write(path.join(repoRoot, 'grounding', tier, `${name}.md`),
-    groundingMd({ name, tier, source }));
+    groundingMd({ name, tier, skillText, source }));
 
   return written.sort();
 }

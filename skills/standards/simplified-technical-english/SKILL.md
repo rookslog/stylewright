@@ -100,7 +100,9 @@ document for the complete rule, its explanation, and its dictionary entries.
 
 Standard: [ASD-STE100 Simplified Technical English, Issue 9 (2025)](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf)
 
-Every statement above is traced to a numbered rule in the standard. The trace
+Every statement above is accounted for in a public trace. Each one either cites a
+numbered rule in the standard, or is marked as our own editorial guidance, or is
+marked as narrative that asserts no rule. The trace
 lives in the [stylewright repository](https://github.com/rookslog/stylewright/blob/main/grounding/standards/simplified-technical-english.md).
 It is not installed with this skill, because it is an audit record for a reader
 and not context for an agent.

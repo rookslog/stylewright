@@ -19,14 +19,15 @@ one. Most guidance you can give it is invented on the spot, and it changes each
 time you ask.
 
 `stylewright` gives an agent writing rules that come from somewhere. Each rule in
-the `standards/` tier traces to a numbered rule in a published standard. You can
-check the trace. That is the point.
+the `standards/` tier traces to a numbered rule in a published standard, and
+anything that is not such a rule says so rather than borrowing the standard's
+authority. You can check the trace. That is the point.
 
 ## The two tiers
 
 | Tier | What it means |
 |---|---|
-| `standards/` | Every skill is distilled from a named standard that you can read at a public URL. Every statement traces to a numbered rule. |
+| `standards/` | Every skill is distilled from a named standard that you can read at a public URL. Every statement is accounted for: it cites a numbered rule, or it is marked as our own guidance, or it is marked as narrative. |
 | `craft/` | Every skill encodes writing discipline that has no external standard behind it. The authority is ours, and the skill says so. |
 
 Install one tier, the other, or both.
@@ -201,22 +202,33 @@ dictionary, which this repository does not ship.
 
 ## Grounding matrices
 
-Each skill has a grounding matrix in `grounding/`. The matrix maps every
-statement in the skill to its rule in the standard.
+Each skill has a grounding matrix in `grounding/`. The matrix disposes of every
+unit of content in the skill, and each row says what that unit claims.
 
-Rows come in two kinds:
+Rows come in three kinds:
 
 - A **`G` row** traces to the standard. It names the rule, such as `Rule 5.1`.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
+- An **`N` row** is narrative. It orients you and asserts no rule.
 
 The distinction is the point of the file. It shows you which instructions carry
 the authority of the standard, and which carry only ours.
 
+The check confirms that a `G` row names a rule. It cannot confirm that the rule
+says what the row says. A person read the source and wrote the row, and no
+program has checked that reading.
+
 Matrices stay in this repository. They do not install with a skill. A matrix is
 an audit record for a reader, and an agent does not need it while it writes.
 
-`stylewright ground --check --all` fails when a skill changes and its matrix does
-not.
+`stylewright ground --check --all` fails when a skill changes and its matrix
+does not. Every heading, paragraph, list item, table and code block counts,
+including the ones before the first heading. Front matter does not, because it
+is metadata for the agent harness rather than instruction for a reader.
+
+The check reads Markdown a line at a time. It does not model a blockquote or an
+indented container, so it can read what sits inside one as the wrong unit.
+Issue 37 tracks that gap.
 
 ## Licensing
 

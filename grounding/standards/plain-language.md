@@ -1,10 +1,13 @@
 # Grounding: plain-language
 
-Traces every statement in `skills/standards/plain-language/SKILL.md` to a named
+Disposes of every unit of content in
+`skills/standards/plain-language/SKILL.md`, against a named
 guideline in the Federal Plain Language Guidelines.
 
 - A **`G` row** traces to the source. Its rule cell names the guideline slug.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
+- An **`N` row** is narrative. It orients the reader and asserts no rule, so it
+  claims no authority at all. Its rule cell is empty.
 
 This file stays in the repository. It does not install with the skill.
 
@@ -66,3 +69,24 @@ in our own words anyway, because that is the doctrine for every skill.
 | G-36 | Avoid a page of frequently asked questions. Organize the content by topic instead. | Web | web/avoid-faqs | Write for the web |
 | G-37 | Test the document with real readers before you publish it. | Testing | test/usability-testing | Test |
 | G-38 | Ask a reader to restate the content in their own words. | Testing | test/paraphrase-testing | Test |
+| E-04 | Write so that a reader finds what they need, understands it the first time, and can act on it. This guide is based on the Federal Plain Language Guidelines, which support the Plain Writing Act of 2010. | Purpose |  | Our own framing, and it tells the reader what to aim for |
+| N-02 | Plain language is not simplified language. It does not remove detail. It puts the reader ahead of the writer. | Purpose |  | Orients the reader, asserts no rule |
+| E-05 | The two standards disagree in places. Plain language allows contractions and asks for a conversational tone. Simplified Technical English forbids contractions, because they are hard for a reader whose first language is not English. The reader decides which standard wins. | Choosing between this and Simplified Technical English |  | Our comparison, and it tells the reader who decides |
+| N-04 | plain-language | plain-language |  | Section title, asserts no rule |
+| N-05 | Purpose | Purpose |  | Section title, asserts no rule |
+| N-06 | Choosing between this and Simplified Technical English | Choosing between this and Simplified Technical English |  | Section title, asserts no rule |
+| N-07 | Audience | Audience |  | Section title, asserts no rule |
+| N-08 | Organization | Organization |  | Section title, asserts no rule |
+| N-09 | Words | Words |  | Section title, asserts no rule |
+| N-10 | Concision | Concision |  | Section title, asserts no rule |
+| N-11 | Tone | Tone |  | Section title, asserts no rule |
+| N-12 | Design | Design |  | Section title, asserts no rule |
+| N-13 | Web | Web |  | Section title, asserts no rule |
+| N-14 | Testing | Testing |  | Section title, asserts no rule |
+| N-15 | Source and boundary | Source and boundary |  | Section title, asserts no rule |
+| N-16 | This skill is an operational digest written in our own words. The source is public domain under CC0, so it places no limit on quotation. This digest does not replace the official guidelines, which carry the examples and the rationale. | Source and boundary |  | Boundary statement, asserts no rule |
+| N-17 | Standard: [Federal Plain Language Guidelines](https://github.com/GSA/plainlanguage.gov) | Source and boundary |  | Names the source |
+| N-18 | The original site at `plainlanguage.gov` now redirects to `digital.gov`. The archived guidelines in the repository above are the source of record. | Source and boundary |  | Boundary statement, asserts no rule |
+| N-19 | Every statement above is accounted for in a public trace. Each one either cites a named guideline, or is marked as our own editorial guidance, or is marked as narrative that asserts no rule. The trace lives in the [stylewright repository](https://github.com/rookslog/stylewright/blob/main/grounding/standards/plain-language.md). It is not installed with this skill. | Source and boundary |  | Describes the trace, asserts no rule |
+| N-20 | Notice | Notice |  | Section title, asserts no rule |
+| N-21 | This skill is not affiliated with, endorsed by, or approved by the General Services Administration, the Plain Language Action and Information Network, or any United States government agency. | Notice |  | Affiliation and trademark notice |
