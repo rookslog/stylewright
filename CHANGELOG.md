@@ -27,6 +27,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   each path, and the cleanup removes a file only when it holds exactly that, so
   a file you wrote at one of those paths stays. Each copy lands whole or not at
   all, through a staging name and a rename.
+- **One stylewright command at a time works in a directory.** A second command
+  in the same directory refuses rather than acting on a picture the first has
+  already changed. Every way two runs could spoil each other — a cleanup that
+  cleared a record its writer was still working under, an undo that withdrew
+  another run's record, a deletion decided from a picture a commit had overtaken
+  — needed the tree to be read and changed in one step, which no filesystem
+  offers. A command killed mid-run leaves the directory held, and every later
+  command refuses and names the file to remove. Whether a run is still alive is
+  the one judgement this tool will not make for you, because making it wrongly
+  deletes files a live run is still writing. `doctor` reports a held directory.
 - **A manifest write answers to the read that preceded it.** `writeManifest`
   chose between creating and replacing by classifying the path afresh, which is
   a different question from whether the file is still the one the command read.

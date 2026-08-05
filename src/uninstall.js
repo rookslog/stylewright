@@ -4,6 +4,7 @@ import {
   hashFile, readManifestWithIdentity, writeManifest, removeManifest, isStale,
 } from './manifest.js';
 import { hasPending, recoverPending } from './journal.js';
+import { withTargetLock } from './lock.js';
 import { pruneEmpty, removeAt, destinationState, reachability } from './tree.js';
 
 /**
@@ -59,7 +60,20 @@ async function altered(destDir, files) {
   return bad.sort();
 }
 
-export async function uninstallSkills({ targetDir, names, force = false }) {
+export async function uninstallSkills(options) {
+  // Held for the whole command, like install. This one deletes before it
+  // records, so a second run inside the directory is worse here than there.
+  const { emptied, ...result } = await withTargetLock(
+    options.targetDir, () => remove(options), { create: false });
+  // After the lock is released, because the lock file lives in this directory
+  // and an empty directory is one that holds nothing at all. `rmdir` refuses a
+  // directory that is not empty, which is the whole of the check: a hand
+  // written skill, or a run that arrived since, keeps it alive.
+  if (emptied) await fs.rmdir(options.targetDir).catch(() => {});
+  return result;
+}
+
+async function remove({ targetDir, names, force = false }) {
   let { manifest, identity } = await readManifestWithIdentity(targetDir);
   const removed = [];
   const missing = [];
@@ -141,7 +155,7 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
   // Removing nothing writes nothing. `writeManifest` creates the directory it
   // writes into, so uninstalling a skill from a machine that never had one
   // used to leave behind a skills directory and an empty manifest.
-  if (!removed.length) return { removed, missing, skipped, recovered };
+  if (!removed.length) return { removed, missing, skipped, recovered, emptied: false };
 
   // The files are gone by now, so the record has to catch up rather than
   // refuse. A refusal here is not the harmless one install gets: install
@@ -153,8 +167,8 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
   // written from what this command read. What it reapplies is exactly what this
   // command did: the entries for the skills it removed, and nothing else. A
   // skill another run installed meanwhile keeps its record.
-  await reapply(targetDir, removed);
-  return { removed, missing, skipped, recovered };
+  const emptied = await reapply(targetDir, removed);
+  return { removed, missing, skipped, recovered, emptied };
 }
 
 /** Does any file this entry records still stand where it says? */
@@ -197,13 +211,14 @@ async function reapply(targetDir, names, attempts = 3) {
       // wrote.
       if (Object.keys(skills).length === 0 && !hasPending(manifest)) {
         await removeManifest(targetDir, identity);
-        // Only when nothing else is there. A hand-written skill in the same
-        // directory keeps it alive, and that is correct.
-        await fs.rmdir(targetDir).catch(() => {});
-      } else {
-        await writeManifest(targetDir, { ...manifest, skills }, identity);
+        // The directory goes too, and the caller does it once this command has
+        // let go of the directory. Only when nothing else is there: a hand
+        // written skill in the same directory keeps it alive, and that is
+        // correct.
+        return true;
       }
-      return;
+      await writeManifest(targetDir, { ...manifest, skills }, identity);
+      return false;
     } catch (err) {
       if (!isStale(err) || attempt >= attempts) throw err;
     }

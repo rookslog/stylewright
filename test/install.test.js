@@ -633,6 +633,15 @@ async function killedInstall(target, hook) {
     execFile(process.execPath, ['--input-type=module', '-e', script], (err) => resolve(err));
   });
   assert.equal(died?.signal, 'SIGKILL', 'the run must die rather than return');
+  // A run killed mid-command leaves the directory locked, and the next command
+  // refuses rather than guessing whether that run is still alive. Removing the
+  // file is the one thing only a person can be sure about.
+  const lock = path.join(target, '.stylewright-lock');
+  assert.ok(await exists(lock), 'the killed run left the directory locked');
+  await assert.rejects(
+    installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW }),
+    /Another stylewright command is working/);
+  await fs.rm(lock);
   const left = await readManifest(target);
   assert.deepEqual(left.skills, {}, 'the killed run recorded no skill');
   assert.deepEqual(
@@ -721,61 +730,155 @@ test('an interrupted update keeps an edit and clears its own copy', async () => 
   assert.equal(await hashFile(ours), mf.skills['demo-craft'].files.LICENSE);
 });
 
-// --- Two runs in one directory -------------------------------------------
-
-test('a first-time install that loses the race refuses before it copies', async () => {
-  // The reported defect: `writeManifest` decided between creating and replacing
-  // from a fresh classification, so the loser replaced the winner's manifest and
-  // the winner's files were left with nothing naming them. The decision now
-  // comes from the read, and the refusal arrives before this run has written
-  // anything at all.
+test('a source that changes under the run stops it before anything lands', async () => {
+  // The statement is made from the source before the copy, and it is what lets
+  // a later command prove a file is this run's. Bytes that no statement names
+  // would be an orphan no rule could identify, so the run stops while the only
+  // thing on disk is a staging file that recovery removes by name.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const source = path.join(repo, 'skills', 'craft', 'demo-craft', 'SKILL.md');
   const target = await tmp();
-  const original = fs.mkdir;
-  let raced = false;
-  // The other run arrives after this one read the directory and before this one
-  // looks at the path again. Injecting it any later would be a test of the
-  // classification rather than of the read the decision now comes from.
-  fs.mkdir = async (...args) => {
-    if (!raced && String(args[0]) === target) {
-      raced = true;
-      await installSkills({
-        repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
-      });
+
+  const original = fs.copyFile;
+  let swapped = false;
+  fs.copyFile = async (...args) => {
+    // Between the hash that made the statement and the copy that reads it.
+    if (!swapped && String(args[0]) === source) {
+      swapped = true;
+      await fs.writeFile(source, '---\nname: demo-craft\n---\n\nA later edit.\n');
     }
     return original.apply(fs, args);
   };
   try {
     await assert.rejects(
-      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }),
-      /appeared while this command was writing it/);
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed in .* while this command was running/);
   } finally {
-    fs.mkdir = original;
+    fs.copyFile = original;
   }
 
-  assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'the loser copied nothing');
-  const mf = await readManifest(target);
-  assert.deepEqual(Object.keys(mf.skills), ['demo-standard']);
-  assert.equal(mf.pending, undefined);
-  assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
+  assert.ok(!(await exists(path.join(target, 'demo-craft', 'SKILL.md'))), 'nothing landed');
+  const res = await installSkills({
+    repoRoot: repo, targetDir: target, names: ['demo-standard'], now: NOW,
+  });
+  assert.deepEqual(res.installed, ['demo-standard']);
+  assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'and the staging file went');
 });
 
-test('an install whose commit is refused leaves no unrecorded file', async () => {
-  // The other side of the same race, and the one the pending record cannot
-  // answer: the run that overtakes this one clears the statement, so nothing on
-  // disk names these files any more. This process is alive and still knows
-  // them, so it removes them itself.
+test('a file at the staging name is a collision, not something to clear', async () => {
+  // The copy clears whatever stands at the staging path, so a file the user
+  // happened to put at that name was deleted by a write no check had inspected.
+  // It is a destination like any other, and the preflight sees it.
   const target = await tmp();
+  const mine = path.join(target, 'demo-craft', 'SKILL.md.stylewright-part');
+  await fs.mkdir(path.dirname(mine), { recursive: true });
+  await fs.writeFile(mine, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, []);
+  assert.equal(res.skipped[0].reason, 'not-ours');
+  assert.ok(res.skipped[0].files.includes('SKILL.md.stylewright-part'));
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
+
+  // And --force disposes of it, as it does of any other collision.
+  const forced = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(forced.installed, ['demo-craft']);
+  assert.ok(!(await exists(mine)));
+});
+
+test('a retired file a refused run deleted is unrecorded, not left claimed', async () => {
+  // Retirement happens before the copies, so a commit that never lands leaves
+  // the surviving record naming a path this run has already removed. The record
+  // catches up, exactly as uninstall's does after it deletes.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const retired = path.join(target, 'demo-craft', 'references', 'gone.md');
+  await fs.writeFile(retired, 'from an older release\n');
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  manifest.skills['demo-craft'].files['references/gone.md'] = await hashFile(retired);
+  await writeManifest(target, manifest, identity);
+
   const original = fs.rename;
   let raced = false;
-  // Another run arrives and finishes after this one has copied everything and
-  // before it commits.
   fs.rename = async (...args) => {
     const result = await original.apply(fs, args);
     if (!raced && String(args[1]).endsWith('guide.md')) {
       raced = true;
-      await installSkills({
+      const fresh = await readManifestWithIdentity(target);
+      await writeManifest(target, fresh.manifest, fresh.identity);
+    }
+    return result;
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed while this command was running/);
+  } finally {
+    fs.rename = original;
+  }
+
+  assert.ok(!(await exists(retired)), 'the retirement stands');
+  const after = await readManifest(target);
+  assert.ok(
+    !Object.hasOwn(after.skills['demo-craft'].files, 'references/gone.md'),
+    'and no record claims it');
+});
+
+// --- Two runs in one directory -------------------------------------------
+
+test('a second run in the same directory is refused, and changes nothing', async () => {
+  // Three review rounds found three ways for two runs to spoil each other's
+  // reading of the tree, and each patch produced the next one. One writer at a
+  // time is what closes the class: the second run is refused before it has read
+  // anything, so there is nothing to be wrong about.
+  const target = await tmp();
+  const original = fs.copyFile;
+  let second = null;
+  fs.copyFile = async (...args) => {
+    if (second === null) {
+      second = installSkills({
         repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
-      });
+      }).then(() => null, (err) => err);
+      await second;
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    const res = await installSkills({
+      repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+    });
+    assert.deepEqual(res.installed, ['demo-craft'], 'the first run finishes');
+  } finally {
+    fs.copyFile = original;
+  }
+
+  assert.match((await second).message, /Another stylewright command is working/);
+  const mf = await readManifest(target);
+  assert.deepEqual(Object.keys(mf.skills), ['demo-craft']);
+  assert.ok(!(await exists(path.join(target, 'demo-standard'))), 'the refused run wrote nothing');
+  assert.equal(mf.pending, undefined);
+});
+
+test('an install whose commit is refused leaves no unrecorded file', async () => {
+  // The lock keeps another COMMAND out. It cannot keep a hand, or a future
+  // caller, from replacing the manifest under this run — and a commit that
+  // fails after the copies is the case the statement alone cannot answer,
+  // because the statement may no longer be this run's. The process is alive and
+  // still knows what it wrote, so it removes it.
+  const target = await tmp();
+  const original = fs.rename;
+  let raced = false;
+  fs.rename = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced && String(args[1]).endsWith('guide.md')) {
+      raced = true;
+      const { manifest, identity } = await readManifestWithIdentity(target);
+      await writeManifest(target, { ...manifest, pending: undefined }, identity);
     }
     return result;
   };
@@ -788,77 +891,73 @@ test('an install whose commit is refused leaves no unrecorded file', async () =>
   }
 
   const mf = await readManifest(target);
-  assert.deepEqual(Object.keys(mf.skills), ['demo-standard']);
+  assert.deepEqual(mf.skills, {});
   assert.equal(mf.pending, undefined, 'and it withdraws its own statement');
   assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'nothing of the refused run is left');
-  assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
 });
 
-test('a refused run does not take the winner\'s copy of the same skill', async () => {
-  // Two runs installing ONE skill. The loser's paths are the winner's paths, so
-  // an undo that removed what this process copied would delete a file the
-  // manifest now records — the install would end recorded and absent. The rule
-  // that decides is the same one recovery uses: a file the record reaches, and
-  // that still holds what the record says, is not ours to remove.
+test('a refused run withdraws its own statement, and never another\'s', async () => {
+  // The undo clears the statement by name, and a statement it did not write
+  // names another run's files. Clearing that one would leave them with nothing
+  // to reach them if that run were then killed — this defect, from the far side.
   const target = await tmp();
-  const original = fs.copyFile;
+  const theirs = { 'SKILL.md': 'f'.repeat(64) };
+
+  const original = fs.rename;
   let raced = false;
-  fs.copyFile = async (...args) => {
+  fs.rename = async (...args) => {
     const result = await original.apply(fs, args);
-    if (!raced) {
+    if (!raced && String(args[1]).endsWith('guide.md')) {
       raced = true;
-      await installSkills({
-        repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
-      });
+      const fresh = await readManifestWithIdentity(target);
+      await writeManifest(
+        target, { ...fresh.manifest, pending: { 'demo-craft': theirs } }, fresh.identity);
     }
     return result;
   };
   try {
     await assert.rejects(
-      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }));
+      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed while this command was running/);
   } finally {
-    fs.copyFile = original;
+    fs.rename = original;
   }
 
-  const mf = await readManifest(target);
-  assert.deepEqual(Object.keys(mf.skills), ['demo-craft']);
-  assert.equal(mf.pending, undefined);
-  for (const [rel, hash] of Object.entries(mf.skills['demo-craft'].files)) {
+  assert.deepEqual((await readManifest(target)).pending, { 'demo-craft': theirs });
+});
+
+test('a refused run does not take a copy the record now names', async () => {
+  // The undo removes what this run wrote, and a file the manifest records with
+  // exactly those bytes is not that: it is an install that stands. Removing it
+  // would leave a record naming nothing, which is this defect from the other
+  // side.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const { manifest } = await readManifestWithIdentity(target);
+
+  const original = fs.rename;
+  let raced = false;
+  fs.rename = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced && String(args[1]).endsWith('guide.md')) {
+      raced = true;
+      // The record stays, and the manifest identity moves under this run.
+      const fresh = await readManifestWithIdentity(target);
+      await writeManifest(target, fresh.manifest, fresh.identity);
+    }
+    return result;
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed while this command was running/);
+  } finally {
+    fs.rename = original;
+  }
+
+  for (const [rel, hash] of Object.entries(manifest.skills['demo-craft'].files)) {
     const abs = path.join(target, 'demo-craft', rel);
-    assert.ok(await exists(abs), `${rel} must survive the loser's undo`);
+    assert.ok(await exists(abs), `${rel} must survive the undo`);
     assert.equal(await hashFile(abs), hash);
   }
-});
-
-test('a run whose files another run cleared still leaves nothing behind', async () => {
-  // Two installs in one directory at one moment, at the worst interleaving: the
-  // second reads the first's statement, cannot tell a dead run from a live one,
-  // and clears the files the first is still writing. The first fails — the
-  // message is whatever the collision produced — and the guarantee that has to
-  // survive is the one about the tree, not the one about the error.
-  const target = await tmp();
-  const original = fs.copyFile;
-  let raced = false;
-  fs.copyFile = async (...args) => {
-    const result = await original.apply(fs, args);
-    if (!raced) {
-      raced = true;
-      await installSkills({
-        repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
-      });
-    }
-    return result;
-  };
-  try {
-    await assert.rejects(
-      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }));
-  } finally {
-    fs.copyFile = original;
-  }
-
-  const mf = await readManifest(target);
-  assert.deepEqual(Object.keys(mf.skills), ['demo-standard']);
-  assert.equal(mf.pending, undefined);
-  assert.ok(!(await exists(path.join(target, 'demo-craft'))));
-  assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
 });

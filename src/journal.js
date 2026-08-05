@@ -45,8 +45,10 @@ import { destinationState, removeAt, pruneEmpty, reachability } from './tree.js'
  * from the destination rather than recorded, so recovery can find it from the
  * statement alone.
  */
+export const STAGING_SUFFIX = '.stylewright-part';
+
 export function stagingPath(abs) {
-  return `${abs}.stylewright-part`;
+  return `${abs}${STAGING_SUFFIX}`;
 }
 
 export function hasPending(manifest) {
@@ -102,14 +104,21 @@ export async function discardStated(targetDir, name, stated, manifest) {
   for (const rel of reachable) {
     const abs = path.join(destDir, rel);
     const staged = stagingPath(abs);
-    if (await destinationState(staged) === 'file') await removeAt(staged);
+    let took = false;
+    if (await destinationState(staged) === 'file') {
+      await removeAt(staged);
+      took = true;
+    }
     if (await destinationState(abs) === 'file'
       && await hashFile(abs) === stated[rel]
       && recorded[rel] !== stated[rel]) {
       await removeAt(abs);
       removed.push(`${name}/${rel}`);
+      took = true;
     }
-    await pruneEmpty(path.dirname(abs), destDir);
+    // Only where something went. Pruning after a path this pass left alone
+    // would take an empty directory that was standing before the run began.
+    if (took) await pruneEmpty(path.dirname(abs), destDir);
   }
   // Only when no record keeps the directory alive. A skill the manifest still
   // holds keeps its directory even when every file under it went, because the

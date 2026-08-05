@@ -103,6 +103,22 @@ test('reports an install that did not finish, once per directory', async () => {
   assert.match(findings[0].message, /demo-craft/);
 });
 
+test('reports a directory a killed run left locked', async () => {
+  // The next command refuses until the file goes, and the one judgement this
+  // tool cannot make is whether the run that left it is still alive. So it says
+  // what it sees and leaves the decision where it belongs.
+  const home = await tmp();
+  const target = path.join(home, '.claude/skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+
+  const findings = await doctor({ repoRoot: REPO, home, cwd: await tmp() });
+
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.equal(findings[0].code, 'locked-directory');
+  assert.match(findings[0].message, /stylewright-lock/);
+});
+
 test('does not report a duplicate when cwd equals home', async () => {
   // user scope and project scope collapse to one path when the process runs
   // in the home directory.

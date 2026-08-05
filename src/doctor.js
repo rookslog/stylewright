@@ -1,5 +1,8 @@
+import path from 'node:path';
 import { CONSUMERS, SCOPES, resolveTarget, describeTarget } from './targets.js';
 import { readManifest } from './manifest.js';
+import { LOCK_NAME } from './lock.js';
+import { destinationState } from './tree.js';
 
 // A duplicate is a problem only when ONE agent would load two copies of the
 // same skill name at once. Grouping by directory instead of by agent reports
@@ -45,6 +48,20 @@ export async function doctor({ home, cwd }) {
     const seen = new Map();
     for (const [dir, labels] of byPath) {
       const manifest = await readManifest(dir);
+      // A run killed while it held the directory leaves this behind, and every
+      // command then refuses. Telling a live run from a dead one is the one
+      // judgement this tool cannot make, so it reports the file and leaves the
+      // decision where it belongs.
+      if (!reported.has(dir) && await destinationState(path.join(dir, LOCK_NAME)) !== 'absent') {
+        reported.add(dir);
+        findings.push({
+          level: 'warn',
+          code: 'locked-directory',
+          message: `A stylewright command is working in ${dir}, or one was killed there. `
+            + `Every command refuses until ${path.join(dir, LOCK_NAME)} goes. `
+            + 'Remove it when no other run is active.',
+        });
+      }
       // An install that did not come back states what it was about to write.
       // The files it left are reachable, and the next `install` or `uninstall`
       // clears them, but nothing said they were there.

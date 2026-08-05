@@ -306,14 +306,21 @@ test('a skill another run reinstalled keeps its record', async () => {
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
 
+  const { manifest, identity } = await readManifestWithIdentity(target);
   const original = fs.rm;
   let raced = false;
   fs.rm = async (...args) => {
     const result = await original.apply(fs, args);
-    // The reinstall lands after this command has deleted the last file.
+    // The files come back, and the record with them, after this command has
+    // deleted the last one. The lock keeps another COMMAND out; it cannot keep
+    // a hand out, and the rule has to hold either way.
     if (!raced && String(args[0]).endsWith('guide.md')) {
       raced = true;
-      await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+      await fs.cp(
+        path.join(REPO, 'skills', 'craft', 'demo-craft'),
+        path.join(target, 'demo-craft'),
+        { recursive: true });
+      await writeManifest(target, manifest, identity);
     }
     return result;
   };
@@ -406,15 +413,24 @@ test('an uninstall keeps a skill another run installed while it worked', async (
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
 
+  const other = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: other, names: ['demo-standard'], now: NOW });
+  const { manifest: theirs } = await readManifestWithIdentity(other);
+
   const original = fs.rm;
   let raced = false;
   fs.rm = async (...args) => {
     const result = await original.apply(fs, args);
     if (!raced && String(args[0]).includes('demo-craft')) {
       raced = true;
-      await installSkills({
-        repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
-      });
+      // A second skill and its record arrive while this command works.
+      await fs.cp(path.join(other, 'demo-standard'), path.join(target, 'demo-standard'),
+        { recursive: true });
+      const fresh = await readManifestWithIdentity(target);
+      await writeManifest(target, {
+        ...fresh.manifest,
+        skills: { ...fresh.manifest.skills, 'demo-standard': theirs.skills['demo-standard'] },
+      }, fresh.identity);
     }
     return result;
   };

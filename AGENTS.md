@@ -208,6 +208,16 @@ Two consequences for a change you propose here:
   stop half way, and a fragment at a destination is a file nothing can identify
   afterwards. The staging name is derived from the destination, so recovery
   finds it from the statement alone and removes it whatever it holds.
+- **One command at a time holds a target directory**, through
+  `src/lock.js`. Three review rounds found three ways for two runs to spoil each
+  other's reading of the tree, and each patch produced the next one: a recovery
+  cleared a statement its writer was still working under, an undo withdrew a
+  statement another run had replaced, a deletion was decided from a snapshot a
+  commit had overtaken. A tree cannot be read and changed in one step, so the
+  answer is that only one run reads it. A run killed while holding it leaves the
+  file behind and every later command refuses, which is the deliberate cost:
+  telling a live run from a dead one needs an advisory lock Node does not expose,
+  or a staleness timeout, and a timeout that is wrong deletes a live run's files.
 - **A write to the manifest answers to the read that preceded it.**
   `writeManifest` takes the identity that `readManifestWithIdentity` returned,
   and there is no default for it. Classifying the path afresh is a different

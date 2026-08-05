@@ -1,0 +1,67 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { installSkills } from '../src/install.js';
+import { uninstallSkills } from '../src/uninstall.js';
+import { withTargetLock, LOCK_NAME } from '../src/lock.js';
+
+const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
+const NOW = '2026-01-01T00:00:00.000Z';
+const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-lock-'));
+const exists = (p) => fs.access(p).then(() => true, () => false);
+
+test('one run at a time holds a target directory', async () => {
+  const dir = await tmp();
+  let inner = null;
+  await withTargetLock(dir, async () => {
+    assert.ok(await exists(path.join(dir, LOCK_NAME)), 'the holder can see it holds it');
+    inner = await withTargetLock(dir, async () => 'got in').catch((err) => err);
+  });
+  assert.match(inner.message, /Another stylewright command is working/);
+  assert.match(inner.message, /remove .*\.stylewright-lock/, 'and it names the file');
+});
+
+test('the directory is let go whether the run finishes or throws', async () => {
+  const dir = await tmp();
+  await withTargetLock(dir, async () => 'done');
+  assert.deepEqual(await fs.readdir(dir), []);
+
+  await assert.rejects(withTargetLock(dir, async () => {
+    throw new Error('the run failed');
+  }), /the run failed/);
+  assert.deepEqual(await fs.readdir(dir), [], 'a failure must not leave it locked');
+});
+
+test('a directory that does not exist is not created to be locked', async () => {
+  // `uninstall` on a machine that never installed anything must leave no trace,
+  // and a lock file is a trace.
+  const parent = await tmp();
+  const dir = path.join(parent, 'skills');
+  assert.equal(await withTargetLock(dir, async () => 'ran', { create: false }), 'ran');
+  assert.ok(!(await exists(dir)));
+});
+
+test('a command finds a locked directory and refuses without reading it', async () => {
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  await fs.writeFile(path.join(target, LOCK_NAME), '');
+
+  await assert.rejects(
+    installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW }),
+    /Another stylewright command is working/);
+  await assert.rejects(
+    uninstallSkills({ targetDir: target, names: ['demo-craft'] }),
+    /Another stylewright command is working/);
+  assert.ok(await exists(path.join(target, 'demo-craft', 'SKILL.md')), 'and touches nothing');
+  assert.ok(!(await exists(path.join(target, 'demo-standard'))));
+});
+
+test('a finished command leaves no lock behind', async () => {
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  assert.ok(!(await exists(path.join(target, LOCK_NAME))));
+  await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  assert.ok(!(await exists(target)), 'and the empty directory still goes');
+});
