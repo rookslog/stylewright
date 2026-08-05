@@ -35,3 +35,7 @@ jobs:
       # Fails when a skill changes and its grounding matrix does not.
       - name: Check every grounding matrix
         run: npm run check:ground
+
+      # Fails when a document's front matter does not fit the schema.
+      - name: Check every document's front matter
+        run: npm run check:docs

@@ -1,3 +1,8 @@
+---
+type: plan
+status: shipped
+---
+
 # stylewright Engine Core Implementation Plan
 
 **Goal:** Build the `stylewright` CLI engine and prove it end-to-end against one real skill. `npx stylewright install` must place skills on disk for Claude and Codex, at user or project scope. The engine must also supply drift-safe updates, an exact uninstall, an ASD-STE100 mechanical lint, and a checked grounding matrix.

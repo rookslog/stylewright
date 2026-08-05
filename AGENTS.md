@@ -7,15 +7,16 @@ This repository ships writing skills. Its own documents are written under one of
 those skills, and continuous integration checks them with its own tool. Hold a
 change here to the standard the repository sells.
 
-## Run these three before you claim a change is done
+## Run these four before you claim a change is done
 
 ```bash
 npm test              # unit and conformance tests
 npm run lint:docs     # our own writing rules, applied to our own documents
 npm run check:ground  # every grounding matrix still matches its skill
+npm run check:docs    # every document's front matter fits the schema
 ```
 
-`npm run check` runs all three.
+`npm run check` runs all four.
 
 ## What counts as a defect here
 
@@ -198,6 +199,14 @@ Two consequences for a change you propose here:
   labels nearly every pull request.
 - `LICENSE` must stay unmodified MIT text. Appending a note to it stops GitHub
   detecting the license. Scope statements belong in README, under Licensing.
+
+## Major decisions live in `docs/adr/`
+
+An ADR records one decision and its reasons, under a stable number. This
+file keeps the operative rules. The ADR keeps the why. A change that
+contradicts an ADR addresses the ADR, in the pull request, rather than
+quietly diverging. A pull request that makes a major decision records it as
+an ADR in the same pass, and a reviewer holds it to that.
 
 ## Say as much as the disposition needs, and no more
 

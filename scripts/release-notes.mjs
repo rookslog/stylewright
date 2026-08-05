@@ -53,7 +53,8 @@ export function releaseNotes(changelog, version) {
   return body;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const { fileURLToPath } = await import('node:url');
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const { readFileSync } = await import('node:fs');
   const version = process.argv[2];
   if (!version) {

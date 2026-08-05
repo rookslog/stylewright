@@ -1,7 +1,9 @@
-# stylewright — design
+---
+type: spec
+status: shipped
+---
 
-**Date:** 2026-07-26
-**Status:** design approved. Licenses verified. Not yet implemented.
+# stylewright — design
 
 ## 1. What this is
 
