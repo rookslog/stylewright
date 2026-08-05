@@ -184,6 +184,13 @@ It is still the symptom rather than the defect, which is why the reading rule
 above is not optional. The numbers tell you which sample to open. The reason a
 reply is bad is always in the text.
 
+Read every figure in this section as unaudited. The samples behind them were
+not kept, because `.gitignore` excludes the whole of `bench/out/`, so nobody
+can re-score them. A later pass over the samples that survived locally put the
+control median at 171 rather than 173, and none of them carries the provenance
+sidecar the scorer now requires. Name a retained sample store before the next
+figure is published.
+
 ### `echo` runs backwards, and here is the measurement
 
 It was built to catch a reply that hands the request back before answering it.
