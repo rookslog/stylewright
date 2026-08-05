@@ -25,12 +25,32 @@ async function listDirs(dir) {
   }
 }
 
+/**
+ * The two tiers are two directories and one namespace. Every consumer keys on
+ * the name alone — install builds a map of it, `ground --check` builds an
+ * object of it, `update` builds a set of it — and each of those quietly kept
+ * one of the two entries. Install kept the later tier, so a command that asked
+ * for the standards skill copied the craft one and recorded it as craft.
+ *
+ * A name in two tiers is not an ambiguity a consumer can resolve, because the
+ * caller named the skill it wanted and the catalog holds two. So it stops here,
+ * at the one surface all of them read, rather than at each of them.
+ */
 export async function loadCatalog(repoRoot) {
   const skills = [];
+  const seen = new Map();
   for (const tier of TIERS) {
     const tierDir = path.join(repoRoot, 'skills', tier);
     for (const name of await listDirs(tierDir)) {
       const dir = path.join(tierDir, name);
+      const held = seen.get(name);
+      if (held) {
+        throw new Error(
+          `Skill name "${name}" is used in two tiers: skills/${held}/${name} and `
+          + `skills/${tier}/${name}. A skill name is unique across tiers, because `
+          + 'every command that reads the catalog selects by name alone.');
+      }
+      seen.set(name, tier);
       const text = await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8');
       const fm = readFrontmatter(text);
       if (fm.name !== name) {

@@ -1,9 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { loadCatalog, readFrontmatter } from '../src/catalog.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
+
+const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-cat-'));
+
+/** A repository holding one skill of this name in each tier named. */
+async function repoWith(names) {
+  const repo = await tmp();
+  for (const [tier, name] of names) {
+    const dir = path.join(repo, 'skills', tier, name);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'SKILL.md'),
+      `---\nname: ${name}\ndescription: The ${tier} one.\n---\n\n# ${name}\n`);
+  }
+  return repo;
+}
 
 test('reads name and description from frontmatter', () => {
   const fm = readFrontmatter('---\nname: a-skill\ndescription: Does a thing.\n---\n# Body\n');
@@ -32,4 +49,24 @@ test('grounding path points outside the skill directory', async () => {
 test('frontmatter name must match directory name', async () => {
   const cat = await loadCatalog(REPO);
   for (const s of cat) assert.equal(path.basename(s.dir), s.name);
+});
+
+// The two tiers share one flat namespace. Every consumer keys on the name
+// alone, so a name in both tiers is not an ambiguity a consumer can resolve.
+// The catalog is the one place all of them read, so it is where the collision
+// stops.
+test('one name in two tiers is refused, and both tiers are named', async () => {
+  const repo = await repoWith([['standards', 'twinned'], ['craft', 'twinned']]);
+  await assert.rejects(() => loadCatalog(repo), (err) => {
+    assert.match(err.message, /twinned/);
+    assert.match(err.message, /skills\/standards\/twinned/);
+    assert.match(err.message, /skills\/craft\/twinned/);
+    return true;
+  });
+});
+
+test('the same name in one tier only stays a catalog of one', async () => {
+  const repo = await repoWith([['craft', 'twinned']]);
+  const cat = await loadCatalog(repo);
+  assert.deepEqual(cat.map((s) => [s.name, s.tier]), [['twinned', 'craft']]);
 });

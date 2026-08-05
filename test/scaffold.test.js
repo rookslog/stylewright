@@ -88,6 +88,35 @@ test('refuses to overwrite an existing skill', async () => {
   await assert.rejects(() => scaffoldSkill({ repoRoot: repo, ...STD }), /already exists/);
 });
 
+// The scaffold looked in the selected tier alone, so it created the second
+// skill of a name the catalog cannot tell apart. Both directions fail, because
+// either tier may be scaffolded first.
+test('refuses a name the other tier already holds', async () => {
+  const repo = await tmp();
+  await scaffoldSkill({ repoRoot: repo, name: 'demo-guide', tier: 'craft', description: 'd' });
+  await assert.rejects(
+    () => scaffoldSkill({ repoRoot: repo, ...STD }),
+    /skills\/craft\/demo-guide already holds that name/);
+  await assert.rejects(fs.access(path.join(repo, 'skills', 'standards', 'demo-guide')));
+
+  const other = await tmp();
+  await scaffoldSkill({ repoRoot: other, ...STD });
+  await assert.rejects(
+    () => scaffoldSkill({
+      repoRoot: other, name: 'demo-guide', tier: 'craft', description: 'd',
+    }),
+    /skills\/standards\/demo-guide already holds that name/);
+  await assert.rejects(fs.access(path.join(other, 'skills', 'craft', 'demo-guide')));
+});
+
+test('a scaffold the other tier does not hold still works', async () => {
+  const repo = await tmp();
+  await scaffoldSkill({ repoRoot: repo, name: 'demo-craft', tier: 'craft', description: 'd' });
+  await scaffoldSkill({ repoRoot: repo, ...STD });
+  const cat = await loadCatalog(repo);
+  assert.deepEqual(cat.map((s) => s.name), ['demo-craft', 'demo-guide']);
+});
+
 // The scaffold checked one path and wrote six. Each test below is a write that
 // escaped, reproduced against the old code before the fix was written.
 
