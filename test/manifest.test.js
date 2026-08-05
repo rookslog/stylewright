@@ -118,20 +118,59 @@ test('refuses a component whose Win32 spelling would be trimmed', async () => {
   }
 });
 
-test('refuses a component that contains a backslash', async () => {
-  // A manifest travels between machines, so a key carries one separator: `/`.
-  // Where path.sep is `\`, a backslash key names two components to the
-  // filesystem while a check that splits on `/` reads it as one, and
-  // `..\victim` walks out of the tree with no `..` component to find.
-  // Ambiguity between the check and the resolver is refused, not translated.
+test('migrates a legacy Windows key instead of refusing the manifest', async () => {
+  // Releases up to 0.2.0 built keys with path.join, so a Windows install
+  // recorded agents\openai.yaml. Refusing that spelling outright would strand
+  // the install: every command reads the manifest, so not even uninstall
+  // could clean it up. The read rewrites the separator, and the rewritten
+  // manifest still passes the same containment gate as any other.
   const dir = await tmp();
-  for (const rel of ['refs\\guide.md', '..\\victim', 'a\\..\\b']) {
+  await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+    schema: 1,
+    skills: {
+      'demo-craft': {
+        tier: 'craft',
+        pathway: 'engine',
+        files: { 'SKILL.md': 'a'.repeat(64), 'agents\\openai.yaml': 'b'.repeat(64) },
+      },
+    },
+  }));
+  const mf = await readManifest(dir);
+  assert.equal(mf.skills['demo-craft'].files['agents/openai.yaml'], 'b'.repeat(64));
+  assert.equal(mf.skills['demo-craft'].files['agents\\openai.yaml'], undefined);
+  assert.equal(mf.skills['demo-craft'].files['SKILL.md'], 'a'.repeat(64));
+});
+
+test('a legacy key that rewrites to an escape is still refused', async () => {
+  // Migration is a spelling change, not a wider gate. The rewritten key goes
+  // through the same containment check, so a hostile manifest gains nothing
+  // by spelling its escape with backslashes.
+  const dir = await tmp();
+  for (const rel of ['..\\victim', 'a\\..\\b', 'a\\\\b', 'refs\\guide.md ']) {
     await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
       schema: 1,
       skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
     }));
     await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
   }
+});
+
+test('a legacy key that rewrites onto an existing key is refused', async () => {
+  // Two recorded keys must stay two keys. If refs\guide.md rewrote onto an
+  // existing refs/guide.md, one recorded hash would silently vanish, and the
+  // survivor would speak for a file the manifest recorded twice.
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+    schema: 1,
+    skills: {
+      'demo-craft': {
+        tier: 'craft',
+        pathway: 'engine',
+        files: { 'refs/guide.md': 'a'.repeat(64), 'refs\\guide.md': 'b'.repeat(64) },
+      },
+    },
+  }));
+  await assert.rejects(() => readManifest(dir), /outside|twice/);
 });
 
 test('refuses a component that contains a colon', async () => {

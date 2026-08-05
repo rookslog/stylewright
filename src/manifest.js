@@ -34,7 +34,9 @@ function contained(rel) {
   // an alternate data stream on SKILL.md. Every one of these spellings means
   // something different to the one resolver that treats it specially, so all
   // of them are refused rather than translated — on every platform, because a
-  // manifest written on one may be read on another.
+  // manifest written on one may be read on another. The one translation that
+  // does happen lives in readManifest, which rewrites a legacy path.join key
+  // before this check runs. A backslash that survives to here is refused.
   if (rel.includes('\\') || rel.includes(':')) return false;
   if (path.posix.isAbsolute(rel)) return false;
   // **The key must already be in normal form.** Every consumer joins the RAW
@@ -96,10 +98,38 @@ function checkContained(manifest, targetDir) {
   return manifest;
 }
 
+/**
+ * Releases up to 0.2.0 built keys with path.join, so a Windows install
+ * recorded agents\openai.yaml. Refusing that spelling would strand the
+ * install: every command reads the manifest, so not even uninstall could
+ * clean it up. The read rewrites the separator instead, and the rewritten
+ * manifest faces the same containment gate as any other — an escape spelled
+ * with backslashes is refused after the rewrite, exactly as it is spelled
+ * with slashes. Two keys that rewrite onto one another are refused too,
+ * because a silent merge would drop a recorded hash.
+ */
+function migrateLegacyKeys(manifest, targetDir) {
+  if (!manifest?.skills) return manifest;
+  const skills = {};
+  for (const [name, entry] of Object.entries(manifest.skills)) {
+    const files = {};
+    for (const [rel, hash] of Object.entries(entry?.files ?? {})) {
+      const key = rel.replaceAll('\\', '/');
+      if (Object.hasOwn(files, key)) {
+        throw new Error(
+          `Manifest in ${targetDir} records "${key}" twice, once per separator.`);
+      }
+      files[key] = hash;
+    }
+    skills[name] = { ...entry, files };
+  }
+  return { ...manifest, skills };
+}
+
 export async function readManifest(targetDir) {
   try {
     const raw = await fs.readFile(path.join(targetDir, MANIFEST_NAME), 'utf8');
-    return checkContained(JSON.parse(raw), targetDir);
+    return checkContained(migrateLegacyKeys(JSON.parse(raw), targetDir), targetDir);
   } catch (err) {
     if (err.code === 'ENOENT') return emptyManifest();
     throw err;

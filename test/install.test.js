@@ -155,6 +155,31 @@ test('stamps the manifest with the release that wrote it', async () => {
   assert.equal((await readManifest(target)).stylewrightVersion, VERSION);
 });
 
+test('an install recorded with legacy Windows keys updates cleanly', async () => {
+  // Releases up to 0.2.0 built keys with path.join, so a Windows install
+  // recorded references\guide.md. An update over that manifest must read it,
+  // recognise its own files, and leave the rewritten spelling behind — not
+  // refuse and strand the install.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const legacy = await readManifest(target);
+  legacy.skills['demo-craft'].files = Object.fromEntries(
+    Object.entries(legacy.skills['demo-craft'].files)
+      .map(([rel, hash]) => [rel.replaceAll('/', '\\'), hash]));
+  await fs.writeFile(
+    path.join(target, MANIFEST_NAME), `${JSON.stringify(legacy, null, 2)}\n`);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
+  const mf = await readManifest(target);
+  const keys = Object.keys(mf.skills['demo-craft'].files);
+  assert.ok(keys.includes('references/guide.md'));
+  assert.ok(keys.every((k) => !k.includes('\\')));
+});
+
 test('a dangling symlink at a shipping path is a collision, not an absence', async () => {
   // fs.access follows the link and throws ENOENT, so the path looked free.
   // copyFile then follows it and writes skill content OUTSIDE the target tree.
