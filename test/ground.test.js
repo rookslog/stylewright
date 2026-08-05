@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { parseMatrix, checkSkill, checkAll } from '../src/ground.js';
+import { parseMatrix, checkSkill, checkAll, contentUnits } from '../src/ground.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 
@@ -173,6 +173,16 @@ test('a setext heading is a heading', () => {
     skillText: SKILL.replace('## Rules', 'Rules\n=====\n'), matrixText: MATRIX,
   });
   assert.deepEqual(units, []);
+});
+
+test('a setext title is not also preamble prose', () => {
+  // The title sat above its underline, so it stayed in the preamble AND became
+  // the heading. One occurrence then needed two rows, against the rule that a
+  // row claims one occurrence.
+  const skillText = SKILL.replace('# S', 'S\n=');
+  const units = contentUnits(skillText);
+  assert.equal(units.filter((u) => u.text === 'S').length, 1);
+  assert.deepEqual(checkSkill({ skillText, matrixText: MATRIX }), []);
 });
 
 test('prose cannot impersonate a block designator', () => {

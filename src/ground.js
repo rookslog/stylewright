@@ -168,7 +168,11 @@ export function contentUnits(skillText) {
   const body = withoutFrontMatter(skillText);
   const secs = sections(body);
   const lines = body.split('\n');
-  const firstHeading = secs.length ? secs[0].startLine - 1 : lines.length;
+  // `firstLine` for a setext heading, because `startLine` is the underline and
+  // the heading TEXT sits above it. Taking `startLine - 1` left that text in the
+  // preamble and then added it again as the heading, so one occurrence in the
+  // source demanded two matrix rows. `endLine` already reads it this way.
+  const firstHeading = secs.length ? (secs[0].firstLine ?? secs[0].startLine - 1) : lines.length;
   const out = unitsIn(lines.slice(0, firstHeading).join('\n'), PREAMBLE);
   for (const sec of secs) {
     // The heading is a unit of its own. It was the anchor and nothing else, so

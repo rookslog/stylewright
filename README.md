@@ -226,6 +226,10 @@ does not. Every heading, paragraph, list item, table and code block counts,
 including the ones before the first heading. Front matter does not, because it
 is metadata for the agent harness rather than instruction for a reader.
 
+The check reads Markdown a line at a time. It does not model a blockquote or an
+indented container, so it can read what sits inside one as the wrong unit.
+Issue 37 tracks that gap.
+
 ## Licensing
 
 Sources impose different licenses, so one license for the whole repository

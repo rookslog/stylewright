@@ -62,6 +62,13 @@ thing outside the check, because it is metadata for the harness.
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
 
+The checker reads Markdown a line at a time, and it models no container. A list
+item, a heading or a fence nested inside a blockquote or under an indent is read
+as the wrong unit. Issue 37 carries the four shapes that reproduce, and it
+carries the design decision that closes the class. Report a fifth shape there
+rather than as a new finding, because patching one variant has produced the next
+one five rounds running.
+
 ### A skill that substitutes for its source
 
 A skill may quote a rule. A quotation with its identifier beside it is ordinary
