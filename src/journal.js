@@ -87,7 +87,9 @@ export function clearPending(manifest, name) {
  * Anything else is left where it is: a fragment cannot exist at a destination,
  * because a copy is staged and renamed, and a directory or a link at a pending
  * path is something this engine did not put there. The staging path itself is
- * removed whatever it holds — its name belongs to this tool.
+ * removed whatever it holds, because its name belongs to this tool — unless the
+ * manifest records a file at that spelling, which install refuses to ship and
+ * an older release may still have left.
  *
  * The paths are walked through `reachability` for the same reason every other
  * consumer is: a deletion must not travel through a symbolic link that appeared
