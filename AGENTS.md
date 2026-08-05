@@ -196,12 +196,27 @@ Two consequences for a change you propose here:
   interrupted one left. A change that moves a write ahead of its record reopens
   issue #49: an orphan no command can reach. `pending` is read as a list of
   files to delete, so it is validated exactly as the `skills` map is.
+- **The cleanup removes only a path no record names.** A recorded path is not an
+  orphan, and what sits at one after an interrupted run is either a fragment of
+  a copy or the user's own edit. Nothing on disk tells those apart, so comparing
+  the hash and deleting the mismatch deleted the user's work without `--force`.
+  A refusal the user can act on beats a deletion they cannot undo.
 - **A write to the manifest answers to the read that preceded it.**
   `writeManifest` takes the identity that `readManifestWithIdentity` returned,
   and there is no default for it. Classifying the path afresh is a different
   question, and it is the one that let two first-time installs each record half
   the tree. A run that loses that comparison refuses, and the ordering above is
   what makes the refusal harmless: it has copied nothing yet.
+- **The temporary file beside the manifest is the exclusion, and its name is
+  fixed.** `wx` is the only test and set the filesystem offers, so creating it
+  admits one writer, and the rename that commits the manifest also releases it.
+  Comparing the identity BEFORE taking it left a window where two runs both saw
+  the file they had read and the second rename destroyed the first's record. A
+  random name reopens that window.
+- **A command that has already deleted reconciles rather than refuses.**
+  `uninstall` removes files and then takes its entries out of a fresh read, and
+  retries on a stale one. Refusing there would leave the manifest claiming files
+  that are gone. Install refuses instead, because it refuses before it copies.
 - A check and the call it guards are two steps, so the file is identified by the
   open handle and not by the path. The scaffold records what it created from the
   handle, and the manifest read compares the handle against the path before it

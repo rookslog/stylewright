@@ -258,6 +258,77 @@ test('a file you edited is kept, and --force removes it', async () => {
   assert.ok(!(await exists(mine)));
 });
 
+test('an uninstall that has already deleted records the deletion', async () => {
+  // Install refuses a race before it copies, and that refusal costs nothing.
+  // This command has already deleted by the time it writes, so the same refusal
+  // would leave the manifest claiming files that are gone and exit non-zero on
+  // a removal that happened. The record catches up to the tree instead, and it
+  // takes out only what this command removed.
+  const target = await tmp();
+  await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft', 'demo-standard'], now: NOW,
+  });
+
+  const original = fs.rm;
+  let raced = false;
+  fs.rm = async (...args) => {
+    const result = await original.apply(fs, args);
+    // Another run rewrites the manifest while this one is deleting.
+    if (!raced && String(args[0]).includes('demo-craft')) {
+      raced = true;
+      const { manifest, identity } = await readManifestWithIdentity(target);
+      await writeManifest(target, { ...manifest, note: undefined }, identity);
+    }
+    return result;
+  };
+  let res;
+  try {
+    res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  } finally {
+    fs.rm = original;
+  }
+
+  assert.deepEqual(res.removed, ['demo-craft']);
+  const mf = await readManifest(target);
+  assert.deepEqual(Object.keys(mf.skills), ['demo-standard'], 'the record caught up');
+  assert.ok(!(await exists(path.join(target, 'demo-craft'))));
+  assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
+});
+
+test('an uninstall keeps a skill another run installed while it worked', async () => {
+  // The record is reapplied, not rewritten from what this command read. A
+  // rewrite would drop the entry for a skill that arrived meanwhile and strand
+  // its files.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const original = fs.rm;
+  let raced = false;
+  fs.rm = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced && String(args[0]).includes('demo-craft')) {
+      raced = true;
+      await installSkills({
+        repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
+      });
+    }
+    return result;
+  };
+  let res;
+  try {
+    res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  } finally {
+    fs.rm = original;
+  }
+
+  assert.deepEqual(res.removed, ['demo-craft']);
+  const mf = await readManifest(target);
+  assert.deepEqual(Object.keys(mf.skills), ['demo-standard']);
+  for (const rel of Object.keys(mf.skills['demo-standard'].files)) {
+    assert.ok(await exists(path.join(target, 'demo-standard', rel)), `${rel} survives`);
+  }
+});
+
 test('an uninstall clears what an interrupted install left', async () => {
   // This command's promise is that it removes what the installer wrote. The
   // leavings of an install that did not come back belong to no skill entry, so

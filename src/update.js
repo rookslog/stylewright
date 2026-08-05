@@ -44,9 +44,16 @@ export async function findInstalls({ home, cwd, platforms, scopes }) {
       if (seen.has(targetDir)) continue;
       const manifest = await readManifest(targetDir);
       const names = Object.keys(manifest.skills);
-      if (!names.length) continue;
+      // A directory holding only the statement of an install that did not come
+      // back has no installed skill, and it is exactly the directory that needs
+      // this command. Skipping it on the skill count made `update` report that
+      // nothing was installed and leave the files that run had copied — while
+      // the README promised update as one of the three commands that clear
+      // them.
+      const pending = Object.keys(manifest.pending ?? {}).length > 0;
+      if (!names.length && !pending) continue;
       seen.add(targetDir);
-      found.push({ platform, scope, targetDir, names });
+      found.push({ platform, scope, targetDir, names, pending });
     }
   }
   return found;
@@ -89,16 +96,18 @@ export async function updateSkills({
     // An install this request does not touch is not a result. Pushing one made
     // the caller skip its "Nothing to update" branch, so a targeted update that
     // matched nothing printed nothing and exited zero, looking like success.
-    if (!wanted.length) continue;
+    // A statement left by an interrupted run is work whichever skills were
+    // named, because the files it left belong to no skill entry at all.
+    if (!wanted.length && !install.pending) continue;
 
     // A skill can be renamed or withdrawn between releases. Its files stay on
     // disk and its manifest row stays valid, so report it rather than throwing.
     const orphaned = wanted.filter((n) => !known.has(n));
     const fresh = wanted.filter((n) => known.has(n));
 
-    const res = fresh.length
+    const res = (fresh.length || install.pending)
       ? await installSkills({ repoRoot, targetDir: install.targetDir, names: fresh, now, force })
-      : { installed: [], skipped: [] };
+      : { installed: [], skipped: [], recovered: [] };
 
     results.push({ ...install, ...res, orphaned });
   }

@@ -306,7 +306,11 @@ export async function run(argv, ctx) {
     // changed nothing must not report success. `update` was the third consumer
     // and did not have it, so a scripted update that refused every skill for a
     // local edit exited zero and said the refresh had happened.
-    if (!update.results.some((r) => r.installed.length)) {
+    //
+    // Clearing what an interrupted run left IS a change. Counting only the
+    // skills written told a script that a cleanup which deleted files had
+    // failed.
+    if (!update.results.some((r) => r.installed.length || r.recovered?.length)) {
       say('Nothing was updated.');
       return 1;
     }
@@ -499,7 +503,9 @@ export async function run(argv, ctx) {
         for (const s of res.skipped) {
           say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
         }
-        changed += res.installed.length;
+        // Clearing what an interrupted run left is a change, and a command
+        // that deleted files must not report that nothing happened.
+        changed += res.installed.length + res.recovered.length;
         refused += res.skipped.length;
       } else {
         const res = await uninstallSkills({
@@ -519,7 +525,7 @@ export async function run(argv, ctx) {
             ? ' Use --force to remove it anyway.' : '';
           say(`kept ${s.name}: ${s.reason} (${s.files.join(', ')}).${remedy}`);
         }
-        changed += res.removed.length;
+        changed += res.removed.length + res.recovered.length;
         refused += res.skipped.length;
       }
     }

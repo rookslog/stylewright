@@ -63,28 +63,50 @@ test('a recorded file the run had not reached stays', async () => {
   }
 });
 
-test('a recorded file the run had half-written goes, and its record stays', async () => {
-  // `copyFile` is not atomic, so what sits at a path a killed run was writing
-  // may be a fragment. Removing it and leaving the record is what makes the
-  // next install restore the file rather than accuse the user of editing it.
+test('a recorded path is left alone, whatever it now holds', async () => {
+  // A killed `copyFile` leaves a fragment, and nothing on disk tells a fragment
+  // apart from an edit the user made after the interrupted run. Both are at a
+  // path the manifest records, so both are reachable and neither is this
+  // function's to delete. An earlier version compared the hash and deleted the
+  // mismatch, which deleted the user's work without `--force`.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
   const { manifest } = await readManifestWithIdentity(target);
-  const torn = path.join(target, 'demo-craft', 'SKILL.md');
-  await fs.writeFile(torn, 'the first half of a copy\n');
+  const edited = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.writeFile(edited, 'my own words\n');
 
   const done = await recoverPending(target, {
     ...manifest,
     pending: { 'demo-craft': Object.keys(manifest.skills['demo-craft'].files) },
   });
 
-  assert.deepEqual(done.removed, ['demo-craft/SKILL.md']);
-  assert.ok(!(await exists(torn)));
-  assert.ok(await exists(path.join(target, 'demo-craft', 'LICENSE')));
-  assert.ok(await exists(path.join(target, 'demo-craft')), 'a recorded skill keeps its directory');
+  assert.deepEqual(done.removed, []);
+  assert.equal(await fs.readFile(edited, 'utf8'), 'my own words\n');
   assert.deepEqual(
     Object.keys(done.manifest.skills['demo-craft'].files).sort(),
     ['LICENSE', 'SKILL.md', 'references/guide.md']);
+});
+
+test('a path the same statement names but no record does go', async () => {
+  // The two halves of one statement. A skill being updated states every path it
+  // will write, and a path the previous version never shipped is a path only
+  // this interrupted run could have created.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const { manifest } = await readManifestWithIdentity(target);
+  const fresh = path.join(target, 'demo-craft', 'references', 'added.md');
+  await fs.writeFile(fresh, 'from the release that did not finish\n');
+
+  const done = await recoverPending(target, {
+    ...manifest,
+    pending: {
+      'demo-craft': [...Object.keys(manifest.skills['demo-craft'].files), 'references/added.md'],
+    },
+  });
+
+  assert.deepEqual(done.removed, ['demo-craft/references/added.md']);
+  assert.ok(!(await exists(fresh)));
+  assert.ok(await exists(path.join(target, 'demo-craft', 'references', 'guide.md')));
 });
 
 test('what the engine could not have written is left alone', async () => {

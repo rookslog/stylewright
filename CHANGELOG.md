@@ -23,15 +23,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paths it will write, commits that statement to the manifest, and copies after.
   The next `install`, `update`, or `uninstall` clears what an interrupted run
   left, and says which files it cleared. `doctor` reports the directory until
-  one of them runs.
+  one of them runs. The cleanup takes only a path that no manifest records,
+  because a recorded path may hold your edit and no tool can tell that from half
+  of a copy.
 - **A manifest write answers to the read that preceded it.** `writeManifest`
   chose between creating and replacing by classifying the path afresh, which is
   a different question from whether the file is still the one the command read.
   Two first-time installs into one directory therefore both succeeded, and the
   second replaced the first's record while the first's files stayed on disk. The
   decision now comes from the read, and a manifest that appeared or changed
-  since is refused rather than replaced. The same rule governs the removal of
-  the manifest when the last skill goes.
+  since is refused rather than replaced. The comparison is made while a
+  temporary file with a fixed name holds off every other writer, and the rename
+  that commits the manifest is what releases it. The same rule governs the
+  removal of the manifest when the last skill goes. `uninstall` reconciles
+  instead of refusing, because by then it has already deleted the files.
 
 ## 0.2.1 — 2026-08-04
 

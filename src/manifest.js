@@ -223,6 +223,38 @@ function sameFile(a, b) {
   return a !== null && b !== null && a.dev === b.dev && a.ino === b.ino;
 }
 
+/**
+ * A refusal caused by another run rather than by anything wrong with the
+ * request. A caller that has already changed the tree can act on it — by
+ * reading again and reapplying — where a caller that has not must simply stop.
+ * The distinction is carried by a code rather than by matching on the message,
+ * which drifts.
+ */
+const STALE = 'ESTYLEWRIGHTSTALE';
+
+function stale(message) {
+  const err = new Error(message);
+  err.code = STALE;
+  return err;
+}
+
+export function isStale(err) {
+  return err?.code === STALE;
+}
+
+/**
+ * The one path this module writes beside the manifest, and the exclusion that
+ * admits a single writer.
+ *
+ * Its name is fixed rather than random. `wx` is the only test and set POSIX
+ * offers, so a fixed name turns the temporary file into the lock: a second
+ * writer's creation fails, and the rename that commits the manifest is also
+ * what releases it, in one step with nothing in between.
+ */
+function tmpPath(abs) {
+  return `${abs}.tmp`;
+}
+
 async function identityAt(abs, targetDir) {
   if (await regularOrAbsent(abs, targetDir) === 'absent') return null;
   const st = await fs.lstat(abs).catch((err) => {
@@ -264,11 +296,14 @@ export async function writeManifest(targetDir, manifest, expected) {
   await fs.mkdir(targetDir, { recursive: true });
   const abs = path.join(targetDir, MANIFEST_NAME);
   const body = `${JSON.stringify(stamped(manifest), null, 2)}\n`;
+  const tmp = tmpPath(abs);
   // Before either branch, and on both of them: a manifest that is a link or a
   // directory is refused whatever the caller read. Classifying only on the way
   // to a replacement would have left the creating branch writing at a path
-  // nothing had inspected.
-  const observed = await identityAt(abs, targetDir);
+  // nothing had inspected. The answer is not kept, because a classification is
+  // stale the moment it is taken — the comparison that matters happens below,
+  // inside the exclusion.
+  await regularOrAbsent(abs, targetDir);
 
   // Creating and replacing are different operations, and one mechanism cannot
   // be both. `wx` creates and refuses an existing destination. A rename
@@ -286,27 +321,15 @@ export async function writeManifest(targetDir, manifest, expected) {
   if (expected === null) {
     await fs.writeFile(abs, body, { flag: 'wx' }).catch((err) => {
       if (err.code !== 'EEXIST') throw err;
-      throw new Error(
+      throw stale(
         `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
     });
     return identityAt(abs, targetDir);
   }
 
-  // Replacing, and only the file this command read. Another run that committed
-  // in between holds a record of files on disk, and replacing it would strand
-  // every one of them. The window between this check and the rename below is
-  // not closed by it: `rename` is atomic and unconditional, and POSIX offers no
-  // compare-and-swap. What closes the damage is the ORDER — a run writes its
-  // pending record before it copies anything, so a run that loses here has
-  // nothing on disk to strand.
-  if (!sameFile(observed, expected)) {
-    throw new Error(
-      `Manifest in ${targetDir} changed while this command was running. Run again.`);
-  }
-
   // Replacing. Write beside it and rename over it, so no reader sees half a
   // manifest and no write passes through a link that appears after the check.
-  const tmp = `${abs}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  //
   // A rename replaces the file AND its mode. Somebody who set 0600 on their
   // manifest had it widened to whatever the umask gives on the next update.
   //
@@ -317,6 +340,22 @@ export async function writeManifest(targetDir, manifest, expected) {
   const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
   try {
     await fs.writeFile(tmp, body, mode === null ? { flag: 'wx' } : { flag: 'wx', mode });
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+    throw stale(
+      `Another run is writing the manifest in ${targetDir}. Run again, `
+      + `or remove ${tmp} if no other run is active.`);
+  }
+  try {
+    // Compared while the exclusion is held, and released by the rename that
+    // acts on the comparison. Comparing before taking it was the defect a
+    // reviewer reproduced: two runs both saw the file they had read, and the
+    // second rename overwrote a record the first had just committed, stranding
+    // the files that record named. The order here is what makes the answer
+    // still true when it is acted on.
+    if (!sameFile(await identityAt(abs, targetDir), expected)) {
+      throw stale(`Manifest in ${targetDir} changed while this command was running. Run again.`);
+    }
     // The umask trims the creation mode and never widens it, so this restores
     // a bit the umask took and cannot be the first thing to grant one.
     if (mode !== null) await fs.chmod(tmp, mode);
@@ -338,13 +377,27 @@ export async function writeManifest(targetDir, manifest, expected) {
  */
 export async function removeManifest(targetDir, expected) {
   const abs = path.join(targetDir, MANIFEST_NAME);
-  const observed = await identityAt(abs, targetDir);
-  if (observed === null) return; // Already gone. Nothing to remove and nothing to refuse.
-  if (!sameFile(observed, expected)) {
-    throw new Error(
-      `Manifest in ${targetDir} changed while this command was running. Run again.`);
+  const tmp = tmpPath(abs);
+  // The same exclusion a replacement takes, for the same reason: the comparison
+  // and the act on it must not have another run's write between them.
+  try {
+    await fs.writeFile(tmp, '', { flag: 'wx' });
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+    throw stale(
+      `Another run is writing the manifest in ${targetDir}. Run again, `
+      + `or remove ${tmp} if no other run is active.`);
   }
-  await fs.rm(abs, { force: true });
+  try {
+    const observed = await identityAt(abs, targetDir);
+    if (observed === null) return; // Already gone. Nothing to remove and nothing to refuse.
+    if (!sameFile(observed, expected)) {
+      throw stale(`Manifest in ${targetDir} changed while this command was running. Run again.`);
+    }
+    await fs.rm(abs, { force: true });
+  } finally {
+    await fs.rm(tmp, { force: true });
+  }
 }
 
 export function recordSkill(manifest, { name, tier, pathway, files, now }) {

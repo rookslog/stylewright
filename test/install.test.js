@@ -641,9 +641,11 @@ test('a run killed after a copy leaves nothing the next command cannot reach', a
   assert.deepEqual(Object.keys((await readManifest(target)).skills), ['demo-standard']);
 });
 
-test('a recovered half-install is completed by the next install', async () => {
-  // Recovery deletes a fragment and keeps the record that names it, so the file
-  // comes back rather than being reported as one the user edited.
+test('an interrupted update leaves a recorded path to the drift check', async () => {
+  // Recovery does not touch a recorded path, so what an interrupted update left
+  // at one — a fragment of a copy, or an edit the user made afterwards — meets
+  // the ordinary refusal and the ordinary remedy. The tool never deletes it on
+  // a guess about whose bytes they are.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
   const skillFile = path.join(target, 'demo-craft', 'SKILL.md');
@@ -654,12 +656,19 @@ test('a recovered half-install is completed by the next install', async () => {
     pending: { 'demo-craft': Object.keys(manifest.skills['demo-craft'].files) },
   }, identity);
 
-  const res = await installSkills({
+  const kept = await installSkills({
     repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
   });
+  assert.deepEqual(kept.installed, []);
+  assert.equal(kept.skipped[0].reason, 'locally-modified');
+  assert.deepEqual(kept.skipped[0].files, ['SKILL.md']);
+  assert.equal(await fs.readFile(skillFile, 'utf8'), 'the first half of a copy\n');
+  assert.equal((await readManifest(target)).pending, undefined, 'and the statement is withdrawn');
 
-  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
-  assert.deepEqual(res.recovered, ['demo-craft/SKILL.md']);
+  const forced = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(forced.installed, ['demo-craft']);
   const mf = await readManifest(target);
   assert.equal(await hashFile(skillFile), mf.skills['demo-craft'].files['SKILL.md']);
 });

@@ -209,6 +209,73 @@ test('update needs no flags, and finds its targets from the manifests', async ()
   assert.match(out.text(), /\.codex/);
 });
 
+test('update clears what an interrupted first install left, and says it changed', async () => {
+  // A first install killed after a copy leaves a manifest with a statement and
+  // no installed skill. `findInstalls` dropped that target on the skill count,
+  // so update reported that nothing was installed and left the files — while
+  // the README named update as one of the three commands that clear them.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target, { ...emptyManifest(), pending: { 'demo-craft': ['SKILL.md'] } }, null);
+
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+
+  // Zero, because the command changed the tree. Counting only the skills it
+  // wrote told a script that a cleanup which deleted files had failed.
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared demo-craft\/SKILL\.md/);
+  await assert.rejects(fs.access(path.join(target, 'demo-craft')));
+});
+
+test('install reports a cleanup that wrote no skill as a change', async () => {
+  // The skill is refused for a file the user wrote, so nothing is installed.
+  // The cleanup still deleted files, and a command that deleted files must not
+  // tell a script that nothing happened.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const mine = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(mine), { recursive: true });
+  await fs.writeFile(mine, 'my own notes\n');
+  const orphan = path.join(target, 'demo-standard', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target, { ...emptyManifest(), pending: { 'demo-standard': ['SKILL.md'] } }, null);
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared demo-standard\/SKILL\.md/);
+  assert.match(out.text(), /skipped demo-craft/);
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
+});
+
+test('uninstall reports a cleanup that removed no skill as a change', async () => {
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target, { ...emptyManifest(), pending: { 'demo-craft': ['SKILL.md'] } }, null);
+
+  const out = capture();
+  const code = await run(['uninstall', '--all', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared demo-craft\/SKILL\.md/);
+  await assert.rejects(fs.access(path.join(target, 'demo-craft')));
+});
+
 test('update refuses to overwrite an edited file without --force', async () => {
   const home = await tmp();
   const target = path.join(home, '.claude', 'skills');

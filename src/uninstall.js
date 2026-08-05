@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
-  hashFile, readManifestWithIdentity, writeManifest, removeManifest,
+  hashFile, readManifestWithIdentity, writeManifest, removeManifest, isStale,
 } from './manifest.js';
 import { hasPending, recoverPending } from './journal.js';
 import { pruneEmpty, removeAt, destinationState, reachability } from './tree.js';
@@ -143,16 +143,49 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
   // used to leave behind a skills directory and an empty manifest.
   if (!removed.length) return { removed, missing, skipped, recovered };
 
-  // The manifest is a file the installer wrote, so a full uninstall must take
-  // it too. Leaving it behind with an empty skills map contradicts the promise
-  // that uninstall removes only, and all of, what the installer wrote.
-  if (Object.keys(skills).length === 0) {
-    await removeManifest(targetDir, identity);
-    // Only when nothing else is there. A hand-written skill in the same
-    // directory keeps it alive, and that is correct.
-    await fs.rmdir(targetDir).catch(() => {});
-  } else {
-    await writeManifest(targetDir, { ...manifest, skills }, identity);
-  }
+  // The files are gone by now, so the record has to catch up rather than
+  // refuse. A refusal here is not the harmless one install gets: install
+  // refuses BEFORE it copies, and this command has already deleted. It leaves
+  // the manifest claiming files that are not there, and it exits non-zero on a
+  // removal that happened.
+  //
+  // So the record is reapplied to whatever the manifest now holds, rather than
+  // written from what this command read. What it reapplies is exactly what this
+  // command did: the entries for the skills it removed, and nothing else. A
+  // skill another run installed meanwhile keeps its record.
+  await reapply(targetDir, removed);
   return { removed, missing, skipped, recovered };
+}
+
+/**
+ * Take `names` out of the manifest, reading it again for each attempt.
+ *
+ * Retrying is only correct after the tree has changed. The decisions above are
+ * taken from a reading of the tree, so a run that loses a race there must stop
+ * and be run again. This one is not a decision. It is the record of a deletion
+ * that already happened, and the only wrong answer is to leave it unrecorded.
+ */
+async function reapply(targetDir, names, attempts = 3) {
+  for (let attempt = 1; ; attempt++) {
+    const { manifest, identity } = await readManifestWithIdentity(targetDir);
+    const skills = { ...manifest.skills };
+    for (const name of names) delete skills[name];
+    try {
+      // The manifest is a file the installer wrote, so a full uninstall must
+      // take it too. Leaving it behind with an empty skills map contradicts the
+      // promise that uninstall removes only, and all of, what the installer
+      // wrote.
+      if (Object.keys(skills).length === 0 && !hasPending(manifest)) {
+        await removeManifest(targetDir, identity);
+        // Only when nothing else is there. A hand-written skill in the same
+        // directory keeps it alive, and that is correct.
+        await fs.rmdir(targetDir).catch(() => {});
+      } else {
+        await writeManifest(targetDir, { ...manifest, skills }, identity);
+      }
+      return;
+    } catch (err) {
+      if (!isStale(err) || attempt >= attempts) throw err;
+    }
+  }
 }

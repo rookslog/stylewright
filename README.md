@@ -172,6 +172,11 @@ the paths it is about to write before it writes them. The next `install`,
 `update`, or `uninstall` clears what the interrupted run left, and names each
 file it clears. Run `doctor` to see whether a directory is waiting for that.
 
+The cleanup removes only a file that no manifest records. A file at a recorded
+path may hold half of an interrupted copy, or your own edit, and nothing on disk
+tells those apart. So the tool leaves it, reports it as locally modified, and
+waits for you to pass `--force`.
+
 Narrow it with `--skill`, `--platform`, or `--scope`. A skill that this
 repository no longer ships is reported and left alone. Uninstall it by name
 when you want it gone.

@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { hashFile } from './manifest.js';
 import { destinationState, removeAt, pruneEmpty, reachability } from './tree.js';
 
 /**
@@ -46,34 +45,28 @@ export function clearPending(manifest, name) {
 }
 
 /**
- * Delete each of `rels` under `<targetDir>/<name>` that the manifest cannot
- * reach, and report what went.
+ * Delete each of `rels` under `<targetDir>/<name>` that no record names, and
+ * report what went.
  *
- * One rule decides every case: **a file survives when the manifest records it
- * and it still holds what the record says.** Read against the four moments an
- * interrupted run can stop at, it gives the right answer at each:
+ * One rule decides every case: **a path the manifest records is never touched
+ * here.** The defect being closed is a file that no record names, so a recorded
+ * path is not an instance of it — `uninstall` reaches it, `install` compares it
+ * against its hash, and both already know what to do with whatever it holds.
  *
- * - A path this run created and never recorded is unrecorded, so it goes.
- * - A path the previous version installed and this run had not reached yet
- *   still hashes to its record, so it stays.
- * - A path the previous version installed and this run had half-overwritten
- *   matches no record — `copyFile` is not atomic, so what sits there may be a
- *   fragment — so it goes, and the record that survives restores it on the next
- *   install rather than accusing the user of editing it.
- * - A path the run recorded before it died in the window between the commit and
- *   nothing at all matches its new record, so it stays.
+ * An earlier draft of this went further and removed a recorded path whose
+ * content no longer matched its hash, on the reasoning that a killed `copyFile`
+ * leaves a fragment. Nothing on disk distinguishes that fragment from an edit
+ * the user made after the interrupted run, so the rule deleted the user's work
+ * without `--force` — the one thing this tool promises never to do. The cost of
+ * the narrower rule is that an interrupted update can leave a fragment at a
+ * recorded path, which install then refuses as locally modified and `--force`
+ * overwrites. A refusal the user can act on beats a deletion they cannot undo.
  *
- * What is NOT a file is left alone in every case: this engine writes files, so
- * a directory or a link at a pending path is something it did not put there.
- * The paths are walked through `reachability` for the same reason every other
+ * What is NOT a file is left alone as well: this engine writes files, so a
+ * directory or a link at a pending path is something it did not put there. The
+ * paths are walked through `reachability` for the same reason every other
  * consumer is — a deletion must not travel through a symbolic link that
  * appeared in the middle of a recorded path.
- *
- * A file the USER wrote cannot be here to lose. A run states a path only after
- * `untrackedCollisions` has found that path empty or ours, and under `--force`
- * the user has said to overwrite whatever stands there. The residue is a file
- * created at one of those exact paths between the interrupted run and this one,
- * inside a skill directory that install had already claimed.
  */
 export async function discardUnrecorded(targetDir, name, rels, manifest) {
   const destDir = path.join(targetDir, name);
@@ -83,9 +76,9 @@ export async function discardUnrecorded(targetDir, name, rels, manifest) {
 
   const removed = [];
   for (const rel of reachable) {
+    if (Object.hasOwn(recorded, rel)) continue;
     const abs = path.join(destDir, rel);
     if (await destinationState(abs) !== 'file') continue;
-    if (Object.hasOwn(recorded, rel) && await hashFile(abs) === recorded[rel]) continue;
     await removeAt(abs);
     await pruneEmpty(path.dirname(abs), destDir);
     removed.push(`${name}/${rel}`);
