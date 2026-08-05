@@ -25,7 +25,7 @@
   "files": ["bin", "src", "skills", "README.md", "LICENSE"],
   "scripts": {
     "test": "node --test",
-    "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md docs/ skills/",
+    "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md bench/README.md docs/ skills/",
     "check:ground": "node bin/stylewright.mjs ground --check --all",
     "check": "npm test && npm run lint:docs && npm run check:ground"
   },
