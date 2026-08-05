@@ -484,6 +484,22 @@ test('an uninstall whose only work was the cleanup leaves nothing behind', async
   assert.ok(!(await exists(target)), 'nothing of this tool is left');
 });
 
+test('a skill this command cleared is not also reported as never installed', async () => {
+  const parent = await tmp();
+  const target = path.join(parent, 'skills');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(target, {
+    schema: 1, skills: {}, pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } },
+  }, null);
+
+  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+
+  assert.deepEqual(res.cleared, ['demo-craft']);
+  assert.deepEqual(res.missing, [], 'it was there, and this command dealt with it');
+});
+
 test('an uninstall clears what an interrupted install left', async () => {
   // This command's promise is that it removes what the installer wrote. The
   // leavings of an install that did not come back belong to no skill entry, so

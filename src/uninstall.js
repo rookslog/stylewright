@@ -104,7 +104,10 @@ async function remove({ targetDir, names, force = false }) {
   for (const name of names) {
     const entry = skills[name];
     if (!entry) {
-      missing.push(name);
+      // Unless this command has just cleared what an interrupted run left under
+      // that name. It was there, and this command dealt with it, so reporting
+      // it as never installed contradicts the line above it.
+      if (!cleared.includes(name)) missing.push(name);
       continue;
     }
     const destDir = path.join(targetDir, name);
