@@ -295,6 +295,70 @@ test('an uninstall that has already deleted records the deletion', async () => {
   assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
 });
 
+test('the last uninstall keeps a manifest that now holds another run\'s statement', async () => {
+  // The manifest goes when the last skill goes. A statement another run wrote
+  // meanwhile names files it is about to create, so the file that would reach
+  // them must survive even though no skill is recorded in it.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const original = fs.rm;
+  let raced = false;
+  fs.rm = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced && String(args[0]).includes('demo-craft')) {
+      raced = true;
+      const { manifest, identity } = await readManifestWithIdentity(target);
+      await writeManifest(
+        target, { ...manifest, pending: { 'demo-standard': ['SKILL.md'] } }, identity);
+    }
+    return result;
+  };
+  try {
+    await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  } finally {
+    fs.rm = original;
+  }
+
+  const mf = await readManifest(target);
+  assert.deepEqual(mf.skills, {});
+  assert.deepEqual(mf.pending, { 'demo-standard': ['SKILL.md'] });
+});
+
+test('the record catches up even when the manifest changes twice', async () => {
+  // The reconcile reads, applies, and writes, and the write can lose the same
+  // race the read just won. It tries again rather than leaving the manifest
+  // claiming files this command has already deleted.
+  const target = await tmp();
+  await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft', 'demo-standard'], now: NOW,
+  });
+
+  const original = fs.stat;
+  let raced = false;
+  fs.stat = async (...args) => {
+    // Between the reconcile's read and the exclusion it takes to write. The
+    // first attempt therefore finds a manifest it did not read and is refused,
+    // and the second reads that one and applies the removal to it.
+    if (!raced && String(args[0]).endsWith(MANIFEST_NAME)) {
+      raced = true;
+      const { manifest, identity } = await readManifestWithIdentity(target);
+      await writeManifest(target, manifest, identity);
+    }
+    return original.apply(fs, args);
+  };
+  let res;
+  try {
+    res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
+  } finally {
+    fs.stat = original;
+  }
+
+  assert.deepEqual(res.removed, ['demo-craft']);
+  assert.ok(raced, 'the race must have been injected');
+  assert.deepEqual(Object.keys((await readManifest(target)).skills), ['demo-standard']);
+});
+
 test('an uninstall keeps a skill another run installed while it worked', async () => {
   // The record is reapplied, not rewritten from what this command read. A
   // rewrite would drop the entry for a skill that arrived meanwhile and strand
