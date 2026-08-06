@@ -1,6 +1,9 @@
-# Remediation plan: close the gap between every claim and its check
+---
+type: plan
+status: accepted
+---
 
-Date: 2026-07-31. Status: proposed, revised once after review.
+# Remediation plan: close the gap between every claim and its check
 
 Two cross-vendor reviews of the whole repository returned sixteen findings on
 2026-07-31. Reproducing the first returned a seventeenth. A third review, of the
@@ -304,6 +307,10 @@ The manifest defect is live. Version 0.2.0 is published, and a user who installs
 today can lose a file outside the install root. That governs the order below.
 
 ### 0.2.1, a correctness release
+
+**Shipped 2026-08-04.** The tag is `v0.2.1`, the chore commit is `3846929`, and
+the registry holds the version with a provenance attestation. Issue 45 records
+the checklist that got it there.
 
 Contains cluster 1, cluster 3, and cluster 5 in full. These reach a user's disk.
 

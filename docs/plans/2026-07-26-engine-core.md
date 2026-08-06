@@ -1,6 +1,9 @@
-# stylewright Engine Core Implementation Plan
+---
+type: plan
+status: shipped
+---
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+# stylewright Engine Core Implementation Plan
 
 **Goal:** Build the `stylewright` CLI engine and prove it end-to-end against one real skill. `npx stylewright install` must place skills on disk for Claude and Codex, at user or project scope. The engine must also supply drift-safe updates, an exact uninstall, an ASD-STE100 mechanical lint, and a checked grounding matrix.
 
@@ -116,7 +119,7 @@ node_modules/
 *.tgz
 ```
 
-Create `LICENSE` containing the standard MIT License text, copyright `2026 Logan Rooks`.
+Create `LICENSE` containing the standard MIT License text, with the owner's copyright line.
 
 - [ ] **Step 4: Run test to verify it passes**
 

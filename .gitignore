@@ -1,6 +1,7 @@
-node_modules/
+node_modules
 .DS_Store
 *.tgz
 
 # Bench samples are generated. The protocol reproduces them.
 bench/out/
+.claude/worktrees/

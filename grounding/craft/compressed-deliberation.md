@@ -50,7 +50,9 @@ Separately, and on a **different** scenario, this skill's own text cuts the
 `adjacent-bug` prompt to 59 median words against 173 with no guidance, while all
 five runs still report the bug seeded in that prompt. The two results are not
 two views of one measurement, and the reporting scenario was never run against
-the skill.
+the skill. The samples behind both figures were not kept, so the comparison is
+unaudited, and `bench/README.md` records that status beside every figure it
+publishes.
 
 Read that as a fact about a harness, not about a model. `claude -p` is the
 Claude Code headless path, so "no operator instructions" is not "the stock

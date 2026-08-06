@@ -62,6 +62,11 @@ For a skill with no external source:
 node bin/stylewright.mjs new-skill readme-craft --tier craft
 ```
 
+The two tiers share one namespace, so pick a name that neither tier holds. Every
+command selects a skill by name alone. The scaffold refuses a name the other
+tier already holds, and the catalog refuses to load a repository that carries
+the same name twice.
+
 Then do this:
 
 1. Replace the placeholder rule in `SKILL.md`. Write one instruction in each line.
@@ -173,6 +178,36 @@ from the section that you wrote in step 1.
 
 There is no npm token in this repository. npm trusts the workflow itself, so a
 release needs no secret and carries a provenance attestation.
+
+## Write a document
+
+Documents live under `docs/`, in three kinds. A **spec** designs something. A
+**plan** sequences building it. An **adr** records one major decision, with
+its reasons, so the decision has a stable identifier to cite.
+
+Every document opens with YAML front matter, and `npm run check:docs` holds
+it to the schema. Start from this:
+
+```yaml
+---
+type: spec
+status: draft
+issues: [21, 43]
+---
+```
+
+- `type` is `spec`, `plan`, or `adr`, and it must match the directory.
+- `status` is `draft`, `review`, `accepted`, `shipped`, or `superseded`.
+- `issues` is optional, and names the issues the document serves.
+- A spec or plan is named `YYYY-MM-DD-slug.md`. The filename is the date.
+- An ADR is named `NNNN-slug.md` and carries `decided: YYYY-MM-DD` instead.
+- A superseded document names its successor in `superseded-by`, the
+  successor names it in `supersedes`, and the check reads both ends.
+
+There is no author field. The schema refuses one.
+
+A pull request that makes a major decision records it as an ADR in the same
+pass. The ADR keeps the why. `AGENTS.md` keeps the operative rule.
 
 ## Report a defect in a rule
 

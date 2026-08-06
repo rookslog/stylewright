@@ -559,3 +559,27 @@ test('a deeper component below a blocker is never inspected', async () => {
   assert.deepEqual(res.installed, []);
   assert.equal(res.skipped[0].reason, 'not-ours');
 });
+
+test('a name in both tiers stops the install rather than picking one', async () => {
+  // Install keyed a map on the name alone, so the later tier won and a caller
+  // that asked for the standards skill got the craft one. A caller that named
+  // the tier has already said which skill it wants, and no map built this way
+  // can honour that. The refusal belongs to the catalog, which is the one
+  // surface every consumer reads.
+  const repo = await tmp();
+  for (const tier of ['standards', 'craft']) {
+    const dir = path.join(repo, 'skills', tier, 'twinned');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'SKILL.md'),
+      `---\nname: twinned\ndescription: The ${tier} one.\n---\n\n# twinned\n`);
+  }
+  const target = await tmp();
+
+  await assert.rejects(
+    () => installSkills({ repoRoot: repo, targetDir: target, names: ['twinned'], now: NOW }),
+    /twinned/);
+  // Nothing landed, and no manifest records one of the two as the skill asked
+  // for.
+  assert.deepEqual(await fs.readdir(target), []);
+});

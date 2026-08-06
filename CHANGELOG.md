@@ -7,6 +7,41 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The `navigable-references` skill, in the craft tier. It asks a writer to give
+  every named thing a form the reader can follow, in the form the medium
+  renders, and to find a line at the moment of citing it rather than from
+  memory. No measurement stands behind it. Its `SOURCE.md` says so, and names
+  the scenario a study would need.
+
+### Changed
+
+- The purity test parses each module in `src/` and inspects the syntax tree. It
+  matched text before, so `const bye = process.exit`, a `new Date` that spreads
+  an empty list, and a direct read of standard input all passed it. A reference
+  to `process`, `Date`, `performance` or the global object now counts wherever
+  it appears, and the test says in one place which constructs it rejects.
+  The test also reads what a module pulls in, so `node:perf_hooks` cannot
+  rename the clock and the `createRequire` in `node:module` cannot hide a
+  module list. `Intl.DateTimeFormat` reads the clock without naming `Date`, so
+  it counts too. Descriptor 0 counts through a reader the module aliased first,
+  and as an `fd` option that no argument position names.
+
+### Fixed
+
+- **A skill name is unique across both tiers, and a collision is now an error
+  that names both directories.** The two tiers share one flat namespace, and
+  every consumer selects by name alone. Install built a map keyed on the name,
+  where the later tier won, so `--tier standards` could copy the craft skill of
+  that name and record it as craft. `loadCatalog` now refuses a name that two
+  tiers carry, which reaches install, update, `list`, and `ground --check` in one
+  place. `new-skill` refuses a name the other tier already holds. `uninstall`
+  reports the collision and carries on, because it answers what a target has
+  installed and the manifest is the only thing that knows.
+
+## 0.2.1 — 2026-08-04
+
+### Added
+
 - The `compressed-deliberation` skill, in the craft tier. It corrects one
   model's documented output defaults, and `SOURCE.md` beside it pins the model
   build and the date the skill expires. The seven statements that trace to
@@ -17,6 +52,32 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repository's own first baseline came back clean and moved the work off the
   model and onto the instruction stack above it. Its second is that the numbers
   say which sample to read, and never what the sample means.
+
+### Fixed
+
+- The published package ships `grounding/`, so `ground --check --all` has
+  matrices to read after an npm install. The packed tarball held none, and the
+  advertised command reported every skill as missing its matrix. A new suite
+  packs the artifact, extracts it, and runs every advertised command, in its
+  flag-driven shape, against the extracted copy.
+- **A manifest that is a symbolic link no longer carries a write out of its
+  directory.** `readManifest` and `writeManifest` used plain file calls, so the
+  one destination in the tool that never went through `src/tree.js` was the one
+  that could be redirected. A linked manifest was read through and replaced with
+  manifest JSON, the link survived, the outside file was lost, and the command
+  exited zero without `--force`. The manifest is now refused unless it is a
+  regular file, and it is written beside its destination and renamed over it.
+- **`new-skill` no longer writes through a link or over your work.** It checked
+  whether the skill directory existed and then wrote six files, one of them the
+  grounding matrix, which does not live under the skill directory and was never
+  checked at all. A linked grounding path was written through and an existing
+  draft was replaced without a word. Every destination and every ancestor is now
+  checked first, each file is created with a flag that refuses an existing path,
+  and a scaffold that fails part way takes back what it wrote.
+- **A manifest of the wrong shape is refused where it is read.** A file whose
+  JSON parsed and whose shape was wrong reached install and uninstall, and
+  surfaced as an unhandled type error naming nothing. The error now names the
+  file and the field.
 
 ## 0.2.0 — 2026-07-27
 

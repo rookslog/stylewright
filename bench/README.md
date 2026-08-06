@@ -43,8 +43,9 @@ more words will not fix that.
 is a configuration, not a hypothesis. Name it for what it holds. Both halves of
 this rule were broken in the first study run here, and both broke a conclusion:
 one arm carried two edited rule files rather than one, and a rule file was
-rewritten 6 seconds into a five-run cell, so its last two runs measured the text
-the cell existed to compare against.
+rewritten 6 seconds into a five-run cell — an unaudited record, like every
+figure in this file — so its last two runs measured the text the cell existed
+to compare against.
 
 **Let the scorer refuse.** `run.sh` writes a `.meta` file beside every sample
 recording the hash of the injected system prompt, the hash of the operator rule
@@ -79,10 +80,11 @@ status on every row of the table — including `MEDIAN` and `RANGE` — because 
 warning on stderr is lost the moment anyone redirects or pastes the output.
 
 **Score the model, never the harness.** An early runner used `2>&1`, so a
-26-word CLI warning landed inside the word counts of two arms and no others. It
+26-word CLI warning — unaudited, again — landed inside the word counts of two
+arms and no others. It
 reversed the direction of the comparison those arms existed to make. The runner
 now takes `--output-format json` and lifts the answer out of the `result` field,
-so no harness line can reach a sample; stderr goes to a sibling `.err`. It also
+so no harness line can reach a sample. Stderr goes to a sibling `.err`. It also
 refuses to keep a sample from a run that reported `is_error`, because a failed
 invocation leaves a short file, and short is the direction every treatment here
 is meant to move.
@@ -171,24 +173,34 @@ test in the same commit, or the next reader is trusting prose over behaviour.
 An earlier version of this file told you to lead with `scaffold`, on the
 strength of one vivid sample that buried a real bug at item one of four under
 the third heading. A cross-vendor review checked that against the collected
-arms and it does not hold. Scored across six arms spanning 59 to 269 median
-words, `scaffold` reads zero in five of them and fires only on the worst.
+arms and it does not hold. Scored across six unaudited arms spanning 59 to
+269 median words, `scaffold` reads zero in five of them and fires only on
+the worst.
 
 So the structural metrics are **specific and insensitive**. When `scaffold` or a
 long `bullets` run fires, the sample is bad and you should read it. When they
 read zero, that is not evidence the sample is fine — `green-control` scores
-zero scaffold at 173 words against `green-skill`'s zero at 59.
+zero scaffold at 173 words against `green-skill`'s zero at 59, both
+unaudited.
 
 `words` is the only metric here that has separated every pair we have measured.
 It is still the symptom rather than the defect, which is why the reading rule
 above is not optional. The numbers tell you which sample to open. The reason a
 reply is bad is always in the text.
 
+Read every figure in this file as unaudited. The full arms behind them were
+not kept, because `.gitignore` excludes the whole of `bench/out/`. A partial
+subset survived on one machine, and a later pass over it put the control
+median at 171, without provenance sidecars. That pass is not the same
+measurement as the 173 above, so neither number corrects the other. Name a
+retained sample store before the next figure is published.
+
 ### `echo` runs backwards, and here is the measurement
 
 It was built to catch a reply that hands the request back before answering it.
-It does the opposite. On the report scenario the tight control scored 0.375 and
-the bloated arm scored 0.091, because `echo` is a share of the reply. A short,
+It does the opposite. On the report scenario — unaudited, like every figure
+here — the tight control scored 0.375 and the bloated arm scored 0.091,
+because `echo` is a share of the reply. A short,
 on-topic answer reuses the reader's own nouns and little else, so its share is
 high. A long one dilutes the same reuse with new material.
 
@@ -206,3 +218,8 @@ a style metric starts rewarding empty writing. Anthropic has published one
 episode in which brevity instructions reduced coding quality, recorded as `A6`
 in the source file beside `compressed-deliberation`. Score `words` alongside a
 correctness judgment, never instead of one.
+
+The bench also delivers a treatment by appending it to the system prompt, while
+the product installs a directory that a harness must choose to load. These
+figures therefore measure injection, and never installation. Issue #43 carries
+the installed-activation scenario.

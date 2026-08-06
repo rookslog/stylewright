@@ -1,6 +1,6 @@
 {
   "name": "stylewright",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Writing skills for coding agents, distilled from named standards. Installs into Claude Code, Claude Cowork, and Codex.",
   "keywords": [
     "claude-code",
@@ -22,12 +22,14 @@
   "bugs": { "url": "https://github.com/rookslog/stylewright/issues" },
   "bin": { "stylewright": "./bin/stylewright.mjs" },
   "engines": { "node": ">=20.11.0" },
-  "files": ["bin", "src", "skills", "README.md", "LICENSE"],
+  "files": ["bin", "src", "skills", "grounding", "README.md", "LICENSE"],
   "scripts": {
     "test": "node --test",
-    "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md docs/ skills/",
+    "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md bench/README.md bench/samples/README.md docs/ skills/",
     "check:ground": "node bin/stylewright.mjs ground --check --all",
-    "check": "npm test && npm run lint:docs && npm run check:ground"
+    "check:docs": "node scripts/check-docs-meta.mjs",
+    "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs"
   },
-  "dependencies": { "@inquirer/prompts": "^7.0.0" }
+  "dependencies": { "@inquirer/prompts": "^7.0.0" },
+  "devDependencies": { "acorn": "^8.18.0" }
 }

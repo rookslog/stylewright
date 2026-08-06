@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { loadCatalog } from './catalog.js';
+import { loadCatalog, DuplicateSkillName, TIERS } from './catalog.js';
 import { resolveTarget, PLATFORMS } from './targets.js';
 import { installSkills } from './install.js';
 import { uninstallSkills } from './uninstall.js';
@@ -14,12 +14,15 @@ import { VERSION } from './version.js';
 
 const USAGE = `stylewright ${VERSION}
 
-  install    [--tier standards|craft|all] [--skill <name>]...
+  install    [--tier standards|craft|all | --skill <name>...]
              [--platform ${PLATFORMS.join(',')}] [--scope user|project] [--force]
+             One selection at a time. Omit both to take everything.
   update     [--skill <name>]... [--platform ...] [--scope ...] [--force]
              With no flags, covers user scope plus THIS directory. Installs in
              other projects are not discoverable, so run it there too.
-  uninstall  --skill <name>... [--platform ...] [--scope ...]
+  uninstall  (--skill <name>... | --tier standards|craft | --all)
+             [--platform ...] [--scope ...] [--force]
+             It never removes everything by default. Name what goes.
   list
   doctor
   lint       <path>...
@@ -35,6 +38,33 @@ const USAGE = `stylewright ${VERSION}
 // they decided differently.
 const LIST_FLAGS = new Set(['skill', 'platform', 'scope']);
 const BOOL_FLAGS = new Set(['force', 'check', 'all']);
+
+// What each command accepts. One shared parser and no schema meant a flag was
+// silently ignored by the command that did not read it, and — worse — that
+// `uninstall` inherited install's rule for an empty selection. `--platform
+// claude` with nothing else removed the whole catalogue and exited zero.
+//
+// A flag a command does not read is a typing mistake, and acting on the rest of
+// the line carries out something other than what was typed.
+const COMMAND_FLAGS = new Map(Object.entries({
+  install: new Set(['tier', 'skill', 'platform', 'scope', 'force']),
+  update: new Set(['skill', 'platform', 'scope', 'force']),
+  uninstall: new Set(['tier', 'skill', 'platform', 'scope', 'force', 'all']),
+  list: new Set(),
+  doctor: new Set(),
+  lint: new Set(),
+  ground: new Set(['check', 'all', 'skill']),
+  'new-skill': new Set(['tier', 'source', 'url', 'license', 'description']),
+// A plain object inherits from Object.prototype, so `stylewright constructor`
+// looked up a function and `allowed.has` threw a type error at a typing
+// mistake. A Map holds only what was put in it.
+}));
+
+// Which commands read a word that is not a flag. Declaring the flags and not
+// the arguments left half a schema: `uninstall --all demo-craft` named one
+// skill and removed every one, because nothing read the word and nothing
+// rejected it. A command that reads no arguments takes none.
+const COMMAND_ARGS = new Set(['lint', 'new-skill']);
 
 function splitList(value) {
   return String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -64,7 +94,12 @@ function parseFlags(argv) {
       throw new Error(`--${key} needs a value.`);
     }
     if (LIST_FLAGS.has(key)) flags[key] = [...(flags[key] ?? []), ...splitList(value)];
-    else flags[key] = value;
+    else if (key in flags) {
+      // A flag that names ONE value, given twice, kept the last. `--tier craft
+      // --tier standards` therefore selected standards and removed standards,
+      // silently discarding half of what was typed, on a command that deletes.
+      throw new Error(`--${key} was given more than once.`);
+    } else flags[key] = value;
   }
   return flags;
 }
@@ -94,6 +129,22 @@ export async function run(argv, ctx) {
   } catch (err) {
     say(err.message);
     return 2;
+  }
+
+  const allowed = COMMAND_FLAGS.get(command);
+  if (allowed) {
+    const stray = Object.keys(flags)
+      .filter((k) => k !== '_' && !allowed.has(k) && !(k === 'skill' && !flags.skill.length));
+    if (stray.length) {
+      say(`${command} does not take ${stray.sort().map((k) => `--${k}`).join(', ')}.`);
+      say(USAGE);
+      return 2;
+    }
+    if (flags._.length && !COMMAND_ARGS.has(command)) {
+      say(`${command} takes no arguments, and got ${flags._.map((a) => `"${a}"`).join(', ')}.`);
+      say(USAGE);
+      return 2;
+    }
   }
 
   if (!command || command === 'help' || command === '--help') {
@@ -253,11 +304,41 @@ export async function run(argv, ctx) {
   }
 
   if (command === 'install' || command === 'uninstall') {
-    const catalog = await loadCatalog(repoRoot);
+    // The two commands read the catalog for two reasons, so a broken catalog
+    // stops one of them and not the other. Install copies out of this clone,
+    // and a name in two tiers leaves it nothing to copy. Uninstall answers what
+    // is installed on the user's machine, and only the target manifest knows
+    // that, so a collision in a clone the user may not own must not strand a
+    // skill on their disk. It is printed rather than swallowed, because the
+    // clone still needs fixing, and the catalog then contributes no names.
+    let catalog = [];
+    try {
+      catalog = await loadCatalog(repoRoot);
+    } catch (err) {
+      if (command === 'install' || !(err instanceof DuplicateSkillName)) throw err;
+      say(err.message);
+    }
 
     // The guided dialogue is the DEFAULT. Any flag that selects targets or
     // skills opts out of it, so a scripted command stays non-interactive.
-    const flagDriven = Boolean(flags.platform) || Boolean(flags.tier) || flags.skill.length > 0;
+    const flagDriven = Boolean(flags.platform) || Boolean(flags.tier)
+      || flags.skill.length > 0 || Boolean(flags.all);
+
+    // The dialogue belongs to install. A bare `uninstall` in a terminal ran it,
+    // so the user was shown `stylewright install` and asked `Install now?`, and
+    // answering yes removed skills. A destructive command may not borrow a
+    // script that names the other operation. Until uninstall has its own, it
+    // asks for a selection rather than guessing one.
+    if (!flagDriven && command === 'uninstall') {
+      say('uninstall needs to know what to remove.');
+      say('');
+      say('  --skill <name>            one skill, repeatable');
+      say('  --tier standards|craft    every skill in one tier');
+      say('  --all                     every skill the target has installed');
+      say('');
+      say('Add --platform to say where. Run `stylewright doctor` to see what is installed.');
+      return 2;
+    }
 
     if (!flagDriven) {
       if (!interactive) {
@@ -279,7 +360,9 @@ export async function run(argv, ctx) {
       }
       Object.assign(flags, chosen);
     } else if (!flags.platform) {
-      say('Pass --platform when you use --tier or --skill. Omit all flags for the guided install.');
+      say(`Pass --platform when you select skills. ${command === 'uninstall'
+        ? 'Run `stylewright doctor` to see where they are.'
+        : 'Omit all flags for the guided install.'}`);
       return 2;
     }
 
@@ -294,18 +377,82 @@ export async function run(argv, ctx) {
       return 2;
     }
     const scope = scopes[0] ?? 'user';
-    let names = flags.skill;
-    if (!names.length) {
-      const tier = flags.tier ?? 'all';
-      names = catalog.filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name);
+    // One selection at a time. `--all --tier craft` accepted both and applied
+    // the tier, so a command naming everything removed one tier and exited
+    // zero. Implicit precedence between two explicit selections is a silent
+    // reinterpretation of what was typed.
+    const selectors = [
+      flags.skill.length && '--skill', flags.tier && '--tier', flags.all && '--all',
+    ].filter(Boolean);
+    if (selectors.length > 1) {
+      say(`${command} takes one of ${selectors.join(', ')}, not several.`);
+      return 2;
     }
-    if (!names.length) {
-      say('No skills selected.');
+    // A tier value nothing checked. `all` is a tier to install and is not one
+    // to remove, because uninstall reserves the whole target for `--all`, and
+    // `uninstall --tier all` walked past that and deleted everything anyway.
+    // The usage says `standards|craft` there, so the grammar now says it too.
+    const tiers = command === 'install' ? [...TIERS, 'all'] : TIERS;
+    if (flags.tier && !tiers.includes(flags.tier)) {
+      say(`${command} takes --tier ${tiers.join('|')}, not "${flags.tier}".`);
+      if (command === 'uninstall') say('Use --all to remove every skill in the target.');
       return 2;
     }
 
     const targetDirs = flags.platform
       .map((platform) => [platform, resolveTarget({ platform, scope, home, cwd })]);
+
+    // An omitted selection means "everything" for install, where the cost of
+    // being wrong is a file you can delete. `uninstall` inherited that rule
+    // from sharing this block, so `--platform claude` with nothing else
+    // removed every installed skill and exited zero. Nothing in the command
+    // said so, and no dialogue ran, because a flag turns the dialogue off.
+    //
+    // Removing everything stays available. It has to be typed.
+    if (!flags.skill.length && command === 'uninstall' && !flags.all && !flags.tier) {
+      say('uninstall needs to know what to remove.');
+      say('');
+      say('  --skill <name>            one skill, repeatable');
+      say('  --tier standards|craft    every skill in one tier');
+      say('  --all                     every skill the target has installed');
+      say('');
+      say('Run `stylewright doctor` to see what is installed.');
+      return 2;
+    }
+
+    const tier = flags.tier ?? 'all';
+    const fromCatalog = command === 'install'
+      ? catalog.filter((s) => tier === 'all' || s.tier === tier).map((s) => s.name)
+      : [];
+    if (command === 'install' && !flags.skill.length && !fromCatalog.length) {
+      say('No skills selected.');
+      return 2;
+    }
+
+    // Install and uninstall answer two different questions, and one catalogue
+    // lookup answered both. The catalogue says what this repository ships NOW
+    // and which tier it ships it in. A removal asks what is installed HERE and
+    // which tier it was installed under, and only this target's manifest knows
+    // that. Seeding a removal from the catalogue crossed the boundary twice:
+    // it missed a withdrawn skill the manifest still placed in the tier, and it
+    // removed a skill from a target whose manifest placed it outside the tier,
+    // because a skill that moved tiers is one name under two answers.
+    const selections = [];
+    for (const [, dir] of targetDirs) {
+      if (flags.skill.length) {
+        selections.push([dir, flags.skill]);
+        continue;
+      }
+      if (command === 'install') {
+        selections.push([dir, fromCatalog]);
+        continue;
+      }
+      const names = [];
+      for (const [n, entry] of Object.entries((await readManifest(dir)).skills)) {
+        if (flags.all || entry.tier === flags.tier) names.push(n);
+      }
+      selections.push([dir, names]);
+    }
 
     const known = new Set(catalog.map((s) => s.name));
     // A skill this repository withdrew is still installed on the user's
@@ -317,7 +464,8 @@ export async function run(argv, ctx) {
         for (const n of Object.keys((await readManifest(dir)).skills)) known.add(n);
       }
     }
-    const unknown = names.filter((n) => !known.has(n));
+    const selected = [...new Set([...flags.skill, ...selections.flatMap(([, n]) => n)])];
+    const unknown = selected.filter((n) => !known.has(n));
     if (unknown.length) {
       say(`Unknown skill: ${unknown.join(', ')}.`);
       say(`Available: ${[...known].sort().join(', ')}.`);
@@ -331,10 +479,10 @@ export async function run(argv, ctx) {
     // that wrote them all.
     let changed = 0;
     let refused = 0;
-    for (const [, targetDir] of targetDirs) {
+    for (const [targetDir, selected] of selections) {
       if (command === 'install') {
         const res = await installSkills({
-          repoRoot, targetDir, names, now, force: Boolean(flags.force),
+          repoRoot, targetDir, names: selected, now, force: Boolean(flags.force),
         });
         for (const n of res.installed) say(`installed ${n} -> ${targetDir}`);
         for (const s of res.skipped) {
@@ -343,7 +491,9 @@ export async function run(argv, ctx) {
         changed += res.installed.length;
         refused += res.skipped.length;
       } else {
-        const res = await uninstallSkills({ targetDir, names, force: Boolean(flags.force) });
+        const res = await uninstallSkills({
+          targetDir, names: selected, force: Boolean(flags.force),
+        });
         for (const n of res.removed) say(`removed ${n} from ${targetDir}`);
         for (const n of res.missing) say(`not installed: ${n} in ${targetDir}`);
         for (const s of res.skipped) {
