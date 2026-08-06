@@ -43,8 +43,9 @@ more words will not fix that.
 is a configuration, not a hypothesis. Name it for what it holds. Both halves of
 this rule were broken in the first study run here, and both broke a conclusion:
 one arm carried two edited rule files rather than one, and a rule file was
-rewritten six seconds into a five-run cell, so its last two runs measured the
-text the cell existed to compare against.
+rewritten 6 seconds into a five-run cell — an unaudited record, like every
+figure in this file — so its last two runs measured the text the cell existed
+to compare against.
 
 **Let the scorer refuse.** `run.sh` writes a `.meta` file beside every sample
 recording the hash of the injected system prompt, the hash of the operator rule
@@ -79,8 +80,8 @@ status on every row of the table — including `MEDIAN` and `RANGE` — because 
 warning on stderr is lost the moment anyone redirects or pastes the output.
 
 **Score the model, never the harness.** An early runner used `2>&1`, so a
-CLI warning twenty-six words long landed inside the word counts of two arms
-and no others. It
+26-word CLI warning — unaudited, again — landed inside the word counts of two
+arms and no others. It
 reversed the direction of the comparison those arms existed to make. The runner
 now takes `--output-format json` and lifts the answer out of the `result` field,
 so no harness line can reach a sample. Stderr goes to a sibling `.err`. It also

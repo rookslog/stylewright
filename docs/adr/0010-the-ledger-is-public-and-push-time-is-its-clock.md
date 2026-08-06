@@ -21,19 +21,25 @@ counts as pre-registered only when its push precedes the first push that
 carries any evidence file of an arm it governs — both ends of the
 comparison are the server's facts. Push time is the server's fact and a
 clone does not carry it, so a CI check verifies the ordering on the push
-that carries an arm's evidence, and its verdict is recorded in the study
-manifest. The later static check verifies the recorded attestation.
+that carries an arm's evidence, and its verdict is appended to the ledger
+as an attestation entry naming the study, because the manifest that push
+carries cannot hold a verdict produced after it and a promoted study is
+never edited. The later static check verifies the recorded attestation.
 
 **Consequences.** Pre-registration becomes checkable instead of asserted.
 Failed, aborted, and abandoned attempts stay on the ledger, so a retried
 run cannot quietly replace one and a clean control cannot be picked from
 invisible attempts. Measurement work must push before it runs, which is
 the point. Two residues, and the design states both: the attestation
-chain is as durable as the forge that issued it, and the forge attests
-publication order, never execution order.
+chain is as durable as the forge that issued it, the forge attests
+publication order, never execution order, and the ledger binds only what
+enters it — an unregistered attempt leaves no trace any check can find.
 
 Decided 2026-08-05. Amended 2026-08-06: the boundary was first drawn at a
 runner-written arm-start timestamp, and a retroactive review showed that
 an author-controlled timestamp can be post-dated past any push, so the
-boundary moved to the evidence's own first push. The mechanism is the
-measurement design, section 5.
+boundary moved to the evidence's own first push. The same day, the
+verdict moved from the study manifest into a ledger attestation entry,
+because a push cannot carry the verdict it produces, and the visibility
+claim narrowed to registered attempts. The mechanism is the measurement
+design, section 5.

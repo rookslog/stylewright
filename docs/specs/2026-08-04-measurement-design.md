@@ -77,8 +77,12 @@ a glob, and the review has named refusals:
   original manifest is retained untouched and the redaction writes a
   second manifest chained to it, mapping each transformed file's source
   digest to its redacted digest. The scorer verifies a redacted arm
-  against the chained manifest, and the chain is what keeps the original
-  completion attestation checkable instead of orphaned.
+  against the chained manifest. The chain is trust-bounded, and the
+  design says so: the original bytes never enter the public tree, so no
+  check can re-run the rule against them, and the mapping attests what
+  the promotion declared, never that the transformation ran as recorded.
+  Redaction is the one trusted, non-reproducible step in promotion, and a
+  study that needed it says so in its manifest.
 - Every retained file is checked for reproduced licensed text — samples
   from either arm, and the prompt files the study retains, including an
   externally derived fresh scenario — against the relevant license record,
@@ -160,7 +164,7 @@ of loading.
 3. Ask the harness to repeat the nonce, and run the same ask against an
    identical environment with no skill installed.
 4. Record both answers, the harness build, the served model identifier,
-   the pathway, and the date.
+   the platform, the pathway, and the date.
 
 A repeated nonce is evidence the text reached the context. The empty-home
 control catches a probe that passes for the wrong reason. A harness trace
@@ -249,14 +253,18 @@ This is issue #21 restated as steps, with the mechanisms above in place.
 append-only, one JSON object per line. An entry records an event: a rubric
 registration, a scenario-frame registration, a scenario selection, an arm
 attempt with its outcome, a promotion, an abandonment. Every arm attempt
-is an entry, exploratory arms included, so no attempt is invisible. Every
+is an entry, exploratory arms included, so no registered attempt is
+invisible. Every
 entry carries the digests of the files it registers, and names the skill
 it serves. The canonical content digest is a property of the treatment,
 and steps 1 and 3 of the workflow precede the treatment's existence: an
 entry written before the skill exists — the exploratory control, the
 frame registration — carries the skill's name and a null digest, and the
-first entry written after creation binds that name to the digest every
-later entry must carry. A confirmatory entry never carries a null digest.
+first entry after creation binds the name to the created content's
+digest. A later entry carries the digest of the revision its arm actually
+measures, because a revised skill is a new treatment with a new digest,
+and section 7 already computes staleness against exactly that binding. A
+confirmatory entry never carries a null digest.
 
 Ordering is not self-attested, and both ends of the comparison are the
 server's facts: an entry counts as pre-registered only when its push
@@ -273,17 +281,25 @@ changes nothing the server recorded.
 
 Push time is the server's fact, and a clone does not carry it, so
 verification is contemporaneous: a CI check runs on the push that carries
-an arm's evidence, confirms that every registration governing the arm
-already sits in the history the server holds, and its verdict — run
-identifier, timestamp, result — is recorded in the study manifest. The
-later static check verifies the recorded attestation, not the vanished
-push event. Two residues, stated. The attestation chain is as durable as
-the forge that issued it. And the forge attests publication order, never
-execution order: an author who runs an arm, registers afterward, and
-publishes the evidence last passes the check, and no record this design
-retains could show it. What the mechanism buys is that the forgery must
-be premeditated, and must fit inside a public ledger that keeps every
-attempt visible.
+an arm's evidence and confirms that every registration governing the arm
+already sits in the history the server holds. Its verdict — run
+identifier, timestamp, result — cannot land in the study manifest that
+same push already carries, and a promoted study is never edited, so the
+verdict is appended to the ledger as an attestation entry naming the
+study. A study is citable only when its attestation entry exists, and the
+later static check verifies the pair, not the vanished push event.
+
+Three residues, stated. The attestation chain is as durable as the forge
+that issued it. The forge attests publication order, never execution
+order: an author who runs an arm, registers afterward, and publishes the
+evidence last passes the check, and no record this design retains could
+show it. And the ledger binds only what enters it: an author can run arms
+privately, register the one that looked favourable, and publish it, and
+the check passes, because no record ever saw the others. What the
+mechanism buys is narrower than a guarantee. A forgery cannot be
+improvised after the evidence is public, every registered attempt stays
+visible, and selective reporting becomes a deliberate breach of a stated
+rule rather than an ambiguity. The design claims exactly that much.
 
 1. Run an exploratory control with no guidance, and read the samples. The
    attempt is on the ledger before it starts, like every arm.
@@ -292,10 +308,10 @@ attempt visible.
    line says so: evidence that a control looked clean, never a
    confirmatory claim, because nothing about it was pre-registered. The
    confirmatory claim that no skill is needed takes a pre-registered
-   control like any other confirmatory run. The ledger is what closes
-   selection here: every exploratory attempt was registered before it
-   started, so a clean control cannot be picked from attempts nobody can
-   see. One documented exception: when the control is clean but the
+   control like any other confirmatory run. The ledger closes selection
+   among registered attempts, and only there: every exploratory attempt
+   the protocol admits was registered before it started, and an attempt
+   run outside the ledger is a breach no check detects. One documented exception: when the control is clean but the
    failure is real in a fuller stack — the case this repository's own
    baseline records — the investigation moves to a declared
    representative-stack control arm, and the skill measures against that
@@ -466,3 +482,14 @@ decision, taken only with ADR-0007's test extended first.
   every retained file, the unaudited figures in `bench/README.md` now say
   so in their own paragraphs, and AGENTS.md's operative range extends
   through ADR-0014.
+- Draft 7 disposed of the codex round on the draft 6 pull request: six
+  findings, every one accepted, and four of the six were claims stronger
+  than their mechanisms — the class draft 4 first retracted. The
+  visibility claim narrowed to registered attempts, with private
+  unregistered arms named as a residue no check detects. The CI verdict
+  moved from the study manifest a push cannot amend into a ledger
+  attestation entry that gates citation. Ledger digests bind to the
+  revision an arm measures. The probe record gained the platform its
+  predicate compares. The redaction chain is named trust-bounded rather
+  than checkable. And the two word-form figures in `bench/README.md` are
+  marked unaudited instead of dodging the numeral check by spelling.
