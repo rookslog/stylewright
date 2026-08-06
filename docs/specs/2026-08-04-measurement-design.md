@@ -6,7 +6,7 @@ issues: [21, 43]
 
 # Measuring skills — retention and installed activation
 
-Issues #21 and #43 are designed together here, as #43 directs. Section 10
+Issues #21 and #43 are designed together here, as #43 directs. Section 9
 records what changed between drafts.
 
 ## 1. The two gaps, and what this design claims
