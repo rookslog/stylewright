@@ -1,6 +1,9 @@
-# Remediation plan: close the gap between every claim and its check
+---
+type: plan
+status: accepted
+---
 
-Date: 2026-07-31. Status: proposed, revised once after review.
+# Remediation plan: close the gap between every claim and its check
 
 Two cross-vendor reviews of the whole repository returned sixteen findings on
 2026-07-31. Reproducing the first returned a seventeenth. A third review, of the

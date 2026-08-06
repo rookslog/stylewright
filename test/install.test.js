@@ -158,6 +158,31 @@ test('stamps the manifest with the release that wrote it', async () => {
   assert.equal((await readManifest(target)).stylewrightVersion, VERSION);
 });
 
+test('an install recorded with legacy Windows keys updates cleanly', async () => {
+  // Releases up to 0.2.0 built keys with path.join, so a Windows install
+  // recorded references\guide.md. An update over that manifest must read it,
+  // recognise its own files, and leave the rewritten spelling behind — not
+  // refuse and strand the install.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const legacy = await readManifest(target);
+  legacy.skills['demo-craft'].files = Object.fromEntries(
+    Object.entries(legacy.skills['demo-craft'].files)
+      .map(([rel, hash]) => [rel.replaceAll('/', '\\'), hash]));
+  await fs.writeFile(
+    path.join(target, MANIFEST_NAME), `${JSON.stringify(legacy, null, 2)}\n`);
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+  assert.deepEqual(res.installed, ['demo-craft'], JSON.stringify(res.skipped));
+  const mf = await readManifest(target);
+  const keys = Object.keys(mf.skills['demo-craft'].files);
+  assert.ok(keys.includes('references/guide.md'));
+  assert.ok(keys.every((k) => !k.includes('\\')));
+});
+
 test('a dangling symlink at a shipping path is a collision, not an absence', async () => {
   // fs.access follows the link and throws ENOENT, so the path looked free.
   // copyFile then follows it and writes skill content OUTSIDE the target tree.
@@ -1097,4 +1122,57 @@ test('a refused run does not take a copy the record now names', async () => {
     assert.ok(await exists(abs), `${rel} must survive the undo`);
     assert.equal(await hashFile(abs), hash);
   }
+});
+
+test('refuses at the source a skill shipping a file no manifest can record', {
+  // The fixture's hazard is a POSIX-only creation. On NTFS, writing
+  // notes:draft.md does not create a file of that name — it silently writes
+  // an alternate data stream named draft.md onto a file named notes, so walk
+  // sees notes and install has nothing to refuse. The conformance sweep over
+  // the real catalog covers every platform.
+  skip: process.platform === 'win32',
+}, async () => {
+  // A colon is a legal POSIX filename character, and the read side refuses it.
+  // Without the write-side partner, install succeeds and every later command
+  // throws on the manifest install itself wrote.
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'demo-craft');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'SKILL.md'),
+    '---\nname: demo-craft\ndescription: Ships a colon.\n---\n\n# demo-craft\n');
+  await fs.writeFile(path.join(dir, 'notes:draft.md'), 'draft\n');
+  const target = await tmp();
+  await assert.rejects(
+    () => installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+    /Skill "demo-craft" ships a file whose name cannot be recorded portably: notes:draft\.md/);
+  assert.ok(!(await exists(path.join(target, MANIFEST_NAME))));
+});
+
+test('a bad name in a later skill leaves no earlier skill half-installed', {
+  // Same POSIX-only fixture as the refusal test above: NTFS turns the colon
+  // into an alternate data stream, and there is nothing to refuse.
+  skip: process.platform === 'win32',
+}, async () => {
+  // The refusal must run before the first copy, over every selected skill.
+  // Thrown mid-loop, it would leave the earlier skills' files on disk with
+  // the manifest never written — unrecorded, so the next install refuses
+  // them as user-owned collisions.
+  const repo = await tmp();
+  for (const [name, extra] of [['good-craft', null], ['bad-craft', 'notes:draft.md']]) {
+    const dir = path.join(repo, 'skills', 'craft', name);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'SKILL.md'),
+      `---\nname: ${name}\ndescription: One of two.\n---\n\n# ${name}\n`);
+    if (extra) await fs.writeFile(path.join(dir, extra), 'draft\n');
+  }
+  const target = await tmp();
+  await assert.rejects(
+    () => installSkills({
+      repoRoot: repo, targetDir: target, names: ['good-craft', 'bad-craft'], now: NOW,
+    }),
+    /Skill "bad-craft" ships a file/);
+  assert.ok(!(await exists(path.join(target, 'good-craft'))));
+  assert.ok(!(await exists(path.join(target, MANIFEST_NAME))));
 });

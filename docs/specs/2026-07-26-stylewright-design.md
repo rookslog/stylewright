@@ -1,8 +1,9 @@
-# stylewright — design
+---
+type: spec
+status: shipped
+---
 
-**Date:** 2026-07-26
-**Status:** design approved. Licenses verified. Not yet implemented.
-**Author:** Logan Rooks (with Claude)
+# stylewright — design
 
 ## 1. What this is
 

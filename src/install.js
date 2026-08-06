@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadCatalog } from './catalog.js';
 import {
-  hashFile, readManifestWithIdentity, writeManifest, recordSkill, clearStaleWrite,
+  contained, hashFile, readManifestWithIdentity, writeManifest, recordSkill,
+  clearStaleWrite,
   removeManifest,
 } from './manifest.js';
 import {
@@ -85,7 +86,8 @@ async function untrackedCollisions(destDir, sourceRels, recorded) {
     // transition impossible to complete, even with --force.
     if (state === 'directory') {
       const under = await walk(abs);
-      if (under.length && under.every((sub) => known.has(path.join(rel, sub)))) continue;
+      // `/` and not path.join: these are manifest keys, spelled `/` everywhere.
+      if (under.length && under.every((sub) => known.has(`${rel}/${sub}`))) continue;
     }
 
     hits.add(rel);
@@ -190,11 +192,31 @@ async function installUnderLock(byName, {
     identity = await writeManifest(targetDir, manifest, identity);
   }
 
+  // The read side refuses these spellings, so the write side must never
+  // record one. A colon is a legal POSIX filename character: without this
+  // check, install writes a manifest that the very next read refuses, and
+  // the only exit is deleting the manifest by hand, orphaning every file
+  // it recorded. Preflighted over EVERY selected skill before the first
+  // copy, because a refusal thrown mid-loop would leave the earlier skills'
+  // files on disk with the manifest write after the loop never reached —
+  // unrecorded, so the next install refuses them as user-owned collisions.
+  const relsByName = new Map();
+  for (const name of names) {
+    const rels = await walk(byName.get(name).dir);
+    for (const rel of rels) {
+      if (!contained(rel)) {
+        throw new Error(
+          `Skill "${name}" ships a file whose name cannot be recorded portably: ${rel}`);
+      }
+    }
+    relsByName.set(name, rels);
+  }
+
   for (const name of names) {
     const skill = byName.get(name);
     const destDir = path.join(targetDir, name);
     const recorded = manifest.skills[name]?.files;
-    const rels = await walk(skill.dir);
+    const rels = relsByName.get(name);
     // The staging name is the destination plus a suffix, so a skill that
     // shipped both `A` and `A.stylewright-part` would have the copy of `A` use
     // the second one as scratch space and clear it. That is a shipped file
@@ -276,14 +298,19 @@ async function installUnderLock(byName, {
     // and nothing weaker survived review: the path alone claims a file the user
     // wrote there afterwards, and "no recorded path is mine" abandons a file
     // this run wrote at a path another run had recorded.
-    const stated = {};
-    for (const rel of rels) stated[rel] = await hashFile(path.join(skill.dir, rel));
+    // fromEntries, not assignment, so a file named `__proto__` is stated
+    // like any other — the same discipline as the record it precedes.
+    const statedPairs = [];
+    for (const rel of rels) statedPairs.push([rel, await hashFile(path.join(skill.dir, rel))]);
+    const stated = Object.fromEntries(statedPairs);
     manifest = addPending(manifest, name, stated);
     identity = await writeManifest(targetDir, manifest, identity);
 
     // Named out here so the undo below knows what this run actually wrote and
-    // what it removed.
-    const files = {};
+    // what it removed. A Map, not an object literal, for the reason
+    // migrateLegacyKeys builds through fromEntries: a file named `__proto__`
+    // must become a recorded key, and assignment would set a prototype.
+    const files = new Map();
     const retiredHere = [];
     try {
       // Retire BEFORE copying, not after. A release can replace a directory of
@@ -351,13 +378,13 @@ async function installUnderLock(byName, {
         const staged = stagingPath(to);
         await removeAt(staged);
         await fs.copyFile(from, staged, fs.constants.COPYFILE_EXCL);
-        files[rel] = await hashFile(staged);
+        files.set(rel, await hashFile(staged));
         // The statement was made from the source before the copy, and it is
         // what lets a later command prove this file is ours. A source that
         // changed in between would put bytes at the destination that no
         // statement names, so the run stops while the only thing on disk is a
         // staging file that recovery removes by name.
-        if (files[rel] !== stated[rel]) {
+        if (files.get(rel) !== stated[rel]) {
           throw new Error(
             `"${name}" changed in ${skill.dir} while this command was running. Run again.`);
         }
@@ -368,7 +395,9 @@ async function installUnderLock(byName, {
       // in one write, so no reader ever sees both, and a run that dies before
       // it leaves the statement standing for the next one.
       manifest = clearPending(
-        recordSkill(manifest, { name, tier: skill.tier, pathway, files, now }), name);
+        recordSkill(manifest, {
+          name, tier: skill.tier, pathway, files: Object.fromEntries(files), now,
+        }), name);
       identity = await writeManifest(targetDir, manifest, identity);
       installed.push(name);
     } catch (err) {
@@ -376,7 +405,7 @@ async function installUnderLock(byName, {
       // undo leaves the pending statement on disk, which is exactly the state
       // the next command recovers from, so it is not worth reporting over the
       // error that caused it.
-      await undo(targetDir, name, stated, files, retiredHere).catch(() => {});
+      await undo(targetDir, name, stated, Object.fromEntries(files), retiredHere).catch(() => {});
       throw err;
     }
   }

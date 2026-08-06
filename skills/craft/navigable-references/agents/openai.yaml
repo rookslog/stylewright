@@ -1,0 +1,4 @@
+interface:
+  display_name: "navigable-references"
+  short_description: "Use when you name a file, a document, or a decision the reader may want to open."
+  default_prompt: "Use $navigable-references to check this document."
