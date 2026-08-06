@@ -41,8 +41,9 @@ test('a scaffolded skill is a valid catalog entry', async () => {
 test('the grounding matrix lands outside the skill directory', async () => {
   const repo = await tmp();
   const written = await scaffoldSkill({ repoRoot: repo, ...STD });
-  assert.ok(written.includes(path.join('grounding', 'standards', 'demo-guide.md')));
-  const inSkill = written.filter((p) => p.includes(path.join('skills', 'standards', 'demo-guide')));
+  // The returned paths carry a manifest key's spelling, `/`, on every platform.
+  assert.ok(written.includes('grounding/standards/demo-guide.md'));
+  const inSkill = written.filter((p) => p.includes('skills/standards/demo-guide'));
   assert.equal(inSkill.filter((p) => /grounding/i.test(p)).length, 0);
 });
 
@@ -178,7 +179,11 @@ test('an existing skill is refused, and so is a directory holding only your file
   assert.equal(await fs.readFile(notes, 'utf8'), 'mine\n');
 });
 
-test('a manifest keeps the permissions you gave it', async () => {
+test('a manifest keeps the permissions you gave it', {
+  // Same POSIX-only property as its partner in manifest.test.js: NTFS has no
+  // mode bits to preserve, so `stat().mode` never reads back what chmod asked.
+  skip: process.platform === 'win32',
+}, async () => {
   const dir = await tmp();
   await writeManifest(dir, emptyManifest());
   const abs = path.join(dir, MANIFEST_NAME);

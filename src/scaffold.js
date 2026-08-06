@@ -6,6 +6,14 @@ import { destinationState, reachability } from './tree.js';
 
 const NAME_RULE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
+// Every repo-relative path this module names — in a message, in a return value,
+// or on its way to `reachability` — is spelled with `/`, the one spelling a
+// manifest key carries too. `path.join` spells it `\` where `path.sep` is `\`,
+// which printed a different path for the same collision and, worse, left
+// `ancestorsOf` with nothing to split, so the preflight inspected no ancestor
+// at all on Windows.
+const repoRelative = (root, abs) => path.relative(root, abs).split(path.sep).join('/');
+
 // One constant, quoted into the skill and into its matrix row, because the two
 // must be identical for `ground --check` to pass. Written twice, they drift on
 // the first edit to either — and the scaffold is the one place a drift is
@@ -159,7 +167,7 @@ export async function scaffoldSkill({
   }
 
   const desc = description || `FILL IN one sentence. Say when an agent should use ${name}.`;
-  const dir = path.join('skills', tier, name);
+  const dir = `skills/${tier}/${name}`;
 
   // Every output, decided before anything is written. The scaffold used to
   // check one path and write six. It checked whether the skill directory
@@ -174,15 +182,15 @@ export async function scaffoldSkill({
   // happens.
   const skillText = skillMd({ name, tier, description: desc, source, url });
   const outputs = [
-    [path.join(dir, 'SKILL.md'), skillText],
-    [path.join(dir, 'agents', 'openai.yaml'), agentsYaml({ name, description: desc })],
-    [path.join(dir, 'LICENSE'), tier === 'standards'
+    [`${dir}/SKILL.md`, skillText],
+    [`${dir}/agents/openai.yaml`, agentsYaml({ name, description: desc })],
+    [`${dir}/LICENSE`, tier === 'standards'
       ? `Source license: ${license || 'FILL IN'}\n\nThe original digest in this directory is licensed MIT.\nSee SOURCE.md for the source record.\n`
       : 'MIT\n'],
     ...(tier === 'standards'
-      ? [[path.join(dir, 'SOURCE.md'), sourceMd({ source, url, license: license || 'FILL IN' })]]
+      ? [[`${dir}/SOURCE.md`, sourceMd({ source, url, license: license || 'FILL IN' })]]
       : []),
-    [path.join('grounding', tier, `${name}.md`),
+    [`grounding/${tier}/${name}.md`,
       groundingMd({ name, tier, skillText, source })],
   ];
 
@@ -204,7 +212,7 @@ export async function scaffoldSkill({
   // refuses to read, which turns one mistyped tier into a repository no command
   // can load. The catalog is the enforcement, and this is the early word.
   for (const other of TIERS.filter((t) => t !== tier)) {
-    const taken = path.join('skills', other, name);
+    const taken = `skills/${other}/${name}`;
     if (await destinationState(path.join(repoRoot, taken)) !== 'absent') {
       throw new Error(
         `Cannot scaffold "${name}": ${taken} already holds that name. `
@@ -237,7 +245,7 @@ export async function scaffoldSkill({
   try {
     for (const [rel, body] of outputs) {
       let cur = repoRoot;
-      for (const part of path.dirname(rel).split(path.sep).filter((q) => q && q !== '.')) {
+      for (const part of path.posix.dirname(rel).split('/').filter((q) => q && q !== '.')) {
         cur = path.join(cur, part);
         const state = await destinationState(cur);
         if (state === 'absent') {
@@ -258,11 +266,11 @@ export async function scaffoldSkill({
           // last write reported it only once that file existed.
           } else if (await destinationState(at) !== 'directory') {
             throw new Error(
-              `Cannot scaffold "${name}": ${path.relative(repoRoot, at)} is not a directory.`);
+              `Cannot scaffold "${name}": ${repoRelative(repoRoot, at)} is not a directory.`);
           }
         } else if (state !== 'directory') {
           throw new Error(
-            `Cannot scaffold "${name}": ${path.relative(repoRoot, cur)} is a ${state}.`);
+            `Cannot scaffold "${name}": ${repoRelative(repoRoot, cur)} is a ${state}.`);
         }
         // The skill directory is not an ordinary ancestor. The preflight
         // refuses one that already exists, because install pathways copy this
@@ -297,11 +305,11 @@ export async function scaffoldSkill({
     }
     for (const { rel } of written) {
       let cur = repoRoot;
-      for (const part of path.dirname(rel).split(path.sep).filter((q) => q && q !== '.')) {
+      for (const part of path.posix.dirname(rel).split('/').filter((q) => q && q !== '.')) {
         cur = path.join(cur, part);
         if (await destinationState(cur) !== 'directory') {
           throw new Error(
-            `Cannot scaffold "${name}": ${path.relative(repoRoot, cur)} changed while writing.`);
+            `Cannot scaffold "${name}": ${repoRelative(repoRoot, cur)} changed while writing.`);
         }
       }
     }
