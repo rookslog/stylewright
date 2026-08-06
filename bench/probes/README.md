@@ -64,8 +64,11 @@ from the home refuses to run and answers that it is not logged in. Observed on
 and the record derives a failure, which is the honest reading: the probe never
 reached the question it asks.
 
-Give the harness credentials the redirected home does not supply, such as an
-API key in the environment, and run the probe again. Whether a credential file
-copied into both homes still counts as the pristine environment class is a
-question the measurement design does not settle, so this collector never copies
-one.
+A home holding only an onboarding flag answers the same way, so onboarding
+state is not what is missing. This machine keeps its token in the keychain and
+has no credential file to copy.
+
+Issue #68 carries the decision and both routes. Until it closes, the collector
+copies nothing into either home, and a record claims no environment-class name.
+Give the harness a credential the home does not supply, such as an API key in
+the environment, and the probe reaches its question.
