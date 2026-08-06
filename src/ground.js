@@ -51,34 +51,71 @@ const IS_DELIMITER = (cells) => cells.length > 0
 export function readMatrix(text) {
   const read = [];
   const refusals = [];
+  const AT_ZERO = 'Write it at column 0, or move it into a fenced block if it is an example.';
   let fence = null;
+  let opened = 0;
   for (const [i, line] of text.split('\n').entries()) {
     const marker = MATRIX_FENCE.exec(line);
     if (fence) {
       if (marker && marker[2][0] === fence[0] && marker[2].length >= fence.length) fence = null;
       continue;
     }
-    if (marker) { fence = marker[2]; continue; }
+    if (marker) { fence = marker[2]; opened = i + 1; continue; }
     if (!LOOKS_LIKE_ROW.test(line)) continue;
     if (/^\s*>/.test(line)) {
-      refusals.push({ line: i + 1, shape: 'a table row inside a blockquote' });
+      refusals.push({ line: i + 1, shape: 'a table row inside a blockquote', remedy: AT_ZERO });
       continue;
     }
     if (/^\s/.test(line)) {
-      refusals.push({ line: i + 1, shape: 'a table row that does not begin at column 0' });
+      refusals.push({ line: i + 1, shape: 'a table row that does not begin at column 0', remedy: AT_ZERO });
       continue;
     }
-    read.push({ line: i + 1, cells: cellsOf(line) });
+    // A row that does not end in a pipe is legal GFM and is not house style.
+    // It matters here because `cellsOf` drops the text after the last pipe, so
+    // an unclosed row reported "carries 5 columns, not 6" — a count that is an
+    // artifact of the reading rather than the author's mistake.
+    read.push({ line: i + 1, cells: cellsOf(line), closed: /(?<!\\)\|\s*$/.test(line) });
+  }
+  // A fence nobody closed swallows the rest of the file, so every row below it
+  // leaves the parse at once. That is the silent denominator shrink again, by
+  // a different door: the count fell from two G rows to none with nothing
+  // saying why.
+  if (fence) {
+    refusals.push({
+      line: opened,
+      shape: 'a fenced block that is never closed',
+      remedy: `Close it with ${fence[0].repeat(fence.length)}, or the rest of the file is inside it.`,
+    });
   }
 
   const at = read.findIndex((l) => IS_DELIMITER(l.cells));
-  if (at === -1) return { header: null, delimiter: null, rows: [], refusals };
-  return {
-    header: at > 0 ? read[at - 1] : null,
-    delimiter: read[at],
-    rows: read.slice(at + 1).filter((l) => !IS_DELIMITER(l.cells)),
-    refusals,
-  };
+  if (at === -1) {
+    return { header: null, delimiter: null, rows: [], strays: read, refusals };
+  }
+
+  // Contiguity. Every line above recorded where it sits and nothing compared
+  // the numbers, so a table could be scattered down the file and still parse:
+  // a blank line or a paragraph between the header and the delimiter, a header
+  // twelve lines up, a blank line under the delimiter, or a heading or a
+  // thematic break between two body rows. GFM ends the table at every one of
+  // those. The rows kept parsing and the coverage note kept printing, over a
+  // file where the reader sees no table at all.
+  const delimiter = read[at];
+  const above = at > 0 ? read[at - 1] : null;
+  const header = above && above.line === delimiter.line - 1 ? above : null;
+  const rows = [];
+  const strays = [];
+  let expected = delimiter.line + 1;
+  for (const entry of read.slice(at + 1)) {
+    if (entry.line === expected && !IS_DELIMITER(entry.cells)) {
+      rows.push(entry);
+      expected += 1;
+    } else strays.push(entry);
+  }
+  // A detached header is not part of the table, so it is a stray too, and it
+  // is reported as one rather than silently becoming the row above nothing.
+  if (above && !header) strays.unshift(above);
+  return { header, delimiter, rows, strays, refusals, detached: Boolean(above && !header) };
 }
 
 export function parseMatrix(text) {
@@ -237,9 +274,14 @@ export function rowDigest(row) {
  * spelling of MIDNIGHT ENDING that day, so reading its written day put the
  * bound one day early and over-refused an honest audit, and `99:99:99Z` was
  * simply accepted. Neither is a moment this program should guess at.
+ *
+ * A leap second is `23:59:60` and nothing else. Allowing `:60` after any
+ * minute admitted 1439 times that have never existed. The fraction attaches to
+ * the SECONDS, because it sat outside that group and `12:00.500Z` — a fraction
+ * of no seconds — parsed.
  */
-const ISO_DAY = new RegExp('^(\\d{4})-(\\d{2})-(\\d{2})'
-  + '(?:T(?:[01]\\d|2[0-3]):[0-5]\\d(?::(?:[0-5]\\d|60))?(?:\\.\\d+)?(?:Z|[+-]00:?00))?$');
+const TIME = '(?:23:59:60(?:\\.\\d+)?|(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?)';
+const ISO_DAY = new RegExp(`^(\\d{4})-(\\d{2})-(\\d{2})(?:T${TIME}(?:Z|[+-]00:?00))?$`);
 
 /**
  * A moment this check cannot read. It carries the value and the spellings it
@@ -597,11 +639,25 @@ export function checkSkill({ skillText, matrixText, now }) {
     findings.push({
       level: 'error',
       code: 'unread-matrix-row',
-      message: `matrix line ${r.line}: ${r.shape} is not read by this check. `
-        + 'Write it at column 0, or move it into a fenced block if it is an example.',
+      message: `matrix line ${r.line}: ${r.shape} is not read by this check. ${r.remedy}`,
     });
   }
-  const named = (what, cells) => {
+  // An unclosed line is reported for what it is. The column count that follows
+  // from it is an artifact, so it is not reported as well.
+  const unclosed = (what, entry) => {
+    if (entry.closed) return false;
+    findings.push({
+      level: 'error',
+      code: 'matrix-row-unclosed',
+      message: `matrix line ${entry.line}: the ${what} does not end with a pipe. `
+        + 'GFM allows that and this check does not, because the text after the last '
+        + 'pipe is dropped. End the line with a pipe.',
+    });
+    return true;
+  };
+  const named = (what, entry) => {
+    if (unclosed(what, entry)) return;
+    const cells = entry.cells;
     if (cells.length !== MATRIX_COLUMNS.length) {
       findings.push({
         level: 'error',
@@ -620,21 +676,46 @@ export function checkSkill({ skillText, matrixText, now }) {
     }
   };
   if (!table.delimiter) {
+    // The cause matters more than the absence. An indented table has a
+    // delimiter the check refused above, and "no table" sent the author
+    // looking for a missing line rather than at the indentation.
+    const why = table.refusals.length
+      ? `Every line that looks like one was refused above, at line ${table.refusals.map((r) => r.line).join(', ')}.`
+      : 'A row needs a header and a delimiter directly above it.';
     findings.push({
       level: 'error',
       code: 'matrix-no-table',
-      message: 'the matrix has no table. A row needs a header and a delimiter above it.',
+      message: `the matrix has no table this check can read. ${why}`,
     });
   } else {
-    named('delimiter', table.delimiter.cells);
+    named('delimiter', table.delimiter);
     if (!table.header) {
       findings.push({
         level: 'error',
         code: 'matrix-no-header',
-        message: 'the matrix table has no header row above its delimiter.',
+        message: table.detached
+          ? `the matrix header does not sit directly above its delimiter on line ${table.delimiter.line}. `
+            + 'GFM ends the table at the gap, so the reader sees no table.'
+          : 'the matrix table has no header row above its delimiter.',
       });
-    } else named('header', table.header.cells);
+    } else named('header', table.header);
   }
+  // Anything below a gap. A second delimiter is called out on its own, because
+  // this check binds ONE table, at the first delimiter, and a later one is the
+  // shape that would make a different selection rule look reasonable.
+  for (const stray of table.strays) {
+    const second = table.delimiter && IS_DELIMITER(stray.cells);
+    findings.push({
+      level: 'error',
+      code: second ? 'matrix-second-delimiter' : 'row-outside-the-table',
+      message: second
+        ? `matrix line ${stray.line}: a second delimiter. The matrix carries one table, `
+          + `bound at the delimiter on line ${table.delimiter.line}.`
+        : `matrix line ${stray.line}: this row does not sit in the table. GFM ends a table `
+          + 'at the first blank line, heading, or break, so a row below one is not read.',
+    });
+  }
+  for (const row of table.rows) unclosed('row', row);
 
   // Refusals lead, because every finding under them rests on a reading the
   // extractor has just said it cannot make.
@@ -802,8 +883,21 @@ export function checkSkill({ skillText, matrixText, now }) {
   // every matrix from the day it landed. So the run says the number out loud
   // instead, beside the verdict, where a reader cannot mistake one for the
   // other. A matrix with no G row claims no source, so it gets no line.
+  // A ratio computed over a table the reader cannot see is this decision's own
+  // defect one level out: it reports on a file nobody has. So when the
+  // container is broken the count is withheld rather than printed, because a
+  // wrong number here is worse than no number. It also covers the fenced row,
+  // which silently rebased the denominator to `1 of 1`.
+  const BROKEN = /^matrix-|^unread-matrix-row$|^row-outside-the-table$/;
+  const broken = findings.some((f) => BROKEN.test(f.code));
   const sourced = rows.filter((r) => /^G-/i.test(r.id));
-  if (sourced.length) {
+  if (broken) {
+    findings.push({
+      level: 'note',
+      code: 'audit-coverage',
+      message: 'not counted: the matrix table is broken.',
+    });
+  } else if (sourced.length) {
     findings.push({
       level: 'note',
       code: 'audit-coverage',

@@ -81,6 +81,21 @@ reporting on a file nobody has. The header and the delimiter are checked
 findings now, a row begins at column 0, a fenced row is an example, and a
 row the reader cannot see is named rather than dropped.
 
+The table must also be CONTIGUOUS. The reader positions were recorded and
+never compared, so a table could be scattered down the file — a paragraph
+between the header and the delimiter, a heading between two rows — and
+every row still parsed while GFM ended the table at the first gap. The
+header sits directly above the delimiter and the rows run unbroken below
+it.
+
+The same rule decides the count. When the container is broken the run
+prints `not counted: the matrix table is broken` in place of the ratio.
+The first version printed the number anyway, on the argument that the run
+was already red. That was wrong for this decision's own reason: the ratio
+is the one line ADR-0018 calls the whole answer, and a ratio over a table
+nobody can see is the defect this ADR exists to name.
+
+
 **The count prints and fails nothing.** `ground --check` reports how many
 `G` rows in each matrix carry a date, at a level the exit code ignores.
 Making it an error would have turned the gate red for every matrix on the

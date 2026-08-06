@@ -106,6 +106,24 @@ skipped, and any other line that looks like a row and is not read is named as
 `unread-matrix-row` rather than dropped. Dropping one shrank the coverage
 DENOMINATOR, so the count described fewer rows than the file carried.
 
+The table is contiguous. The header sits on the line directly above the
+delimiter, and the rows run unbroken from the line directly below it. GFM ends
+a table at the first blank line, heading, or thematic break, so a scattered
+table is no table to the reader while every row still parsed here. The check
+binds one table, at the FIRST delimiter, and names a later one rather than
+rebinding to it.
+
+When any of that fails, the run prints `not counted: the matrix table is
+broken` in place of the ratio. A count taken over a table the reader cannot see
+reports on a file nobody has, which is this decision's own defect one level
+out. A wrong number is worse than no number.
+
+Two legal GFM shapes are refused as house style, and the message names the real
+cause rather than an artifact: a row that does not end in a pipe, because the
+text after the last pipe is dropped and the column count that followed was
+nonsense, and an indented table, where the earlier message said the file had no
+table at all.
+
 `readMatrix` is the matrix's own reader. It is not the `SKILL.md` extractor,
 and the two share no grammar, so a shape refused there says nothing about
 issues 37 and 69.

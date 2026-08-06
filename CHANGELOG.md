@@ -22,7 +22,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   seventh cell is refused. Every row begins at column 0, a fenced row is an
   example rather than a record, and a row the check does not read is named
   rather than dropped. Each of those shapes used to leave the rendered column
-  broken while the check reported the audits intact.
+  broken while the check reported the audits intact. The table must also be
+  contiguous, because GFM ends one at the first blank line, heading, or break.
+  When any of this fails, the run prints `not counted: the matrix table is
+  broken` in place of the audited ratio, because a count taken over a table the
+  reader cannot see reports on a file nobody has.
+- `parseMatrix` changed meaning. It returns no rows when the text carries no
+  table delimiter, where it used to return every line that looked like a row,
+  and each row now carries an `extra` field holding any cells past the sixth.
+  Nothing in this repository reads it other than the grounding check.
 
 - The `navigable-references` skill, in the craft tier. It asks a writer to give
   every named thing a form the reader can follow, in the form the medium

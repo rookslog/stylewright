@@ -288,7 +288,10 @@ test('a row a reader sees as an example is not read as a row', () => {
     .replace(`2026-08-06 ${CURRENT} |`, `2026-08-06 ${CURRENT} |\n\`\`\``);
   const inFence = check({ skillText: SKILL, matrixText: fenced });
   assert.ok(inFence.some((f) => f.code === 'uncovered-statement'), 'the fenced row stopped counting');
-  assert.ok(inFence.some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 1')));
+  // The fence also splits the table, so the count is withheld rather than
+  // silently rebased onto the rows that survived.
+  assert.ok(inFence.some((f) => f.code === 'audit-coverage'
+    && f.message === 'not counted: the matrix table is broken.'));
 
   const indented = check({ skillText: SKILL, matrixText: FULLY.replace('| G-01 |', '    | G-01 |') });
   assert.ok(indented.some((f) => f.code === 'unread-matrix-row'
@@ -327,6 +330,101 @@ test('a zero offset is UTC, and a bounded time is required', () => {
     '2026-08-06T12:00:00+05:00', '2026-08-06 12:00:00']) {
     assert.throws(() => checkSkill({ skillText: SKILL, matrixText: FULLY, now }), InvalidMoment,
       `${now} was read as a UTC moment`);
+  }
+});
+
+test('the table is contiguous, because GFM ends one at the first gap', () => {
+  // readMatrix recorded every line number and compared none of them, so a
+  // table could be scattered down the file and still parse with full coverage
+  // while the reader saw no table at all.
+  const codes = (m) => check({ skillText: SKILL, matrixText: m }).map((f) => f.code);
+  const G1 = '| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | Part 1, Section 5 | unaudited |';
+
+  // Between the header and the delimiter.
+  assert.ok(codes(MATRIX.replace(DELIM, `\n${DELIM}`)).includes('matrix-no-header'));
+  assert.ok(codes(MATRIX.replace(DELIM, `Some prose.\n\n${DELIM}`)).includes('matrix-no-header'));
+  // Under the delimiter, and between two body rows.
+  assert.ok(codes(MATRIX.replace(`${DELIM}\n`, `${DELIM}\n\n`)).includes('row-outside-the-table'));
+  assert.ok(codes(MATRIX.replace(G1, `\n${G1}`)).includes('row-outside-the-table'));
+  assert.ok(codes(MATRIX.replace(G1, `## Later\n\n${G1}`)).includes('row-outside-the-table'));
+  assert.ok(codes(MATRIX.replace(G1, `---\n\n${G1}`)).includes('row-outside-the-table'));
+
+  // And none of it fires on the table as written.
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: MATRIX })), []);
+});
+
+test('a fence nobody closes swallows the table, and says so', () => {
+  // The last silent denominator shrink: an unclosed fence takes the rest of
+  // the file with it, so every row below leaves the parse at once and the
+  // count fell from two G rows to none with nothing saying why.
+  const swallowed = MATRIX.replace('| G-01 |', '```\n| G-01 |');
+  const found = check({ skillText: SKILL, matrixText: swallowed });
+  assert.ok(found.some((f) => f.code === 'unread-matrix-row'
+    && /never closed/.test(f.message) && /Close it with ```/.test(f.message)));
+  assert.ok(found.some((f) => f.code === 'audit-coverage'
+    && f.message === 'not counted: the matrix table is broken.'));
+});
+
+test('the table is the FIRST delimiter, and a later one is named', () => {
+  // This kills the selection mutant that survived the reviewer's battery:
+  // flipping first-delimiter to last left the suite green. Under last, the
+  // rows below bind to the wrong delimiter and the real rows become strays.
+  const twoTables = `${MATRIX}\n${DELIM}\n`;
+  const found = check({ skillText: SKILL, matrixText: twoTables });
+  assert.ok(found.some((f) => f.code === 'matrix-second-delimiter'));
+  // Under a last-delimiter rule these four rows stop parsing entirely.
+  assert.equal(readMatrix(twoTables).rows.length, 4);
+  assert.equal(readMatrix(twoTables).delimiter.line, readMatrix(MATRIX).delimiter.line);
+  assert.deepEqual(found.filter((f) => f.code === 'uncovered-statement'), []);
+});
+
+test('a legal GFM shape this check refuses is named for what it is', () => {
+  // Both of these are valid GFM and are not house style. The complaint used to
+  // name an artifact of the reading instead of the author's line: an unclosed
+  // row reported "carries 5 columns, not 6", and an indented table reported
+  // "no table" while the real cause was the indentation.
+  const unclosed = MATRIX.split('\n').map((l) => l.replace(/\|$/, '')).join('\n');
+  const onUnclosed = check({ skillText: SKILL, matrixText: unclosed });
+  assert.ok(onUnclosed.some((f) => f.code === 'matrix-row-unclosed'
+    && /end the line with a pipe/i.test(f.message)));
+  assert.deepEqual(onUnclosed.filter((f) => f.code === 'matrix-delimiter-columns'), [],
+    'the column count is an artifact of the unclosed line, so it is not also reported');
+
+  const indented = MATRIX.split('\n').map((l) => (l.startsWith('|') ? `   ${l}` : l)).join('\n');
+  const onIndented = check({ skillText: SKILL, matrixText: indented });
+  const noTable = onIndented.find((f) => f.code === 'matrix-no-table');
+  assert.match(noTable.message, /refused above, at line/);
+  assert.ok(onIndented.some((f) => f.code === 'unread-matrix-row'
+    && /does not begin at column 0/.test(f.message)));
+});
+
+test('the coverage count is withheld when the table is broken', () => {
+  // Adjudicated against printing a ratio over a table the reader cannot see.
+  // A wrong number is worse than no number, and this is ADR-0018's own defect
+  // one level out.
+  for (const m of [
+    MATRIX.replace('| Source location | Audited |', '| Source location | Notes |'),
+    MATRIX.replace(DELIM, '|---|---|---|---|---|'),
+    MATRIX.replace(`${DELIM}\n`, `${DELIM}\n\n`),
+  ]) {
+    const note = check({ skillText: SKILL, matrixText: m }).find((f) => f.code === 'audit-coverage');
+    assert.equal(note.message, 'not counted: the matrix table is broken.');
+  }
+  // An intact table still reports the ratio.
+  assert.ok(check({ skillText: SKILL, matrixText: MATRIX })
+    .some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 2')));
+});
+
+test('a leap second is 23:59:60 and a fraction belongs to the seconds', () => {
+  // `|60` after any minute admitted 1439 times that never existed, and the
+  // fraction sat outside the seconds group so `12:00.500Z` parsed.
+  for (const now of ['2026-08-06T23:59:60Z', '2026-08-06T23:59:60.5Z', '2026-08-06T12:00:00.000Z']) {
+    assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: MATRIX, now })), [],
+      `${now} is a moment and was refused`);
+  }
+  for (const now of ['2026-08-06T12:00:60Z', '2026-08-06T23:58:60Z', '2026-08-06T12:00.500Z']) {
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now }), InvalidMoment,
+      `${now} is not a moment and was accepted`);
   }
 });
 
