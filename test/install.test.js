@@ -609,7 +609,11 @@ test('refuses at the source a skill shipping a file no manifest can record', {
   assert.ok(!(await exists(path.join(target, MANIFEST_NAME))));
 });
 
-test('a bad name in a later skill leaves no earlier skill half-installed', async () => {
+test('a bad name in a later skill leaves no earlier skill half-installed', {
+  // Same POSIX-only fixture as the refusal test above: NTFS turns the colon
+  // into an alternate data stream, and there is nothing to refuse.
+  skip: process.platform === 'win32',
+}, async () => {
   // The refusal must run before the first copy, over every selected skill.
   // Thrown mid-loop, it would leave the earlier skills' files on disk with
   // the manifest never written — unrecorded, so the next install refuses
