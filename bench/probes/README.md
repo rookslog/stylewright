@@ -85,6 +85,10 @@ key, and nothing here reads, prints, or records its value. The check refuses a
 record that carries anything shaped like a key, because a record is committed
 and a leaked key would be published.
 
+A subscription token is the other route, and issue #77 carries it. It reaches an
+arm the same way, as environment over an empty home, so nothing about the
+isolation changes. The collector reads the API key alone until #77 lands.
+
 That is the environment class, and the record names it `api-key-empty-home`. A
 home holding a credential would be a different environment, so it would need
 its own class name to compare as one.

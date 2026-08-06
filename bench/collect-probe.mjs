@@ -222,15 +222,20 @@ export function openFailure(err, target) {
  * POSIX word refuses the swap and the Windows word permits it. The chain
  * re-read after the write is what still catches a swapped ancestor there.
  *
- * `write` is injected for the same reason `installSkills` takes its clock: the
- * check that follows a write is unreachable by any deterministic test unless
- * something can act between the two. A test passes a `write` that moves the
- * tree. Production passes nothing.
+ * `afterWrite` is injected for the same reason `installSkills` takes its clock:
+ * the check that follows a write is unreachable by any deterministic test
+ * unless something can act in the window it guards. A test passes an
+ * `afterWrite` that moves the tree. Production passes nothing.
+ *
+ * It runs after the handle CLOSES, which is both the more faithful staging and
+ * the only portable one. Windows refuses to rename or remove a directory
+ * holding an open handle, so staging a swap while the handle was open died with
+ * EPERM before the guard it exists to exercise ever ran.
  */
 export async function plantNonce(skillDir, nonce, {
   baseDir = path.dirname(skillDir),
   flags = plantFlags(),
-  write = (fh, text) => fh.write(text),
+  afterWrite = () => {},
 } = {}) {
   const before = await chainProblems(baseDir, skillDir);
   if (before.length) {
@@ -248,10 +253,11 @@ export async function plantNonce(skillDir, nonce, {
     if (!st.isFile()) {
       throw new Error(`${target} is not a plain file, and nothing is written through it.`);
     }
-    await write(fh, plantedText(nonce));
+    await fh.write(plantedText(nonce));
   } finally {
     await fh.close();
   }
+  await afterWrite();
   const after = await chainProblems(baseDir, skillDir);
   if (after.length) {
     throw new Error('The installed tree moved while the nonce was planted, so the nonce may '
@@ -386,9 +392,7 @@ export function harnessBuild(harness) {
  * surface in this repository: a contained destination, no symbolic link, and
  * exclusive creation, so an existing record is refused rather than replaced.
  */
-export async function writeRecord(outPath, record, baseDir, {
-  write = (fh, text) => fh.writeFile(text),
-} = {}) {
+export async function writeRecord(outPath, record, baseDir, { afterWrite = () => {} } = {}) {
   if (!isBelow(baseDir, outPath)) {
     throw new Error(`A probe record is written under ${baseDir}, not at ${outPath}.`);
   }
@@ -417,12 +421,13 @@ export async function writeRecord(outPath, record, baseDir, {
   let identity;
   try {
     identity = await fh.stat();
-    // Injected for the same reason the plant's is: the check that follows a
-    // write cannot be reached by a test unless something can act between them.
-    await write(fh, `${JSON.stringify(record, null, 2)}\n`);
+    await fh.writeFile(`${JSON.stringify(record, null, 2)}\n`);
   } finally {
     await fh.close();
   }
+  // Injected for the same reason the plant's is, and in the same place: after
+  // the handle closes, in the window the checks below guard.
+  await afterWrite();
 
   // Re-read the chain after the write. Creating it level by level narrows the
   // window and does not close it, and Node offers no way to open a path

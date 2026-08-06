@@ -482,8 +482,10 @@ test('a tree that moves while the nonce is planted is reported', async () => {
   await assert.rejects(
     plantNonce(skill, NONCE, {
       baseDir: home,
-      write: async (fh, text) => {
-        await fh.write(text);
+      // After the handle closes. Windows refuses to remove a directory holding
+      // an open handle, so staging this while it was open died with ENOTEMPTY
+      // before the guard ran.
+      afterWrite: async () => {
         await fs.rm(skill, { recursive: true });
         await fs.writeFile(skill, 'not a directory any more\n');
       },
@@ -518,7 +520,7 @@ test('a skill directory that is a symlink is refused, and its target is untouche
   await fs.mkdir(home);
   await fs.mkdir(outside);
   await fs.writeFile(path.join(outside, 'SKILL.md'), 'someone else\n');
-  await fs.symlink(outside, path.join(home, 'skill'));
+  await fs.symlink(outside, path.join(home, 'skill'), 'junction');
   await assert.rejects(
     plantNonce(path.join(home, 'skill'), NONCE, { baseDir: home }), /is not a directory/);
   assert.equal(await fs.readFile(path.join(outside, 'SKILL.md'), 'utf8'), 'someone else\n');
@@ -578,10 +580,14 @@ test('an ancestor that becomes a link while the record is written is reported', 
   const outPath = path.join(base, 'a', 'b', 'r.json');
   await assert.rejects(
     writeRecord(outPath, record(), base, {
-      write: async (fh, text) => {
-        await fh.writeFile(text);
+      // After the handle closes, or Windows refuses the rename with EPERM. The
+      // link is a junction, which is the directory-link type Windows resolves
+      // and POSIX ignores — without it the path would not resolve there, the
+      // identity check would fire instead, and this test would pass while
+      // anchoring the wrong branch.
+      afterWrite: async () => {
         await fs.rename(path.join(base, 'a'), path.join(base, 'a-real'));
-        await fs.symlink(path.join(base, 'a-real'), path.join(base, 'a'));
+        await fs.symlink(path.join(base, 'a-real'), path.join(base, 'a'), 'junction');
       },
     }),
     /was not written where it was meant to go/);
@@ -624,7 +630,7 @@ test('a symlinked record directory is refused, and nothing is written through it
   const real = path.join(root, 'elsewhere');
   const link = path.join(root, 'probes');
   await fs.mkdir(real);
-  await fs.symlink(real, link);
+  await fs.symlink(real, link, 'junction');
   await assert.rejects(
     writeRecord(path.join(link, 'r.json'), record(), link), /never written through one/);
   assert.deepEqual(await fs.readdir(real), []);

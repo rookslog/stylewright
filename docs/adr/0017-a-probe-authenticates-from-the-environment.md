@@ -30,10 +30,20 @@ committed and a leaked key would be published.
 
 **Consequences.** The probe reaches its question, and every arm runs over a
 home with nothing in it, which is the strongest form of the pristine class the
-design describes. Probe runs bill the API rather than a subscription, and the
-design already prices installed delivery as publication-tier work. A
+design describes. Probe runs bill the API rather than a subscription, until the
+amendment below lands, and the design already prices installed delivery as
+publication-tier work. A
 representative-stack probe stays unbuilt, and the collector refuses to label a
 record with a class it did not construct.
 
 Decided 2026-08-06, on issue #68. The mechanism is the measurement design,
 section 4.
+
+Amended 2026-08-06, by owner directive. The API key is one route and not the
+only one. A subscription token reaches an arm the same way, as environment over
+an empty home, so the environment class and the isolation design are unchanged.
+`CLAUDE_CODE_OAUTH_TOKEN` becomes first class beside `ANTHROPIC_API_KEY`, the
+subscription route wins when both are set, and the missing-credential refusal
+names both. Issue #77 carries the implementation and the open question of
+whether a record names the route it authenticated by. Until #77 lands, the
+collector reads the API key alone.
