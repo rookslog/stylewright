@@ -73,6 +73,12 @@ a glob, and the review has named refusals:
   scoring and labelling, deterministically, with the rule and its effects
   recorded in the study manifest, so every published result derives from
   exactly the retained bytes and never from bytes the tree no longer holds.
+  Redaction also changes bytes the completion manifest digested, so the
+  original manifest is retained untouched and the redaction writes a
+  second manifest chained to it, mapping each transformed file's source
+  digest to its redacted digest. The scorer verifies a redacted arm
+  against the chained manifest, and the chain is what keeps the original
+  completion attestation checkable instead of orphaned.
 - Every retained file is checked for reproduced licensed text — samples
   from either arm, and the prompt files the study retains, including an
   externally derived fresh scenario — against the relevant license record,
@@ -117,8 +123,8 @@ marker — is checked by proximity, not by parsing prose. In
 single digits included, because a median of 5 is a figure — appearing in
 prose outside a fence must sit in a paragraph or table row that also
 carries a `bench-study:` marker or the word unaudited. Inline code is
-masked the way the linter masks it, and version strings, section
-references, and step references live in an allowlist. This is a regex in
+masked the way the linter masks it, and version strings, issue numbers,
+section references, and step references live in an allowlist. This is a regex in
 the shape of the checks `src/lint.js` already runs. A figure written out
 in words escapes it, and that is the residue section 1 names.
 
@@ -164,9 +170,10 @@ uses one wherever the harness offers it.
 **Cadence and applicability.** Probe cadence is decoupled from publication:
 the probe runs once per harness build per pathway, on a calendar, and the
 record is committed. A probe applies to a study only when the harness
-build and the served model are identical between them, and applicability
-is identity, never ordering: a study on an older or merely different model
-than the probe's is as unprobed as a study on a newer one. A status line
+build, the served model, the platform, and the pathway are identical
+between them, and applicability is identity, never ordering: a study on
+an older or merely different model than the probe's is as unprobed as a
+study on a newer one. A status line
 whose study has no applicable probe says unprobed, and the comparison is
 computed, never hand-tracked. A probe result binds to the exact harness,
 build, model, platform, and pathway it ran on, and the record says so.
@@ -191,10 +198,14 @@ installed tree, so a tree digest can never match across the contrast.
 
 Shared fields, and a contrast requires them equal: the canonical digest of
 the skill content, computed the same way for injected text and installed
-files so the scorer compares content and not category, the package
-revision, the platform, and the environment class. The last two also enter
-the study manifest, because section 7 binds derived status to both and a
-status command cannot derive what no record retains.
+files so the scorer compares content and not category, then the prompt
+digest, the served model build, and the CLI version — the three the
+scorer already refuses a mixed contrast over today, kept because a
+contrast that varies any of them measures that change and not the
+delivery — then the package revision, the platform, and the environment
+class. The last two also enter the study manifest, because section 7
+binds derived status to both and a status command cannot derive what no
+record retains.
 
 Delivery-specific fields, validated by arm type: the delivery mode itself,
 and for an installed arm the pathway and the digest of the installed tree,
@@ -239,25 +250,40 @@ append-only, one JSON object per line. An entry records an event: a rubric
 registration, a scenario-frame registration, a scenario selection, an arm
 attempt with its outcome, a promotion, an abandonment. Every arm attempt
 is an entry, exploratory arms included, so no attempt is invisible. Every
-entry carries the skill's canonical content digest and the digests of the
-files it registers.
+entry carries the digests of the files it registers, and names the skill
+it serves. The canonical content digest is a property of the treatment,
+and steps 1 and 3 of the workflow precede the treatment's existence: an
+entry written before the skill exists — the exploratory control, the
+frame registration — carries the skill's name and a null digest, and the
+first entry written after creation binds that name to the digest every
+later entry must carry. A confirmatory entry never carries a null digest.
 
-Ordering is not self-attested, and the boundary is the start of the arm,
-not the completion of its samples: the runner records an arm-start
-timestamp in the arm manifest, because the sidecar `at=` field is written
-when an invocation returns, and a registration pushed mid-arm would pass a
-completion-time comparison it should fail. An entry counts as
-pre-registered only when it was pushed to the public repository before the
-arm-start timestamp of every arm it governs. A back-dated commit changes
-nothing the server recorded.
+Ordering is not self-attested, and both ends of the comparison are the
+server's facts: an entry counts as pre-registered only when its push
+precedes the first push that carries any evidence file of an arm it
+governs. Draft 5 drew the boundary at a runner-written arm-start
+timestamp, and a review broke it: the arm manifest is the author's file,
+so the recorded start can be post-dated past any push, and a check
+against it accepts a registration the arm actually preceded. Publication
+order is what the forge can attest. The runner still records the
+arm-start timestamp, and the sidecars still record when each invocation
+returned, but the design names both as the author's own record — readable,
+and never load-bearing for the ordering claim. A back-dated commit
+changes nothing the server recorded.
 
 Push time is the server's fact, and a clone does not carry it, so
 verification is contemporaneous: a CI check runs on the push that carries
-a registration, compares the server's record against the ledger while the
-server still attests it, and its verdict — run identifier, timestamp,
-result — is recorded in the study manifest. The later static check
-verifies the recorded attestation, not the vanished push event. The honest
-residue: the attestation chain is as durable as the forge that issued it.
+an arm's evidence, confirms that every registration governing the arm
+already sits in the history the server holds, and its verdict — run
+identifier, timestamp, result — is recorded in the study manifest. The
+later static check verifies the recorded attestation, not the vanished
+push event. Two residues, stated. The attestation chain is as durable as
+the forge that issued it. And the forge attests publication order, never
+execution order: an author who runs an arm, registers afterward, and
+publishes the evidence last passes the check, and no record this design
+retains could show it. What the mechanism buys is that the forgery must
+be premeditated, and must fit inside a public ledger that keeps every
+attempt visible.
 
 1. Run an exploratory control with no guidance, and read the samples. The
    attempt is on the ledger before it starts, like every arm.
@@ -367,7 +393,8 @@ statements, in three classes.
   measured reads as a credential. A line is printed as stale when the
   skill's current content digest differs from the digest the study
   measured, and as unprobed when no probe matches the study's harness
-  build and served model under the identity rule in section 4.1. The
+  build, served model, platform, and pathway under the identity rule in
+  section 4.1. The
   platform and environment class a line names come from the study
   manifest, which section 4.2 requires to carry both. Staleness is
   computed at read time. A derived line can go stale the moment the skill
@@ -425,3 +452,17 @@ decision, taken only with ADR-0007's test extended first.
   review over every retained file, redaction before scoring, sampling
   frames registered before the skill, retirement covering prose as well
   as tables, and ADR-0012 split into ADR-0012 and ADR-0014.
+- Draft 6 disposed of a retroactive codex round, summoned on the merged
+  pull request because five of draft 5's fourteen dispositions chose
+  mechanisms no reviewer had seen. Eight findings, every one accepted.
+  The ordering boundary moved from the runner's arm-start timestamp,
+  which an author can post-date, to push-against-push, with execution
+  order named as a residue the forge cannot attest. Ledger entries
+  written before a skill exists carry a null digest that the first
+  post-creation entry binds. The shared provenance fields keep the prompt
+  digest, model build, and CLI version the scorer already enforces. Probe
+  applicability gained platform and pathway. Redaction gained a chained
+  manifest. The license rule in `bench/samples/README.md` widened to
+  every retained file, the unaudited figures in `bench/README.md` now say
+  so in their own paragraphs, and AGENTS.md's operative range extends
+  through ADR-0014.

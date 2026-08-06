@@ -55,8 +55,11 @@ rule — and every arm attempt enters the ledger before it starts,
 exploratory included, so a clean result cannot be picked from attempts
 nobody can see. Every arm is promoted including the failures, and a
 promoted study is tamper-evident under its digests. Ordering is not
-self-attested: the public push time is the clock, verified while the
-server still attests it.
+self-attested: the public push time is the clock on both ends — a
+registration counts only when pushed before the evidence it governs was
+first pushed — verified while the server still attests it. Execution time
+stays the author's own fact, and the design says so instead of claiming
+more.
 
 ## Results survive their own multiplicity
 
@@ -115,3 +118,6 @@ confirmatory one. The bench tests.
   construct-validity commitments written.
 - Draft 3 carried the codex-round corrections: ledger coverage of every
   arm before it starts, and the scenario frame fixed before the skill.
+- Draft 4 moved the ordering boundary to push-against-push, after a
+  retroactive review showed a runner-written arm-start timestamp is the
+  author's fact and can be post-dated past any push.
