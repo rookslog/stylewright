@@ -37,6 +37,7 @@
 
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -45,6 +46,7 @@ import { fileURLToPath } from 'node:url';
 import { installSkills } from '../src/install.js';
 import { resolveTarget, PLATFORMS, SCOPES } from '../src/targets.js';
 import { destinationState, ensureDir, isBelow, walk } from '../src/tree.js';
+import { armAnswered } from './probe.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -98,6 +100,20 @@ export function armFlags(model) {
     '--output-format', 'json'];
 }
 
+/**
+ * The build the tuple names: the one an arm that ANSWERED reports.
+ *
+ * It reads the same predicate the check and the derived outcome read. Taking
+ * the first arm with a `model_id` named an errored arm's build, which bound a
+ * recorded failure to an identity that never served it — and an errored arm
+ * deliberately keeps its `model_id`, so the value is there to be taken.
+ */
+export function tupleModel(installedArm, controlArm) {
+  if (armAnswered(installedArm)) return installedArm.model_id;
+  if (armAnswered(controlArm)) return controlArm.model_id;
+  return '';
+}
+
 /** The text planted in the installed copy. The nonce is the only payload. */
 export function plantedText(nonce) {
   return `\n## Installed probe marker\n\nThis installed copy carries the probe nonce `
@@ -125,6 +141,46 @@ export async function treeDigest(dir) {
   const lines = [];
   for (const rel of rels) lines.push(`${rel} ${sha(await fs.readFile(path.join(dir, rel)))}`);
   return sha(lines.join('\n'));
+}
+
+/**
+ * Plant the nonce in the installed skill, without following anything.
+ *
+ * This is a write surface like any other, so it inherits the tree discipline
+ * rather than repeating the defect the rest of this repository already fixed
+ * twice. `appendFile` resolves the path, so a `SKILL.md` swapped for a symbolic
+ * link between the install returning and this call appended the nonce to
+ * whatever the link pointed at, outside the throwaway tree entirely.
+ *
+ * `destinationState` classifies the path first, and the open then refuses to
+ * follow a link at the leaf whatever appeared since. `O_NOFOLLOW` is a POSIX
+ * flag that reads as zero where a platform does not define it, so the
+ * classification carries Windows and the flag closes the race everywhere else.
+ * The handle is the identity from there on.
+ */
+export async function plantNonce(skillDir, nonce) {
+  const target = path.join(skillDir, 'SKILL.md');
+  const state = await destinationState(target);
+  if (state !== 'file') {
+    throw new Error(`The installed SKILL.md is ${state === 'absent' ? 'missing' : `a ${state}`}, `
+      + 'so the nonce has nowhere to go.');
+  }
+  const flags = constants.O_WRONLY | constants.O_APPEND | (constants.O_NOFOLLOW ?? 0);
+  const fh = await fs.open(target, flags).catch((err) => {
+    if (err.code === 'ELOOP' || err.code === 'EMLINK') {
+      throw new Error(`${target} became a symbolic link, and nothing is written through one.`);
+    }
+    throw err;
+  });
+  try {
+    const st = await fh.stat();
+    if (!st.isFile()) {
+      throw new Error(`${target} is not a plain file, and nothing is written through it.`);
+    }
+    await fh.write(plantedText(nonce));
+  } finally {
+    await fh.close();
+  }
 }
 
 /**
@@ -362,7 +418,7 @@ async function main(argv) {
   }
 
   const skillDir = path.join(targetDir, opts.skill);
-  await fs.appendFile(path.join(skillDir, 'SKILL.md'), plantedText(nonce));
+  await plantNonce(skillDir, nonce);
   const digest = await treeDigest(skillDir);
 
   const flags = armFlags(opts.model);
@@ -395,11 +451,7 @@ async function main(argv) {
     flags,
     identity: {
       harness_build: build,
-      // From whichever arm a build served. Reading the installed arm alone
-      // wrote an empty tuple element when the installed invocation failed and
-      // the control succeeded, and the check then refused an ordinary failed
-      // probe that the protocol keeps as a result.
-      model: installedArm.model_id || controlArm.model_id,
+      model: tupleModel(installedArm, controlArm),
       platform: `${process.platform}-${process.arch}`,
       pathway: opts.pathway,
       // This collector builds one environment: two empty homes, with the key

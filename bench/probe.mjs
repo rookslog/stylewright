@@ -80,6 +80,31 @@ const SECRET = /sk-ant-[A-Za-z0-9_-]{8,}/;
 const isText = (v) => typeof v === 'string' && v.trim().length > 0;
 
 /**
+ * Did this arm answer?
+ *
+ * ONE definition, and every consumer reads it: the derived outcome, the record
+ * check, and the collector choosing which arm names the tuple's model. Three
+ * review rounds each found the same defect at a different one of those three
+ * sites — an unserved control, then an errored arm, then an arm with a build
+ * and no answer text — because each site carried its own idea of what a served
+ * arm was and each round patched one of them. A fourth site would have
+ * repeated it, so the predicate is stated here and nowhere else.
+ *
+ * Three conditions, and each one was a finding:
+ *
+ * 1. A build is named. An arm nothing served did not answer, and its empty
+ *    answer reads identically to a control that ran and stayed clean.
+ * 2. The harness reported no error. A failed run can still carry answer text
+ *    and a serving build, so two failed invocations read as a comparison.
+ * 3. The answer carries text. A run reporting no error, naming a build, and
+ *    returning an empty result is the shape `bench/extract.mjs` already
+ *    classifies as failed, and it made a control look clean by saying nothing.
+ */
+export function armAnswered(arm) {
+  return isText(arm?.model_id) && arm?.is_error === false && isText(arm?.answer);
+}
+
+/**
  * Every key in the record, at every depth, with the path that reaches it.
  *
  * An array is walked as well as an object. Stopping at one let a list of
@@ -181,10 +206,15 @@ export function checkRecord(record, name = 'record') {
   const identity = record.identity ?? {};
   // `model` and `stack_digest` are the two elements a record may leave empty,
   // and each for a stated reason. A stack digest belongs to one class. A served
-  // model does not exist when the harness never answered, and that record is a
-  // recorded failure rather than a malformed one — the design keeps a failed
-  // probe as a result, so the check has to admit it.
-  const served = ARMS.map((arm) => record[arm]?.model_id).filter(isText);
+  // model does not exist when no arm answered, and that record is a recorded
+  // failure rather than a malformed one — the design keeps a failed probe as a
+  // result, so the check has to admit it.
+  //
+  // The builds come from arms that ANSWERED, under the one predicate. Reading
+  // every arm that merely carried a `model_id` counted an errored arm's build,
+  // which then refused a valid failed probe as a mixed-build contrast.
+  const served = ARMS.filter((arm) => armAnswered(record[arm]))
+    .map((arm) => record[arm].model_id);
   for (const field of TUPLE) {
     if (field === 'stack_digest') continue;
     if (field === 'model' && !served.length) continue;
@@ -282,9 +312,8 @@ export function deriveOutcome(record) {
   // nonce, which reads identically to a control that ran and stayed clean —
   // so a failed control invocation would hand a passing probe the very
   // comparison it exists to make. Both halves therefore require a served arm.
-  const served = (arm) => isText(record?.[arm]?.model_id) && record?.[arm]?.is_error === false;
-  const installedServed = served('installed');
-  const controlServed = served('control');
+  const installedServed = armAnswered(record?.installed);
+  const controlServed = armAnswered(record?.control);
   const discovered = installedServed && Boolean(nonce)
     && (record?.installed?.answer ?? '').includes(nonce);
   const controlClean = controlServed && Boolean(nonce)

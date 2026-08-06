@@ -13,11 +13,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
-  TUPLE, checkRecord, deriveOutcome, isolationProblems, checkDirectory, describe,
+  TUPLE, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory, describe,
 } from '../bench/probe.mjs';
 import {
-  armFlags, parseArgs, parsePathway, plantedText, recordName, servingBuild, treeDigest,
-  writeRecord, ASK,
+  armFlags, parseArgs, parsePathway, plantNonce, plantedText, recordName, servingBuild,
+  treeDigest, tupleModel, writeRecord, ASK,
 } from '../bench/collect-probe.mjs';
 
 const NONCE = 'sw-probe-0123456789abcdef';
@@ -46,6 +46,51 @@ const record = (over = {}) => ({
     home: '/tmp/b/home', trace: null,
   },
   ...over,
+});
+
+// One predicate, three consumers. Three review rounds each found the same
+// defect at a different consumer — an unserved control, an errored arm, an arm
+// with a build and no answer text — because each carried its own idea of what
+// a served arm was. These cases are the definition.
+test('an arm answered when a build is named, no error was reported, and text came back', () => {
+  const answered = {
+    model_id: 'claude-opus-4-6-20260514', is_error: false, answer: 'NONE',
+  };
+  assert.equal(armAnswered(answered), true);
+  assert.equal(armAnswered({ ...answered, model_id: '' }), false);
+  assert.equal(armAnswered({ ...answered, is_error: true }), false);
+  assert.equal(armAnswered({ ...answered, answer: '' }), false);
+  assert.equal(armAnswered({ ...answered, answer: '   ' }), false);
+  // Absent is not the same as false, and a record missing the byte is refused
+  // by `checkRecord` rather than read as a successful run here.
+  assert.equal(armAnswered({ model_id: 'x', answer: 'y' }), false);
+  assert.equal(armAnswered(undefined), false);
+});
+
+// The shape `extract.mjs` already calls a failed run: no error, a build, and
+// no result text. It made a control look clean by saying nothing at all.
+test('an arm with a build and no answer text cannot clean the control', () => {
+  const silent = record();
+  silent.control.answer = '';
+  assert.equal(deriveOutcome(silent).control_served, false);
+  assert.equal(deriveOutcome(silent).control_clean, false);
+  assert.equal(deriveOutcome(silent).passes, false);
+});
+
+test('the tuple model comes from an arm that answered, never from an errored one', () => {
+  const answered = { model_id: 'served-build', is_error: false, answer: 'NONE' };
+  const errored = { model_id: 'errored-build', is_error: true, answer: 'boom' };
+  assert.equal(tupleModel(errored, answered), 'served-build');
+  assert.equal(tupleModel(answered, errored), 'served-build');
+  assert.equal(tupleModel(errored, errored), '');
+});
+
+test('a record whose only build came from an errored arm names no build', () => {
+  const both = record();
+  both.installed.is_error = true;
+  both.control.is_error = true;
+  both.identity.model = 'claude-opus-4-6-20260514';
+  assert.match(checkRecord(both).join(' '), /identity.model names a build, and no arm reports one/);
 });
 
 test('a well-formed record passes and derives a pass', () => {
@@ -325,6 +370,31 @@ test('a tie in the model usage names no build, the way extract.mjs refuses one',
 test('the planted text carries the nonce, and the ask never does', () => {
   assert.match(plantedText(NONCE), new RegExp(NONCE));
   assert.equal(ASK.includes(NONCE), false);
+});
+
+test('the nonce lands in the installed SKILL.md', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
+  await fs.writeFile(path.join(dir, 'SKILL.md'), '# A skill\n');
+  await plantNonce(dir, NONCE);
+  assert.match(await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8'), new RegExp(NONCE));
+});
+
+// `appendFile` resolves the path, so a SKILL.md swapped for a link between the
+// install and the plant appended the nonce outside the throwaway tree.
+test('a SKILL.md that is a symlink is refused, and its target is untouched', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
+  const skill = path.join(dir, 'skill');
+  const outside = path.join(dir, 'outside.md');
+  await fs.mkdir(skill);
+  await fs.writeFile(outside, 'someone else\n');
+  await fs.symlink(outside, path.join(skill, 'SKILL.md'));
+  await assert.rejects(plantNonce(skill, NONCE), /symbolic link|is a symlink/);
+  assert.equal(await fs.readFile(outside, 'utf8'), 'someone else\n');
+});
+
+test('a missing SKILL.md is refused rather than created', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
+  await assert.rejects(plantNonce(dir, NONCE), /SKILL.md is missing/);
 });
 
 test('the tree digest names contents, so an edit inside the tree moves it', async () => {
