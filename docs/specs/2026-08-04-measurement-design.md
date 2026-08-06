@@ -263,7 +263,7 @@ runs, in a redirected home the harness fully respects. The design states,
 per pathway, which flags each installed arm runs under, and implementation
 does not start until the probe passes or fails.
 
-**How a probed home authenticates.** Amended 2026-08-06, in ADR-0016. A
+**How a probed home authenticates.** Amended 2026-08-06, in ADR-0017. A
 redirected home holds no credentials, so the harness refuses to run in one
 and answers that it is not logged in. A probe arm therefore authenticates
 from `ANTHROPIC_API_KEY` in the environment, and its home stays empty. The
@@ -604,7 +604,7 @@ decision, taken only with ADR-0007's test extended first.
   the probe tuple scoping discovery alone.
 - Draft 12 records what building the probe found. A redirected home holds
   no credentials, so the harness refused to run in one, and the pristine
-  class had to say how an arm authenticates. ADR-0016 settles it: an API
+  class had to say how an arm authenticates. ADR-0017 settles it: an API
   key in the environment, over an empty home, under the class name
   `api-key-empty-home`.
 - Draft 11 disposed of the confirmation round: four findings, all

@@ -73,7 +73,7 @@ and answers that it is not logged in. Observed on 2026-08-06 on macOS, with the
 Claude Code CLI, on an empty home and again on a home holding only an
 onboarding flag.
 
-ADR-0016 settles it. Set `ANTHROPIC_API_KEY` in the shell that runs the
+ADR-0017 settles it. Set `ANTHROPIC_API_KEY` in the shell that runs the
 collector, and both homes stay empty. The collector refuses to run without the
 key, and nothing here reads, prints, or records its value. The check refuses a
 record that carries anything shaped like a key, because a record is committed

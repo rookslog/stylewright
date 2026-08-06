@@ -5,7 +5,7 @@ decided: 2026-08-06
 issues: [21, 43, 68]
 ---
 
-# ADR-0016 — A probe authenticates from the environment, over an empty home
+# ADR-0017 — A probe authenticates from the environment, over an empty home
 
 The measurement design asks the isolation probe to run in a redirected home.
 A redirected home holds no credentials, so the harness refused to run and

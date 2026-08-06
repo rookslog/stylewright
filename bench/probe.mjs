@@ -37,7 +37,7 @@ export const TUPLE = [
  * The environment classes, and the one that needs a digest.
  *
  * `api-key-empty-home` is the pristine class as the owner settled it on
- * 2026-08-06, in ADR-0016. The home is empty, and the harness authenticates
+ * 2026-08-06, in ADR-0017. The home is empty, and the harness authenticates
  * from an API key in the environment, so nothing about the operator's own
  * configuration reaches either arm. The class is named for how it
  * authenticates, because a home that held a credential would be a different
@@ -226,7 +226,7 @@ export function checkRecord(record, name = 'record') {
 
   for (const p of isolationProblems(record.flags)) say(p);
 
-  // The probe authenticates from an API key in the environment, per ADR-0016,
+  // The probe authenticates from an API key in the environment, per ADR-0017,
   // and the key never enters the tree. A record is committed, so a key that
   // reached one would be published. The match is never quoted back.
   if (SECRET.test(JSON.stringify(record))) {

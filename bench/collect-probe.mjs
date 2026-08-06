@@ -30,7 +30,7 @@
  *   --dry-run             prepare both homes, print the plan, call no model.
  *
  * The environment class is always `api-key-empty-home`: two empty homes, with
- * ANTHROPIC_API_KEY in the environment (ADR-0016). A representative stack needs
+ * ANTHROPIC_API_KEY in the environment (ADR-0017). A representative stack needs
  * a protocol that builds the stack, and this collector does not have one, so it
  * never labels a record with that class.
  */
@@ -146,7 +146,7 @@ export function servingBuild(modelUsage) {
  * the build that served it, or the reason neither exists.
  *
  * The environment carries ANTHROPIC_API_KEY through, and that is how the
- * harness authenticates over an empty home (ADR-0016). Nothing here reads the
+ * harness authenticates over an empty home (ADR-0017). Nothing here reads the
  * value, and nothing writes it anywhere. The config variables are deleted
  * instead, because one naming the operator's own configuration directory
  * survives a redirected HOME and points the harness back at the tree the probe
@@ -267,7 +267,7 @@ async function main(argv) {
   const date = new Date().toISOString().slice(0, 10);
   const nonce = `sw-probe-${crypto.randomBytes(8).toString('hex')}`;
 
-  // ADR-0016: the harness authenticates from the environment, over an empty
+  // ADR-0017: the harness authenticates from the environment, over an empty
   // home. Without the key both arms answer that they are not logged in, and the
   // probe never reaches its question. The value is never read, printed, or
   // written — only its presence is.
