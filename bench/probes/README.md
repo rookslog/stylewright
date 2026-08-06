@@ -56,6 +56,12 @@ wrong reason. And the flags were the control arm's.
 A failure is a result. A record of a probe that failed stays here, and the
 status a later reader computes says the probe failed rather than saying nothing.
 
+One residue, stated. The record is the author's own file, like every other
+record in this protocol. The check derives the outcome from the bytes, and it
+never attests that the run happened as the bytes describe. Section 5 of the
+measurement design names that floor, and ADR-0015 records why the design stops
+there rather than building a deeper mechanism.
+
 ## The harness must authenticate from outside the home
 
 A redirected home holds no credentials, so a harness that reads its credentials
