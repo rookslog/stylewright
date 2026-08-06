@@ -267,9 +267,11 @@ does not start until the probe passes or fails.
 redirected home holds no credentials, so the harness refuses to run in one
 and answers that it is not logged in. A probe arm therefore authenticates
 from a credential in the environment, and its home stays empty. The
-environment class the tuple carries is `api-key-empty-home`, named for how
-the arm authenticates, because a home holding a credential is a different
-environment and compares as one only under its own name. Two credentials serve
+environment class the tuple carries is `empty-home`, named for the home and
+not for the credential, because both routes build the same environment and a
+class named for one of them would carry the route into the tuple. A home
+holding a credential is a different environment and compares as one only
+under its own name. Two credentials serve
 that role, an API key and a subscription token, and a record names which one
 served the arm. ADR-0017 carries both amendments, including why the route is
 provenance and not a tuple element.
@@ -607,9 +609,9 @@ decision, taken only with ADR-0007's test extended first.
   the probe tuple scoping discovery alone.
 - Draft 12 records what building the probe found. A redirected home holds
   no credentials, so the harness refused to run in one, and the pristine
-  class had to say how an arm authenticates. ADR-0017 settles it: an API
-  key in the environment, over an empty home, under the class name
-  `api-key-empty-home`.
+  class had to say how an arm authenticates. ADR-0017 settles it: a
+  credential in the environment, over an empty home, under the class name
+  `empty-home`.
 - Draft 11 disposed of the confirmation round: four findings, all
   consistency audits against the ratified threat model, none contesting
   it. The principles page matched the ADR's wording instead of promising

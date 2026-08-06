@@ -85,8 +85,15 @@ set `CLAUDE_CODE_OAUTH_TOKEN`, which bills a subscription. Or set
 environment over an empty home, so neither changes the isolation.
 
 Set both and the subscription wins. The collector hands the arm exactly one
-credential and removes the other, so the route a record names is the route that
-served it.
+credential, so the route a record names is the route that served it.
+
+An arm inherits a named list of variables, that one credential, and its
+redirected home. Nothing else reaches it. The list is an allowlist because the
+first version subtracted the few names it knew, and a review measured an auth
+token, a base URL, and a Bedrock credential all reaching the harness while the
+record named the API key. If your shell sets a variable that configures another
+route, the collector refuses by name rather than guessing, and it never reads
+what any of them hold.
 
 Nothing here reads, prints, or records what either variable holds. The check
 refuses a record carrying anything shaped like a credential, by either route,
@@ -100,8 +107,11 @@ because splitting probe coverage by route on an unmeasured suspicion would cost
 more than it buys. ADR-0017 carries the reasoning and the condition that would
 change it.
 
-That is the environment class, and the record names it `api-key-empty-home`. A
-home holding a credential would be a different environment, so it would need
+That is the environment class, and the record names it `empty-home`. It is
+named for the home and not for the route, because both routes build the same
+environment — a class named for one of them would carry the route into the
+identity tuple, and every run of the other route would be labelled wrongly. A
+home that HELD a credential would be a different environment, so it would need
 its own class name to compare as one.
-Give the harness a credential the home does not supply, such as an API key in
-the environment, and the probe reaches its question.
+Give the harness a credential the home does not supply, by either route above,
+and the probe reaches its question.

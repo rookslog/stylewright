@@ -14,10 +14,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
-  TUPLE, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory, describe,
+  TUPLE, ENV_CLASSES, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory,
+  describe, redact,
 } from '../bench/probe.mjs';
 import {
-  armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs,
+  armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
   parsePathway, plantFlags, plantNonce, plantedText, readRun, recordName, servingBuild,
   treeDigest, tupleModel, writeRecord, ASK, AUTH_ROUTES,
 } from '../bench/collect-probe.mjs';
@@ -54,7 +55,7 @@ const record = (over = {}) => ({
     model: 'claude-opus-4-6-20260514',
     platform: 'darwin-arm64',
     pathway: 'claude:user',
-    environment_class: 'api-key-empty-home',
+    environment_class: 'empty-home',
     stack_digest: null,
   },
   installed: {
@@ -400,6 +401,45 @@ test('an arm is handed one credential, and the loser is removed', () => {
   assert.equal('CLAUDE_CODE_OAUTH_TOKEN' in keyOnly, false);
 });
 
+// Subtraction enumerated two variables and let five through. A wire capture
+// measured an auth token and an API key reaching one request while the record
+// named the API key. An allowlist is the shape that does not decay.
+test('an arm inherits only what the allowlist names, and one credential', () => {
+  const shell = {
+    PATH: '/usr/bin',
+    ANTHROPIC_API_KEY: 'fake-key',
+    ANTHROPIC_AUTH_TOKEN: 'fake-auth',
+    ANTHROPIC_BASE_URL: 'http://elsewhere.invalid',
+    ANTHROPIC_CUSTOM_HEADERS: 'x-thing: 1',
+    CLAUDE_CODE_USE_BEDROCK: '1',
+    AWS_BEARER_TOKEN_BEDROCK: 'fake-bedrock',
+    CLAUDE_CODE_HOST_AUTH_ENV_VAR: 'SOMETHING_ELSE',
+    SOMETHING_ELSE: 'fake-host-auth',
+    NODE_OPTIONS: '--require /tmp/evil.js',
+    HTTPS_PROXY: 'http://proxy.invalid',
+  };
+  const env = armEnv(shell, '/tmp/home');
+  assert.deepEqual(Object.keys(env).sort(),
+    ['ANTHROPIC_API_KEY', 'HOME', 'PATH', 'USERPROFILE']);
+});
+
+test('a variable the allowlist names is inherited whatever its case', () => {
+  const env = armEnv({ Path: 'C:\\\\bin', SystemRoot: 'C:\\\\Windows' }, 'C:\\\\home');
+  assert.equal(env.Path, 'C:\\\\bin');
+  assert.equal(env.SystemRoot, 'C:\\\\Windows');
+});
+
+test('an unmodelled credential variable is named, and never its value', () => {
+  const found = unmodelledCredentials({
+    ANTHROPIC_BASE_URL: 'http://elsewhere.invalid',
+    AWS_BEARER_TOKEN_BEDROCK: 'fake-bedrock',
+    ANTHROPIC_API_KEY: 'fake-key',
+  });
+  assert.deepEqual(found, ['ANTHROPIC_BASE_URL', 'AWS_BEARER_TOKEN_BEDROCK']);
+  assert.deepEqual(unmodelledCredentials({ ANTHROPIC_API_KEY: 'fake-key' }), []);
+  assert.deepEqual(unmodelledCredentials({}), []);
+});
+
 test('an arm never inherits a configuration directory that outlives the redirected home', () => {
   const env = armEnv({
     CLAUDE_CONFIG_DIR: '/home/me/.claude',
@@ -410,6 +450,61 @@ test('an arm never inherits a configuration directory that outlives the redirect
   for (const key of ['CLAUDE_CONFIG_DIR', 'XDG_CONFIG_HOME', 'CLAUDE_HOME']) {
     assert.equal(key in env, false, `${key} must not reach an arm`);
   }
+});
+
+// The class named one route, so every run of the OTHER route was labelled
+// wrongly and the check said nothing — the route was inside the tuple after all.
+test('the environment class names the home, not the route', () => {
+  assert.deepEqual(ENV_CLASSES, ['empty-home', 'representative']);
+  const subscription = record({ auth_route: 'subscription' });
+  assert.deepEqual(checkRecord(subscription), []);
+  const routed = record();
+  routed.identity.environment_class = 'api-key-empty-home';
+  assert.match(checkRecord(routed).join(' '), /environment_class must be one of/);
+});
+
+// The refusal below the flag check promises nothing is quoted. The flag check
+// above it quoted its value verbatim, so a credential-shaped flag leaked.
+test('a credential-shaped value in any message is redacted at emission', () => {
+  const leaky = record({
+    flags: ['-p', '--model', 'opus', '--setting-sources', 'sk-ant-oat01-LEAKEDCREDENTIAL0123',
+      '--strict-mcp-config', '--output-format', 'json'],
+  });
+  const problems = checkRecord(leaky).join(' ');
+  assert.equal(problems.includes('LEAKEDCREDENTIAL'), false, 'no message may quote it');
+  assert.match(problems, /\[credential redacted\]/);
+  assert.equal(redact('a sk-ant-api03-AAAABBBBCCCC b'), 'a [credential redacted] b');
+  // A credential the surgical pass cannot see costs the whole message, because
+  // a pattern loose enough to catch it also eats whatever follows it.
+  assert.equal(redact('a sk-ant-oat\n01-DDDDEEEEFFFF b').includes('DDDDEEEEFFFF'), false);
+  assert.match(redact('a sk-ant-oat\n01-DDDDEEEEFFFF b'), /withheld/);
+  assert.equal(redact('nothing to see here'), 'nothing to see here');
+});
+
+// Measured evasions: case, a newline inside the first characters, and a JSON
+// escape. Each passed check:probes end to end.
+test('a credential survives no dressing the check can see through', () => {
+  for (const dressed of [
+    'SK-ANT-API03-AAAABBBBCCCC',
+    'sk-ant-oat\n01-DDDDEEEEFFFF',
+    'sk-ant-oat\\n01-DDDDEEEEFFFF',
+    'sk-ant-oat"01"-DDDDEEEEFFFF',
+  ]) {
+    const leaked = record();
+    leaked.installed.stderr = `the environment held ${dressed}`;
+    assert.match(checkRecord(leaked).join(' '), /looks like a credential/,
+      `${JSON.stringify(dressed)} must be caught`);
+  }
+});
+
+test('a record that cannot be parsed reports no bytes from the file', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-torn-'));
+  await fs.writeFile(path.join(dir, 'torn.json'), '{ "leak": "sk-ant-api03-AAAABBBBCCCC"');
+  const { problems } = await checkDirectory(dir);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /not readable as JSON/);
+  assert.equal(problems[0].includes('sk-ant'), false);
+  assert.equal(problems[0].includes('leak'), false);
 });
 
 test('the routes are declared in precedence order, and name their variables', () => {

@@ -36,14 +36,19 @@ export const TUPLE = [
 /**
  * The environment classes, and the one that needs a digest.
  *
- * `api-key-empty-home` is the pristine class as the owner settled it on
- * 2026-08-06, in ADR-0017. The home is empty, and the harness authenticates
- * from an API key in the environment, so nothing about the operator's own
- * configuration reaches either arm. The class is named for how it
- * authenticates, because a home that held a credential would be a different
- * environment and must be a different name.
+ * `empty-home` is the pristine class as the owner settled it on 2026-08-06, in
+ * ADR-0017. The home is empty and the harness authenticates from the
+ * environment, so nothing of the operator's own configuration reaches either
+ * arm.
+ *
+ * The class is named for the HOME, never for the credential. Two routes
+ * authenticate into the same empty home, and a class named for one of them put
+ * the route inside the identity tuple by the back door: every subscription run
+ * was labelled `api-key-empty-home`, and the check said nothing. A home that
+ * HELD a credential would be a different environment and would need its own
+ * name.
  */
-export const ENV_CLASSES = ['api-key-empty-home', 'representative'];
+export const ENV_CLASSES = ['empty-home', 'representative'];
 export const STACK_CLASS = 'representative';
 
 /**
@@ -78,16 +83,60 @@ const ARMS = ['installed', 'control'];
  * A credential, in the shapes this vendor issues.
  *
  * Both routes are covered: an API key and a subscription token from
- * `claude setup-token` share the `sk-ant-` family, and they differ in the
- * segment that follows. The pattern is written over the family rather than over
- * either spelling, so a new segment name inside it stays caught.
+ * `claude setup-token` share the `sk-ant-` family and differ in the segment
+ * that follows, so the pattern is written over the family. It is
+ * case-insensitive, because `SK-ANT-` is the same credential and read past an
+ * exact-case pattern.
  *
- * The residue, stated: a credential of some other shape entirely would pass.
- * This catches what the vendor issues today, and it is a backstop rather than
- * the mechanism — the mechanism is that nothing ever writes a credential into a
- * record in the first place.
+ * Two residues, both stated rather than papered over. A credential encoded so
+ * that its characters are not adjacent — base64, or split across fields — is
+ * out of scope, because catching that needs a decoder for every encoding and
+ * the result would still be a guess. And a credential of some other shape
+ * entirely would pass. This is a BACKSTOP. The mechanism is that nothing writes
+ * a credential into a record, and `armEnv` hands an arm one credential it never
+ * reads.
  */
-const SECRET = /sk-ant-[A-Za-z0-9_-]{8,}/;
+const SECRET = /sk-ant-[a-z0-9_-]{8,}/i;
+const SECRET_ALL = /sk-ant-[a-z0-9_-]{8,}/gi;
+
+/**
+ * Text with the noise a credential can hide behind removed, for matching only.
+ *
+ * A record is JSON, and JSON wraps and escapes. A value carrying a newline
+ * inside its first characters, or a `\n` escape, or quotes from a nested
+ * encoding, read straight past a pattern that expects adjacency — measured, and
+ * such a record passed `check:probes` end to end. The stderr field carries
+ * hundreds of raw bytes of harness output, so the wrapping is realistic rather
+ * than theoretical.
+ */
+function unwrap(text) {
+  return String(text).replace(/[\s"'\\]/g, '');
+}
+
+/**
+ * Text safe to print, with anything credential-shaped replaced.
+ *
+ * EVERY message this module emits goes through it, at the point of emission
+ * rather than per message. Redacting message by message is how the leak
+ * happened: the refusal for a bad flag quoted the flag's value verbatim, one
+ * line above the refusal that promises nothing is quoted. A message written
+ * next month would have had to remember the rule on its own.
+ *
+ * Two passes, because one cannot do both jobs. The first replaces a credential
+ * sitting in the text as the vendor issues it, surgically, leaving the rest of
+ * the message readable. The second asks whether what remains still looks like a
+ * credential once wrapping and escaping are removed, and withholds the WHOLE
+ * message if it does. A single pattern loose enough to catch a wrapped
+ * credential also eats whatever follows it, because a space and then a letter
+ * is indistinguishable from a credential split across a line.
+ */
+export function redact(text) {
+  const surgical = String(text).replace(SECRET_ALL, '[credential redacted]');
+  if (SECRET.test(unwrap(surgical))) {
+    return '[a message here carried something credential-shaped, so it is withheld]';
+  }
+  return surgical;
+}
 
 /** The auth routes a record may name, from `bench/collect-probe.mjs`. */
 export const AUTH_ROUTE_NAMES = ['subscription', 'api-key'];
@@ -207,7 +256,8 @@ export function isolationProblems(flags) {
  */
 export function checkRecord(record, name = 'record') {
   const problems = [];
-  const say = (p) => problems.push(`${name}: ${p}`);
+  // Redaction at the point of emission, so no message has to remember the rule.
+  const say = (p) => problems.push(redact(`${name}: ${p}`));
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     return [`${name}: not a JSON object.`];
   }
@@ -320,10 +370,11 @@ export function checkRecord(record, name = 'record') {
 
   for (const p of isolationProblems(record.flags)) say(p);
 
-  // The probe authenticates from an API key in the environment, per ADR-0017,
-  // and the key never enters the tree. A record is committed, so a key that
-  // reached one would be published. The match is never quoted back.
-  if (SECRET.test(JSON.stringify(record))) {
+  // The probe authenticates from a credential in the environment, by either
+  // route, per ADR-0017, and neither form ever enters the tree. A record is
+  // committed, so a credential that reached one would be published. Nothing
+  // here quotes what it matched.
+  if (SECRET.test(unwrap(JSON.stringify(record)))) {
     say('something in this record looks like a credential. Nothing here may carry one, '
       + 'by either route.');
   }
@@ -376,10 +427,10 @@ export function describe(name, record) {
   // `control_served` is printed beside `control_clean`, because a control that
   // never ran and a control that ran clean are opposite readings of the same
   // empty answer, and a line that showed only the second would hide the first.
-  return `${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
+  return redact(`${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
     + `(installed_served=${o.installed_served} discovered=${o.discovered} `
     + `control_served=${o.control_served} control_clean=${o.control_clean} `
-    + `isolated=${o.isolated}) ${tuple}`;
+    + `isolated=${o.isolated}) ${tuple}`);
 }
 
 /** Reads every record under `dir`. A missing directory holds no records. */
@@ -396,8 +447,11 @@ export async function readRecords(dir) {
     const text = await fs.readFile(path.join(dir, name), 'utf8');
     try {
       records.push({ name, record: JSON.parse(text) });
-    } catch (err) {
-      records.push({ name, record: null, unreadable: err.message });
+    } catch {
+      // The parser's message is not repeated. V8 truncates it to a few
+      // characters of the offending text, which tells a reader nothing and is
+      // one more path for a byte from the file to reach a printed line.
+      records.push({ name, record: null, unreadable: true });
     }
   }
   return records;
@@ -409,7 +463,7 @@ export async function checkDirectory(dir) {
   const lines = [];
   for (const { name, record, unreadable } of await readRecords(dir)) {
     if (unreadable) {
-      problems.push(`${name}: not readable as JSON. ${unreadable}`);
+      problems.push(`${name}: not readable as JSON.`);
       continue;
     }
     const found = checkRecord(record, name);
