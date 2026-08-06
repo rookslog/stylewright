@@ -257,9 +257,10 @@ Do not read a green pipeline as coverage of this one.
 
 ## The Node floor is enforced, and how
 
-`engines` names the floor. The CI matrix tests the exact versions we advertise,
-`20.11.0` and `22.0.0`, rather than `20` and `22`, which resolve to the newest
-release of each major and hide the floor. `.npmrc` sets `engine-strict`, so a
+`engines` names the floor. The CI matrix tests exact versions, `20.11.0` and
+`22.0.0` and `24`, rather than `20` and `22`, which resolve to the newest
+release of each major and hide the floor. The windows and macos jobs test both
+ends of that range, `20.11.0` and `24`. `.npmrc` sets `engine-strict`, so a
 dependency needing more than the floor fails `npm ci` instead of printing a
 warning.
 
