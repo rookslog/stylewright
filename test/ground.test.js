@@ -445,7 +445,29 @@ test('a table that does not begin at column 0 is refused at any width', () => {
   // One to three spaces left `LEAD` true but every other test false, so an
   // indented table passed a guard that asked only about four columns.
   assert.match(refused('  | a | b |\n  |---|---|'), /a table row that does not begin at column 0/);
-  assert.match(refused('  #'), /a heading that does not begin at column 0/);
+  assert.match(refused('  ## Later'), /a heading that does not begin at column 0/);
+});
+
+test('an empty construct is refused for being empty, at any indent', () => {
+  // Indented, these were refused for the indent alone, and the remedy told the
+  // author to write at column 0 the very line the check refuses there.
+  const message = (text) => checkSkill({
+    skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
+  }).find((f) => f.code === 'unmodelled-construct').message;
+  assert.match(message('  #'), /a heading with no text/);
+  assert.match(message('  #'), /Give the heading its text/);
+  assert.match(message('  -'), /a list item with no content/);
+  assert.match(message('  -'), /Give the item its words/);
+});
+
+test('a marker that continues a paragraph opens no list', () => {
+  // `1.` under prose is the paragraph's own words to a Markdown reader, and an
+  // empty item cannot interrupt a paragraph. Opening a list there left it open
+  // across the blank line, so a standalone code block below was refused for
+  // sitting under a list that was never there.
+  assert.equal(refused('Prose\n1.\n\n    const x = 1;'), '');
+  assert.match(refused('1. Item.\n\n    const x = 1;'),
+    /a paragraph indented under a list item/);
 });
 
 test('one file has one reading, so the section scan closes a fence where the walk does', () => {

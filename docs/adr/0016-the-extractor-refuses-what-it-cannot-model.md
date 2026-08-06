@@ -16,9 +16,9 @@ patched that shape alone. Round 5 returned four more. The instance was
 never the defect.
 
 Two designs close the class. A CommonMark parser behind the extractor
-models containers, and every shape resolves at once. It adds a runtime
-dependency to a package that has none, and the Node floor in `engines`
-constrains which one. A canonical-form guard refuses a construct the
+models containers, and every shape resolves at once. It adds a second
+runtime dependency to a package that declares one prompt library, and
+the Node floor in `engines` constrains which parser. A canonical-form guard refuses a construct the
 extractor does not model and names the line that carries it.
 
 **Decision.** `ground --check` refuses what the extractor does not model.

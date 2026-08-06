@@ -135,19 +135,19 @@ function shapeOf(line) {
  */
 function outsideGrammar(line, { startsBlock, openText, listOpen, opensFence, opensTable }) {
   if (!line.trim()) return null;
-  if (indentOf(line) === 0) {
-    // A blockquote is the one construct at column 0 whose contents the
-    // extractor reads as its own prose, so the quote and its container merge.
-    if (line.startsWith('>')) return AT_COLUMN_ZERO.blockquote;
-    // An empty marker and an empty heading are refused where they begin a
-    // block. On a continuation line they are the prose of the line above, and
-    // a Markdown reader agrees: neither interrupts a paragraph.
-    if (!openText || startsBlock) {
-      if (EMPTY_HEADING.test(line)) return AT_COLUMN_ZERO.heading;
-      if (EMPTY_LIST.test(line)) return AT_COLUMN_ZERO.item;
-    }
-    return null;
+  // A blockquote is the one construct at column 0 whose contents the extractor
+  // reads as its own prose, so the quote and its container merge.
+  if (indentOf(line) === 0 && line.startsWith('>')) return AT_COLUMN_ZERO.blockquote;
+  // An empty marker and an empty heading are refused where they begin a block,
+  // at any indent. On a continuation line they are the prose of the line above,
+  // and a Markdown reader agrees: neither interrupts a paragraph. Indented,
+  // they used to be refused for their indent alone, and the remedy told the
+  // author to write at column 0 the very line the check refuses there.
+  if (!openText || startsBlock) {
+    if (EMPTY_HEADING.test(line.trimStart())) return AT_COLUMN_ZERO.heading;
+    if (EMPTY_LIST.test(line.trimStart())) return AT_COLUMN_ZERO.item;
   }
+  if (indentOf(line) === 0) return null;
   const shape = shapeOf(line);
   // A continuation line carries prose. A container opened on one belongs to
   // the block above it, which the extractor does not model.
@@ -261,10 +261,13 @@ function unitsIn(body, anchor, refuse = () => {}) {
       out.push(item);
       continue;
     }
-    // An empty marker opens a list too. The item pattern above wants content
-    // after the marker, so `-` on its own left the list shut and the child
-    // block under it was read at the top level.
-    if (OPENS_LIST.test(line)) listOpen = true;
+    // An empty marker opens a list too, where it BEGINS a block. The item
+    // pattern above wants content after the marker, so `-` on its own left the
+    // list shut and the child block under it was read at the top level. One
+    // that continues a paragraph opens nothing, and treating it as a list left
+    // `listOpen` set across the blank line, so a standalone code block below
+    // was refused for sitting under a list that was never there.
+    if (OPENS_LIST.test(line) && (!item && !para.length)) listOpen = true;
     // A paragraph beginning at column 0 after a blank line is a new block, so
     // the list above it has ended. A line that merely continues one has not.
     else if (startsBlock && !LEAD.test(line)) listOpen = false;
