@@ -17,6 +17,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   day, and the check refuses one later than the day it runs on, because nobody
   read a row on a day that has not arrived. ADR-0018 records the decision, and
   every `G` row ships unaudited. A row of another kind carries the cell empty.
+- The grounding check reads the matrix table as a reader sees it. The header and
+  the delimiter carry six columns, the sixth heading reads `Audited`, and a
+  seventh cell is refused. Every row begins at column 0, a fenced row is an
+  example rather than a record, and a row the check does not read is named
+  rather than dropped. Each of those shapes used to leave the rendered column
+  broken while the check reported the audits intact.
 
 - The `navigable-references` skill, in the craft tier. It asks a writer to give
   every named thing a form the reader can follow, in the form the medium

@@ -136,7 +136,12 @@ arrived.
 
 Every row carries the sixth cell, including the rows that leave it empty. A row
 written with five cells is refused, so a matrix without a `G` row cannot drop
-the column.
+the column. A seventh cell is refused too, because the render drops it.
+
+The header and the delimiter carry six columns as well, and the sixth heading
+reads `Audited`. Write every row at column 0. A row indented or quoted is not
+read, and the check names it rather than passing over it. Put an example row
+inside a fenced block, which the check skips.
 
 Editing any other cell in the row changes the digest. The check then reports
 the audit as stale, because the words you read are no longer the words in the

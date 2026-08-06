@@ -66,6 +66,21 @@ One reading of the cell serves both the findings and the count. Two
 readings disagreed: a stamp that merely matched the pattern counted as
 audited while the check called it stale or impossible.
 
+**The container carries the record, so the container is checked.** The
+first version guarded the audit VALUES and skipped the table around them.
+Deleting the header or the delimiter, cutting either to five cells,
+renaming the sixth heading, indenting a row, fencing one, or adding a
+seventh cell each left every audit parsing and the coverage note printing
+full marks. In GFM each of those either drops the rendered column or
+stops the block being a table at all.
+
+That is the same disagreement this decision exists to end, one level out.
+The record is for a person, so the version the person reads is the version
+that counts, and a check that reads a column the reader has lost is
+reporting on a file nobody has. The header and the delimiter are checked
+findings now, a row begins at column 0, a fenced row is an example, and a
+row the reader cannot see is named rather than dropped.
+
 **The count prints and fails nothing.** `ground --check` reports how many
 `G` rows in each matrix carry a date, at a level the exit code ignores.
 Making it an error would have turned the gate red for every matrix on the

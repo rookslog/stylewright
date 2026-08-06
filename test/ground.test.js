@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
 import {
-  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO, rowDigest,
+  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO, rowDigest, InvalidMoment, readMatrix,
 } from '../src/ground.js';
 import { sections } from '../src/markdown.js';
 
@@ -145,8 +145,19 @@ test('the check refuses to run without the day, rather than skipping the future 
   // A default would turn the future rule off for whoever forgot the argument,
   // and `ground --check` already carries the lesson about a gate that fails
   // open on a missing name.
-  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX }), TypeError);
-  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now: 'today' }), TypeError);
+  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX }), InvalidMoment);
+  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now: 'today' }), InvalidMoment);
+
+  // The refusal carries the value and the spellings it accepts. A TypeError
+  // said the type was wrong when the shape is what the check objects to.
+  const thrown = (now) => {
+    try { checkSkill({ skillText: SKILL, matrixText: MATRIX, now }); return null; } catch (e) { return e; }
+  };
+  const err = thrown('2026-08-06T12:00:00+05:00');
+  assert.equal(err.name, 'InvalidMoment');
+  assert.equal(err.value, '2026-08-06T12:00:00+05:00');
+  assert.match(err.message, /YYYY-MM-DD/);
+  assert.match(err.message, /2026-08-06T12:00:00\+05:00/);
 });
 
 test('the day the check runs on must itself be a day', () => {
@@ -156,8 +167,9 @@ test('the day the check runs on must itself be a day', () => {
   // not a day cannot bound anything.
   const ahead = audited(`9999-12-31 ${CURRENT}`);
   for (const now of ['9999-99-99', '0000-00-00', '2026-02-31', '2026-08-06extra', '2026-8-6']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: ahead, now }), TypeError,
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: ahead, now }), InvalidMoment,
       `${now} was accepted as the day the check runs on`);
+
   }
 
   // A bare day and a UTC timestamp are both moments, and both still refuse the
@@ -175,7 +187,7 @@ test('the day the check runs on is UTC, so an offset cannot move it', () => {
   // a date, so the grammar refuses the form instead.
   const seventh = audited(`2026-08-07 ${CURRENT}`);
   for (const now of ['2026-08-07T00:30:00+05:00', '2026-08-06T19:30:00-05:00', '2026-08-06 12:00:00']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: seventh, now }), TypeError,
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: seventh, now }), InvalidMoment,
       `${now} was read as a UTC day`);
   }
 
@@ -235,6 +247,95 @@ test('the run says how much of the matrix a person has read, and fails nothing',
 
   const one = check({ skillText: SKILL, matrixText: audited(`2026-08-06 ${CURRENT}`) });
   assert.ok(one.some((f) => f.code === 'audit-coverage' && f.message.startsWith('1 of 2')));
+});
+
+// The container, not the cell. Every attack below left the audit VALUES
+// untouched and went after the table around them. A matrix whose rendered
+// column is gone is not the record, whatever its rows still parse as, because
+// the record exists for the person reading the file.
+
+const HEADER = '| ID | Our guidance | Our anchor | Source rule | Source location | Audited |';
+const DELIM = '|---|---|---|---|---|---|';
+const FULLY = MATRIX
+  .replace('| Part 1, Section 5 | unaudited |', `| Part 1, Section 5 | 2026-08-06 ${CURRENT} |`);
+
+test('the header and the delimiter are checked, not skipped', () => {
+  // Each of these printed full coverage and no error. In GFM each either drops
+  // the rendered column or stops the block being a table at all, so the person
+  // loses the audit record while the check reports it intact.
+  const codes = (m) => check({ skillText: SKILL, matrixText: m }).map((f) => f.code);
+
+  const FIVE = '| ID | Our guidance | Our anchor | Source rule | Source location |';
+  assert.ok(codes(FULLY.replace(HEADER, FIVE).replace(DELIM, '|---|---|---|---|---|'))
+    .includes('matrix-header-columns'));
+  assert.ok(codes(FULLY.replace(DELIM, '|---|---|---|---|---|')).includes('matrix-delimiter-columns'));
+  assert.ok(codes(FULLY.replace(DELIM, '|---|---|---|')).includes('matrix-delimiter-columns'));
+  assert.ok(codes(FULLY.replace(`${DELIM}\n`, '')).includes('matrix-no-table'));
+  assert.ok(codes(FULLY.replace(`${HEADER}\n`, '')).includes('matrix-no-header'));
+  assert.ok(codes(FULLY.replace('| Source location | Audited |', '| Source location | Notes |'))
+    .includes('matrix-header-not-audited'));
+
+  // The intact matrix stays clean, so none of the above is a rule the shipped
+  // files break.
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: FULLY })), []);
+});
+
+test('a row a reader sees as an example is not read as a row', () => {
+  // Fenced or indented four spaces, a row is a code sample to a reader and was
+  // a recorded audit to the checker. This is the MATRIX reader, not the
+  // SKILL.md extractor, so it says nothing about issues 37 and 69.
+  const fenced = FULLY.replace('| G-01 | Use', '```\n| G-01 | Use')
+    .replace(`2026-08-06 ${CURRENT} |`, `2026-08-06 ${CURRENT} |\n\`\`\``);
+  const inFence = check({ skillText: SKILL, matrixText: fenced });
+  assert.ok(inFence.some((f) => f.code === 'uncovered-statement'), 'the fenced row stopped counting');
+  assert.ok(inFence.some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 1')));
+
+  const indented = check({ skillText: SKILL, matrixText: FULLY.replace('| G-01 |', '    | G-01 |') });
+  assert.ok(indented.some((f) => f.code === 'unread-matrix-row'
+    && /does not begin at column 0/.test(f.message)));
+});
+
+test('a row that is not read is named, so the denominator cannot shrink quietly', () => {
+  // A blockquoted row fell out of the parse, and the count printed "1 of 1"
+  // over a matrix visibly carrying two G rows. The run was red for another
+  // reason, but the number ADR-0018 calls the whole answer was wrong.
+  const quoted = check({ skillText: SKILL, matrixText: FULLY.replace('| G-01 |', '> | G-01 |') });
+  assert.ok(quoted.some((f) => f.code === 'unread-matrix-row' && /blockquote/.test(f.message)));
+});
+
+test('a seventh cell is refused, because no reader and no check sees it', () => {
+  const smuggled = FULLY.replace(
+    `| Part 1, Section 5 | 2026-08-06 ${CURRENT} |`,
+    `| Part 1, Section 5 | 2026-08-06 ${CURRENT} | INVISIBLE IN RENDER |`,
+  );
+  assert.ok(check({ skillText: SKILL, matrixText: smuggled })
+    .some((f) => f.code === 'row-has-extra-cell' && f.message.startsWith('G-01:')));
+});
+
+test('a zero offset is UTC, and a bounded time is required', () => {
+  // The first version of the UTC rule refused `+00:00` on a day-shifting
+  // warrant that cannot apply to an offset of no hours.
+  for (const now of ['2026-08-06T12:00:00+00:00', '2026-08-06T12:00:00-00:00',
+    '2026-08-06T12:00:00.000+0000', '2026-08-06T12:00:00Z']) {
+    assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: FULLY, now })), [],
+      `${now} is UTC and was refused`);
+  }
+
+  // `24:00:00Z` is a legal ISO spelling of midnight ENDING that day, so its
+  // written day put the bound a day early. `99:99:99Z` was simply accepted.
+  for (const now of ['2026-08-06T24:00:00Z', '2026-08-06T99:99:99Z', '2026-08-06T12:60:00Z',
+    '2026-08-06T12:00:00+05:00', '2026-08-06 12:00:00']) {
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: FULLY, now }), InvalidMoment,
+      `${now} was read as a UTC moment`);
+  }
+});
+
+test('readMatrix finds the table by its delimiter, not by a heading word', () => {
+  const table = readMatrix(MATRIX);
+  assert.equal(table.header.cells.length, 6);
+  assert.equal(table.header.cells[5], 'Audited');
+  assert.equal(table.rows.length, 4);
+  assert.deepEqual(table.refusals, []);
 });
 
 test('every row carries the sixth cell, including a matrix that cites no source', () => {

@@ -80,13 +80,35 @@ person and nothing else can. ADR-0018 records the decision.
 
 The date is a UTC day, and the check refuses one later than the day it runs
 on. It takes that day from the command line, which is where every other moment
-this program needs comes from. `checkSkill` throws when the caller omits it,
-rather than defaulting, because a default turns the rule off for whoever
-forgot the argument. It throws on a day the calendar does not carry as well.
-A bound that is not a day bounds nothing, and `9999-99-99` sorted above every
-real date and let a future audit through. The moment must be written in UTC,
-because an offset names one day where it was written and another in UTC, and
-the check read the written one.
+this program needs comes from. `checkSkill` throws `InvalidMoment` when the
+caller omits the day, rather than defaulting, because a default turns the rule
+off for whoever forgot the argument. It throws on a day the calendar does not
+carry as well. A bound that is not a day bounds nothing, and `9999-99-99`
+sorted above every real date and let a future audit through.
+
+The moment is written in UTC: a bare day, or a day and a bounded time ending in
+`Z` or a zero offset. A non-zero offset names one day where it was written and
+another in UTC, and the check read the written one. A zero offset is UTC and is
+admitted. The time is bounded because `24:00:00Z` is a legal spelling of
+midnight ENDING that day, so its written day put the bound a day early.
+
+**The matrix table is checked, not just its rows.** The header and the
+delimiter each carry six columns, and the sixth heading is `Audited`. Delete
+either line, cut either to five cells, or rename that heading, and GFM drops
+the rendered column or stops the block being a table at all. The person loses
+the audit record while the check reports it intact, so the column the reader
+sees is the column that counts. A seventh cell is refused for the mirror
+reason: GFM drops it, so text there is seen by no reader and read by no check.
+
+A row must begin at column 0. A row indented four spaces or fenced is an
+example to a reader and was a recorded audit to the checker. Fenced content is
+skipped, and any other line that looks like a row and is not read is named as
+`unread-matrix-row` rather than dropped. Dropping one shrank the coverage
+DENOMINATOR, so the count described fewer rows than the file carried.
+
+`readMatrix` is the matrix's own reader. It is not the `SKILL.md` extractor,
+and the two share no grammar, so a shape refused there says nothing about
+issues 37 and 69.
 
 `ground --check` prints the audited count for each matrix beside its verdict.
 That line is a note, so it fails nothing. Do not promote it to an error, and do

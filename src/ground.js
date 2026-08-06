@@ -4,35 +4,101 @@ import crypto from 'node:crypto';
 import { sections, indentOf, isIndented } from './markdown.js';
 import { loadCatalog } from './catalog.js';
 
-export function parseMatrix(text) {
-  const rows = [];
-  for (const line of text.split('\n')) {
-    if (!/^\s*\|/.test(line)) continue;
-    // Split on UNESCAPED pipes only. Without this a paragraph containing a
-    // pipe — guidance about a shell pipeline, or about Markdown itself — could
-    // not be reproduced in any cell, so `ground --check` stayed red for valid
-    // content and no row could fix it.
-    const cells = line.split(/(?<!\\)\|/).slice(1, -1)
-      .map((c) => c.trim().replace(/\\\|/g, '|'));
-    if (cells.length < 5) continue;
-    if (/^-+$/.test(cells[0].replace(/[\s:]/g, ''))) continue;
-    if (/^id$/i.test(cells[0])) continue;
-    rows.push({
-      id: cells[0],
-      guidance: cells[1],
-      anchor: cells[2],
-      rule: cells[3],
-      location: cells[4],
-      // An absent sixth cell is NOT an empty one. Coalescing the two here made
-      // the column optional for any matrix without a G row: delete the header,
-      // the delimiter and every cell from a matrix of E and N rows and the
-      // check stayed clean, because each missing cell read as an empty audit
-      // and no G row was left to complain. `undefined` reaches the check and
-      // the check names it.
-      audit: cells[5],
-    });
+/** The columns a matrix carries, in order. The sixth is the audit. */
+export const MATRIX_COLUMNS = ['ID', 'Our guidance', 'Our anchor', 'Source rule', 'Source location', 'Audited'];
+
+// Split on UNESCAPED pipes only. Without this a paragraph containing a pipe —
+// guidance about a shell pipeline, or about Markdown itself — could not be
+// reproduced in any cell, so `ground --check` stayed red for valid content and
+// no row could fix it.
+const cellsOf = (line) => line.split(/(?<!\\)\|/).slice(1, -1)
+  .map((c) => c.trim().replace(/\\\|/g, '|'));
+
+const MATRIX_FENCE = /^(\s*)(`{3,}|~{3,})/;
+/** Anything a reader would take for a table row, wherever it sits. */
+const LOOKS_LIKE_ROW = /^\s*>?\s*\|/;
+const IS_DELIMITER = (cells) => cells.length > 0
+  && cells.every((c) => /^:?-+:?$/.test(c.replace(/\s/g, '')));
+
+/**
+ * The matrix table, read as a reader sees it.
+ *
+ * This used to take any line beginning with optional space and a pipe, and to
+ * skip the header and the delimiter by pattern. Both halves leaked.
+ *
+ * The header and the delimiter were skipped rather than checked, so deleting
+ * either one, or cutting either to five cells, or renaming the sixth heading
+ * to `Notes`, left every row parsing and the coverage note printing full
+ * marks. In GFM each of those either drops the rendered column or stops the
+ * block being a table at all, so the person reading the matrix loses the audit
+ * record while the check reports it intact. The record exists for the person,
+ * so the column they see is the column that counts.
+ *
+ * A row inside a fenced block or indented four spaces is an EXAMPLE to a
+ * reader and was a row to the checker, which is the same disagreement pointing
+ * the other way: a code sample could carry a recorded audit. Fenced content is
+ * skipped, and a row that does not begin at column 0 is refused by name.
+ *
+ * A row inside a blockquote fell out of the parse entirely, which shrank the
+ * DENOMINATOR — `1 of 1` printed over a matrix visibly carrying two G rows.
+ * A line that looks like a row and is not read is now named rather than
+ * dropped, so the count cannot quietly describe fewer rows than the file has.
+ *
+ * This reader is the matrix's own. It is not the `SKILL.md` extractor, and the
+ * two do not share a grammar, so a shape refused here says nothing about
+ * issues 37 and 69.
+ */
+export function readMatrix(text) {
+  const read = [];
+  const refusals = [];
+  let fence = null;
+  for (const [i, line] of text.split('\n').entries()) {
+    const marker = MATRIX_FENCE.exec(line);
+    if (fence) {
+      if (marker && marker[2][0] === fence[0] && marker[2].length >= fence.length) fence = null;
+      continue;
+    }
+    if (marker) { fence = marker[2]; continue; }
+    if (!LOOKS_LIKE_ROW.test(line)) continue;
+    if (/^\s*>/.test(line)) {
+      refusals.push({ line: i + 1, shape: 'a table row inside a blockquote' });
+      continue;
+    }
+    if (/^\s/.test(line)) {
+      refusals.push({ line: i + 1, shape: 'a table row that does not begin at column 0' });
+      continue;
+    }
+    read.push({ line: i + 1, cells: cellsOf(line) });
   }
-  return rows;
+
+  const at = read.findIndex((l) => IS_DELIMITER(l.cells));
+  if (at === -1) return { header: null, delimiter: null, rows: [], refusals };
+  return {
+    header: at > 0 ? read[at - 1] : null,
+    delimiter: read[at],
+    rows: read.slice(at + 1).filter((l) => !IS_DELIMITER(l.cells)),
+    refusals,
+  };
+}
+
+export function parseMatrix(text) {
+  return readMatrix(text).rows.map(({ cells }) => ({
+    id: cells[0],
+    guidance: cells[1],
+    anchor: cells[2],
+    rule: cells[3],
+    location: cells[4],
+    // An absent sixth cell is NOT an empty one. Coalescing the two here made
+    // the column optional for any matrix without a G row: delete the header,
+    // the delimiter and every cell from a matrix of E and N rows and the
+    // check stayed clean, because each missing cell read as an empty audit
+    // and no G row was left to complain. `undefined` reaches the check and
+    // the check names it.
+    audit: cells[5],
+    // Everything past the sixth cell. GFM drops it from the render, so text
+    // here is seen by no reader and was read by no check.
+    extra: cells.slice(6),
+  }));
 }
 
 /**
@@ -161,14 +227,41 @@ export function rowDigest(row) {
  * that may not build a date, and the one caller hands in `toISOString`, which
  * is always UTC. So the grammar states the forms it reads and refuses the
  * rest, which is how this file already treats Markdown.
+ *
+ * A ZERO offset is UTC, and the first version of that rule refused `+00:00`
+ * and `+0000` on a day-shifting warrant that cannot apply to an offset of no
+ * hours. Those are admitted. A non-zero offset still is not, because the
+ * refusal is what stops the day moving.
+ *
+ * The time is bounded rather than waved through. `24:00:00Z` is a legal ISO
+ * spelling of MIDNIGHT ENDING that day, so reading its written day put the
+ * bound one day early and over-refused an honest audit, and `99:99:99Z` was
+ * simply accepted. Neither is a moment this program should guess at.
  */
-const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?Z)?$/;
+const ISO_DAY = new RegExp('^(\\d{4})-(\\d{2})-(\\d{2})'
+  + '(?:T(?:[01]\\d|2[0-3]):[0-5]\\d(?::(?:[0-5]\\d|60))?(?:\\.\\d+)?(?:Z|[+-]00:?00))?$');
+
+/**
+ * A moment this check cannot read. It carries the value and the spellings it
+ * accepts, because a refusal the caller cannot act on is worse than none.
+ *
+ * It is not a `TypeError`. The type is usually right and the shape is wrong,
+ * and every other refusal in this file is data rather than a throw. This one
+ * stays a throw because a bad bound cannot be reported as a finding without
+ * first being used as a bound.
+ */
+export class InvalidMoment extends Error {
+  constructor(value) {
+    super('`now` must be a UTC moment: a day as YYYY-MM-DD, or that day with a time ending '
+      + `in Z or a zero offset. Got ${JSON.stringify(value)}.`);
+    this.name = 'InvalidMoment';
+    this.value = value;
+  }
+}
 function dayOf(now) {
   const stamp = typeof now === 'string' ? ISO_DAY.exec(now) : null;
   if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
-    throw new TypeError(
-      `checkSkill needs \`now\` as an ISO timestamp, so it can refuse a future audit. Got ${JSON.stringify(now)}.`,
-    );
+    throw new InvalidMoment(now);
   }
   return `${stamp[1]}-${stamp[2]}-${stamp[3]}`;
 }
@@ -496,6 +589,53 @@ export function checkSkill({ skillText, matrixText, now }) {
   const { units: stmts, refusals } = extract(skillText);
   const findings = [];
 
+  // The table itself, before any row in it. A matrix whose header or delimiter
+  // no longer carries six columns is not the file the audit record lives in,
+  // whatever its rows still say.
+  const table = readMatrix(matrixText);
+  for (const r of table.refusals) {
+    findings.push({
+      level: 'error',
+      code: 'unread-matrix-row',
+      message: `matrix line ${r.line}: ${r.shape} is not read by this check. `
+        + 'Write it at column 0, or move it into a fenced block if it is an example.',
+    });
+  }
+  const named = (what, cells) => {
+    if (cells.length !== MATRIX_COLUMNS.length) {
+      findings.push({
+        level: 'error',
+        code: `matrix-${what}-columns`,
+        message: `the matrix ${what} carries ${cells.length} columns, not ${MATRIX_COLUMNS.length}. `
+          + `The columns are: ${MATRIX_COLUMNS.join(', ')}.`,
+      });
+      return;
+    }
+    if (what === 'header' && cells[5] !== MATRIX_COLUMNS[5]) {
+      findings.push({
+        level: 'error',
+        code: 'matrix-header-not-audited',
+        message: `the matrix names its sixth column "${cells[5]}", not "${MATRIX_COLUMNS[5]}".`,
+      });
+    }
+  };
+  if (!table.delimiter) {
+    findings.push({
+      level: 'error',
+      code: 'matrix-no-table',
+      message: 'the matrix has no table. A row needs a header and a delimiter above it.',
+    });
+  } else {
+    named('delimiter', table.delimiter.cells);
+    if (!table.header) {
+      findings.push({
+        level: 'error',
+        code: 'matrix-no-header',
+        message: 'the matrix table has no header row above its delimiter.',
+      });
+    } else named('header', table.header.cells);
+  }
+
   // Refusals lead, because every finding under them rests on a reading the
   // extractor has just said it cannot make.
   for (const r of refusals) {
@@ -584,6 +724,17 @@ export function checkSkill({ skillText, matrixText, now }) {
           + 'and only a G row fills the sixth.',
       });
       return;
+    }
+    // A seventh cell is read by nobody and was refused by nobody. GFM drops it
+    // from the render, so text could sit in a row that neither the checker nor
+    // the person reading the matrix ever sees.
+    if (row.extra.length) {
+      findings.push({
+        level: 'error',
+        code: 'row-has-extra-cell',
+        message: `${row.id}: the row carries ${MATRIX_COLUMNS.length + row.extra.length} columns, `
+          + `not ${MATRIX_COLUMNS.length}. Nothing reads past the sixth, and no reader sees it.`,
+      });
     }
     if (kind !== 'G') {
       if (state !== 'absent') {
