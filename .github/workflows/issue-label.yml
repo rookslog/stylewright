@@ -1,0 +1,60 @@
+# Labels an issue from deterministic rules over its title and body, using
+# .github/issue-labeler.mjs.
+#
+# The path labeler cannot do this. `actions/labeler` reads the files a pull
+# request touches, and an issue touches none, so no issue was ever labelled.
+#
+# The job only ever ADDS a label. A label a maintainer applied by hand survives,
+# and a re-run on an edit adds nothing twice. The one consequence: a label a
+# maintainer removes comes back the next time the issue is edited, so remove the
+# rule as well as the label.
+#
+# An issue is text a stranger wrote. The script matches it with regular
+# expressions and never evaluates it, and the job never checks out or runs code
+# from the issue.
+
+name: issue-label
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions: {}
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      # The rules live in the repository, so the job needs them on disk.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const { pathToFileURL } = require('node:url');
+            const rulesPath = `${process.env.GITHUB_WORKSPACE}/.github/issue-labeler.mjs`;
+            const { labelsFor } = await import(pathToFileURL(rulesPath).href);
+
+            const issue = context.payload.issue;
+            const matched = labelsFor({ title: issue.title, body: issue.body ?? '' });
+            const present = new Set((issue.labels ?? []).map((label) => label.name));
+            const add = matched.filter((label) => !present.has(label));
+
+            core.info(`rules matched: ${matched.join(', ') || 'nothing'}`);
+            if (add.length === 0) {
+              core.info('nothing to add');
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: add,
+            });
+            core.info(`added: ${add.join(', ')}`);
