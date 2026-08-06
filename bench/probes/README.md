@@ -69,6 +69,8 @@ state is not what is missing. This machine keeps its token in the keychain and
 has no credential file to copy.
 
 Issue #68 carries the decision and both routes. Until it closes, the collector
-copies nothing into either home, and a record claims no environment-class name.
+copies nothing into either home, and the classes stay the two the measurement
+design names. A home that may hold a credential is a class of its own, and it
+gets its own name when someone decides what it holds.
 Give the harness a credential the home does not supply, such as an API key in
 the environment, and the probe reaches its question.

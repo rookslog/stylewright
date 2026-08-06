@@ -66,9 +66,18 @@ const ARMS = ['installed', 'control'];
 
 const isText = (v) => typeof v === 'string' && v.trim().length > 0;
 
-/** Every key in the record, at every depth, with the path that reaches it. */
+/**
+ * Every key in the record, at every depth, with the path that reaches it.
+ *
+ * An array is walked as well as an object. Stopping at one let a list of
+ * entries carry a `pass` on each element, which is the assertion this list
+ * exists to find, one container further down.
+ */
 function keyPaths(value, prefix = '') {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  if (!value || typeof value !== 'object') return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((v, i) => keyPaths(v, `${prefix}[${i}]`));
+  }
   const out = [];
   for (const [k, v] of Object.entries(value)) {
     const at = prefix ? `${prefix}.${k}` : k;

@@ -30,7 +30,6 @@
  *   --env-class CLASS     pristine or representative. Default: pristine.
  *   --stack-digest D      required when the class is representative.
  *   --date YYYY-MM-DD     the date recorded. Default: today, in UTC.
- *   --out FILE            where the record lands. Default: bench/probes/.
  *   --dry-run             prepare both homes, print the plan, call no model.
  */
 
@@ -188,7 +187,6 @@ function parseArgs(argv) {
     '--env-class': 'envClass',
     '--stack-digest': 'stackDigest',
     '--date': 'date',
-    '--out': 'out',
   };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--dry-run') { opts.dryRun = true; continue; }
@@ -269,11 +267,13 @@ async function main(argv) {
     control: { ...controlArm, trace: null },
   };
 
+  // One directory, always. A record written anywhere else is not committed, and
+  // an uncommitted probe record is the retention gap in miniature. It also
+  // keeps the containment check below load-bearing: a caller-supplied path
+  // checked against its own parent can never fail.
   const probes = path.join(HERE, 'probes');
-  const outPath = opts.out
-    ? path.resolve(opts.out)
-    : path.join(probes, recordName({ date, pathway: opts.pathway, nonce }));
-  await writeRecord(outPath, record, opts.out ? path.dirname(outPath) : probes);
+  const outPath = path.join(probes, recordName({ date, pathway: opts.pathway, nonce }));
+  await writeRecord(outPath, record, probes);
   process.stdout.write(`${outPath}\n`);
   process.stdout.write('Run `npm run check:probes` to read what these bytes derive.\n');
   return 0;
