@@ -354,7 +354,10 @@ Two consequences for a change you propose here:
   name. Choosing to preserve one file must never cost the user a different one,
   so the run is refused and the file is named — and the message must not advise
   `--force`, which has no power there. The staging name is the other way round:
-  the copy must have that path.
+  the copy must have that path. Where a manifest an older release wrote RECORDS
+  a path spelled with the suffix, no install can move that skill forward, and
+  the exit is `uninstall` then `install`. Removing the file as the ordinary
+  advice suggests would strand the record, so the message names both.
 - **What `--force` razes, it states first.** A blocked ancestor it clears takes
   every recorded path beneath it. Those bytes cannot be moved aside, so the
   statement carries the paths with the hash the record holds and a rollback

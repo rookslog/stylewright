@@ -414,18 +414,22 @@ export async function rollBack(targetDir, name, stated, manifest, wrote = null) 
         took = false; // Nothing to prune. The directory holds this file again.
       } else if (mine) {
         // The destination is occupied, so these bytes have nowhere to go, and
-        // what stands there decides whether they are still wanted. THREE things
-        // can be at that path, and only two of them supersede this file.
+        // what stands there decides whether they are still wanted. Only TWO
+        // occupants supersede this file:
         //
         // - The copy this run made, which the deletion pass above kept because
-        //   a record names those bytes. Superseded.
-        // - A version another run committed, whose record is live. Superseded.
-        // - **A file the user created after the interrupted run**, at a path
-        //   that was empty because this run had emptied it. Nothing supersedes
-        //   these bytes, and for a retired path they are the only copy left on
-        //   the machine — no release ships them and no record can restore them.
-        //   Deleting them to tidy a reserved name would be this tool destroying
-        //   work it did not create, which is the one thing it must never do.
+        //   a record names those bytes.
+        // - A version another run committed, whose record is live.
+        //
+        // Everything else leaves it held. **A file the user created after the
+        // interrupted run**, at a path that was empty because this run had
+        // emptied it, supersedes nothing — and for a retired path those held
+        // bytes are the only copy left on the machine, since no release ships
+        // them and no record can restore them. Deleting them to tidy a reserved
+        // name would be this tool destroying work it did not create, which is
+        // the one thing it must never do. A directory or a link at the
+        // destination reaches the same answer through the same clause, because
+        // `held` asks for content and only a plain file has any.
         //
         // So the file stays, and the ordinary collision check names it at the
         // next install. That is what the write half does with an unmatched

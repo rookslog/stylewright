@@ -140,11 +140,20 @@ export async function run(argv, ctx) {
   // the user to pass it sends them through the same command twice with nothing
   // to try. The staging name is not this case: the copy must have that path, so
   // force does dispose of it.
+  //
+  // The second clause is for the one file this advice could otherwise destroy.
+  // A manifest an older release wrote can RECORD a path spelled with this
+  // suffix, and then the collision is an installed file rather than the user's
+  // own. Removing it as advised would strand the record that names it, so the
+  // message names uninstall as the way out. No skill this repository ships
+  // carries such a name, and install refuses to record one, so this is the
+  // rare case being told the truth rather than the common one being padded.
   const saySkipped = (s) => {
     const held = s.files.filter((f) => f.toLowerCase().endsWith(PREVIOUS_SUFFIX));
     const remedy = held.length
       ? ` "${PREVIOUS_SUFFIX}" is where this tool holds the version it replaces. `
-        + `Rename or remove ${held.join(', ')} and run again.`
+        + `Rename or remove ${held.join(', ')} and run again, or uninstall the skill `
+        + 'first if a manifest records that path.'
       : ' Use --force to overwrite.';
     say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}).${remedy}`);
   };

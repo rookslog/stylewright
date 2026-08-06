@@ -62,19 +62,24 @@ the manifest does not record that same content.
 `.stylewright-prev` holds exactly the bytes `keep` names. The hash is
 taken before the rename that moved them, so a match proves these are the
 bytes this run displaced. Content decides ownership. The destination
-decides direction, and **three things can stand there**, not two.
+decides direction, and **only two things standing there supersede the
+held bytes**.
 
 - The copy this run made, which the deletion pass kept because a record
-  names those bytes. It supersedes the old version, so the old version
-  goes.
-- A version another run committed, whose record is live. It supersedes
-  the old version too.
+  names those bytes.
+- A version another run committed, whose record is live.
+
+Everything else leaves them held.
+
 - **A file the user created after the interrupted run**, at a path that
   was empty because this run had emptied it. Nothing supersedes these
   bytes. For a retired path they are the only copy left on the machine,
   because no release ships them and no record can restore them.
+- A directory, a link, or anything else that is not a plain file. The
+  rule reaches these by the same clause, because it asks what content
+  the destination holds and only a plain file holds any.
 
-The first draft of this decision enumerated only the first two and
+The first draft of this decision enumerated only the superseding two and
 deleted the moved-aside file whenever anything occupied the destination.
 That destroyed the user's only copy silently, and it made the two halves
 of the statement disagree: the write half leaves an unmatched
@@ -133,6 +138,16 @@ cost the user a different one. The run is refused and the file is named.
 The staging name is the other way round, because the copy must have that
 path, and PR #54 settled it there.
 
+That refusal has one cost, and it falls on a population that should be
+empty. A manifest an OLDER release wrote can RECORD a path spelled with
+this suffix. No install can then move that skill forward: the collision
+is real and `--force` no longer clears it. The exit is `uninstall`
+followed by `install`, and the message says so — removing the file as
+the ordinary advice suggests would strand the record that names it. No
+skill this repository ships has ever carried such a name, and install
+refuses to record one, so the case exists only for a manifest written
+before that refusal did.
+
 One shipping path cannot be held either, with or without `--force`. A
 release that replaces a directory of files with a file of the same name
 must clear that directory, and clearing it takes the bytes moved aside
@@ -144,11 +159,18 @@ rather than by omission.
 **Two spellings can name one file.** A release that changes only the case
 of a name retires `Notes.md` and ships `notes.md`, and a case-folding
 target makes those one path — and their two reserved names one path as
-well. So a set-aside asks the filesystem whether the destination is still
-the file the statement named, before it clears anything. Without that,
-the second pass cleared the reserved name the first had just moved the
-user's bytes into. It is PR #54's `recordedAs` lesson one suffix along:
-identity is the filesystem's answer, not the spelling's.
+well. So a set-aside asks the filesystem whether the destination still
+holds the file the statement named, before it clears anything. A spelling
+that folds onto one an earlier pass already moved answers no, and the
+pass skips. Without that, the second pass cleared the reserved name the
+first had just moved the user's bytes into, then threw a raw `ENOENT`.
+
+The question is the same one PR #54's `recordedAs` asks — whether two
+spellings reach one file is the filesystem's to answer, never the
+platform's — but the answer here is cheaper. `recordedAs` compares device
+and inode because it must say WHICH record reaches a file that exists.
+This only needs to know whether the file the statement described is still
+there, so existence and content settle it.
 
 `pending` has never appeared in a published release. 0.2.1 predates
 PR #54, so no manifest in the wild carries the older flat shape, and the

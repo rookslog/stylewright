@@ -320,6 +320,12 @@ async function installUnderLock(byName, {
       destDir,
       rels.filter((r) => write.reachable.includes(r)),
       retired.filter((r) => retire.reachable.includes(r)));
+    // Reported on its own, ahead of the drift and collision checks below, so a
+    // skill carrying this AND a locally-modified file takes two runs to learn
+    // about both. That is deliberate rather than overlooked: this refusal
+    // stands whether or not `--force` is set, and the checks below do not, so
+    // merging the two reports would have to explain a remedy that applies to
+    // half of what it lists. The sequence converges on its own.
     if (reserved.length) {
       skipped.push({ name, reason: 'not-ours', files: reserved });
       continue;
@@ -505,9 +511,12 @@ async function installUnderLock(byName, {
         // their two reserved names one path as well. Without this guard the
         // second pass cleared the reserved name the first had just moved the
         // user's bytes into, then threw a raw ENOENT renaming a file that was
-        // no longer there. That is the `recordedAs` lesson from PR #54, one
-        // suffix along: identity is the filesystem's answer, not the
-        // spelling's.
+        // no longer there. Whether two spellings reach one file is the
+        // filesystem's to answer and never the platform's, which is the
+        // question PR #54's `recordedAs` asks — but the answer here is
+        // cheaper. That one compares device and inode because it must say
+        // WHICH record reaches a file. This only needs to know whether the
+        // file the statement described is still there.
         //
         // The hash is the second half of the same question. A destination that
         // changed under the run would be moved aside under a hash that no
