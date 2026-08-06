@@ -127,6 +127,14 @@ reworded rule fails the check until you update its row. That is the point.
 Be honest about `E` rows. A `G` row that does not really trace to the source is
 worse than no matrix, because it claims an authority that it does not have.
 
+Write your `SKILL.md` in the Markdown the check models: every construct at
+column 0, a wrapped continuation line, and an indented code block that stands
+on its own. The check reads a line at a time and models no container, so it
+refuses a blockquote, an indented fence opener, a heading that does not begin
+at column 0, a nested list item, and anything indented under a list item. It
+names the line and what to write instead. ADR-0016 gives the reason. Report a
+skill that needs a container to say what it means on issue 37.
+
 ## Write under the skills
 
 Our own documents follow ASD-STE100. `npm run lint:docs` checks them:

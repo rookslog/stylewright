@@ -78,12 +78,38 @@ const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 const INDENTED = /^(?: {4}|\t)/;
 const PIPE = /(?<!\\)\|/;
 const DELIMITER = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
+const LEAD = /^[ \t]+/;
+const BLOCKQUOTE = /^[ \t]*>/;
+const HEADING = /^[ \t]+#{1,6}\s/;
+const MARKER = /^[ \t]+(?:[-*+]|\d+[.)])\s/;
 
-function unitsIn(body, anchor) {
+/**
+ * The extractor reads one line at a time, and it holds no stack of open
+ * containers. So it reads a heading, a list item, a fence or a table nested
+ * inside a blockquote or under an indent as the wrong unit, and a matrix over
+ * that reading disposes of something the skill does not say.
+ *
+ * Five review rounds each found a fresh shape of this and each patched that
+ * shape. The sixth arrived every time. So the extractor stops guessing: it
+ * REFUSES what it does not model, names the line, and says what to write
+ * instead. A construct outside the subset then fails loudly at the point of
+ * use, rather than passing under a reading nobody checked.
+ *
+ * The subset is every construct written at column 0, plus a wrapped
+ * continuation line, plus an indented code block that stands on its own.
+ * Refusing is not narrowing: every unit the extractor already saw it still
+ * sees, and the refusal is an additional finding rather than a replacement.
+ * ADR-0016 records the choice of the guard over a CommonMark parser.
+ */
+function unitsIn(body, anchor, refuse = () => {}) {
   const out = [];
   let para = [];
   let item = null;
   let block = null;
+  // A list stays open across a blank line, because an indented paragraph after
+  // one belongs to the item above it. Only a fresh block at column 0 ends it.
+  let listOpen = false;
+  let afterBlank = true;
   const push = (text, isBlock = false) => out.push({ text, anchor, block: isBlock });
   const closeBlock = () => {
     if (!block) return;
@@ -108,6 +134,11 @@ function unitsIn(body, anchor) {
       continue;
     }
     if (fence && block?.kind !== 'code') {
+      // An indented opener is read as a fence here and as a code block or as
+      // part of a list item by a parser, so the prose below it is swallowed.
+      if (fence[1]) refuse(i, 'a fenced block that does not open at column 0');
+      listOpen = false;
+      afterBlank = false;
       flush();
       closeBlock();
       // The info string governs how the block is read, so it is part of the
@@ -121,6 +152,11 @@ function unitsIn(body, anchor) {
     // designator and no way to be quoted in a cell.
     const inTable = block?.kind === 'table';
     if (PIPE.test(line) && (inTable || DELIMITER.test(lines[i + 1] ?? ''))) {
+      if (LEAD.test(line) && (listOpen || INDENTED.test(line))) {
+        refuse(i, 'a table under an indent');
+      }
+      if (!LEAD.test(line)) { listOpen = false; }
+      afterBlank = false;
       if (!inTable) { flush(); block = { kind: 'table', lines: [] }; }
       block.lines.push(line.trim());
       continue;
@@ -133,7 +169,23 @@ function unitsIn(body, anchor) {
       closeBlock();
     }
     if (block) closeBlock();
-    if (!line.trim()) { flush(); continue; }
+    if (!line.trim()) { flush(); afterBlank = true; continue; }
+    const startsBlock = afterBlank;
+    afterBlank = false;
+    // Every shape below reads as one unit here and as another to a reader, so
+    // the extractor refuses it instead of choosing. An indented construct with
+    // no list above it is an ordinary code block, which the extractor does
+    // read as a reader does, so it stands.
+    const nested = listOpen && LEAD.test(line);
+    if (BLOCKQUOTE.test(line) && (nested || !INDENTED.test(line))) {
+      refuse(i, 'a blockquote');
+    } else if (MARKER.test(line) && (nested || !INDENTED.test(line))) {
+      refuse(i, 'a list item indented under another');
+    } else if (HEADING.test(line) && (nested || !INDENTED.test(line))) {
+      refuse(i, 'a heading that does not begin at column 0');
+    } else if (nested && INDENTED.test(line)) {
+      refuse(i, 'a paragraph indented under a list item');
+    }
     if (INDENTED.test(line) && !item && !para.length) {
       block = { kind: 'code', lines: [line] };
       block.kind = 'indented';
@@ -142,10 +194,14 @@ function unitsIn(body, anchor) {
     const m = /^\s*(?:[-*+]|\d+[.)])\s+(.*\S)\s*$/.exec(line);
     if (m) {
       flush();
+      if (!LEAD.test(line)) listOpen = true;
       item = { text: m[1], anchor, block: false };
       out.push(item);
       continue;
     }
+    // A paragraph beginning at column 0 after a blank line is a new block, so
+    // the list above it has ended. A line that merely continues one has not.
+    if (startsBlock && !LEAD.test(line)) listOpen = false;
     // Lazy continuation. Prose under a list item belongs to that item.
     if (item) item.text += ` ${line.trim()}`;
     else para.push(line.trim());
@@ -156,16 +212,22 @@ function unitsIn(body, anchor) {
   return out;
 }
 
-/** Front matter, removed. Everything after it is instruction for a reader. */
+/**
+ * Front matter, removed, with the count of the lines it took. A refusal names
+ * a line of the file the author edits, so every offset below is carried
+ * forward rather than recomputed against the shortened body.
+ */
 function withoutFrontMatter(text) {
   const lines = text.split('\n');
-  if (lines[0]?.trim() !== '---') return text;
+  if (lines[0]?.trim() !== '---') return { body: text, offset: 0 };
   const close = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
-  return close === -1 ? text : lines.slice(close + 1).join('\n');
+  if (close === -1) return { body: text, offset: 0 };
+  return { body: lines.slice(close + 1).join('\n'), offset: close + 1 };
 }
 
-export function contentUnits(skillText) {
-  const body = withoutFrontMatter(skillText);
+function extract(skillText) {
+  const refusals = [];
+  const { body, offset } = withoutFrontMatter(skillText);
   const secs = sections(body);
   const lines = body.split('\n');
   // `firstLine` for a setext heading, because `startLine` is the underline and
@@ -173,14 +235,30 @@ export function contentUnits(skillText) {
   // preamble and then added it again as the heading, so one occurrence in the
   // source demanded two matrix rows. `endLine` already reads it this way.
   const firstHeading = secs.length ? (secs[0].firstLine ?? secs[0].startLine - 1) : lines.length;
-  const out = unitsIn(lines.slice(0, firstHeading).join('\n'), PREAMBLE);
+  // A refusal counts lines from 1, in the file the author opens, so it carries
+  // the front matter and the position of the section body with it.
+  const at = (base) => (i, shape) => refusals.push({ line: offset + base + i + 1, shape });
+  const out = unitsIn(lines.slice(0, firstHeading).join('\n'), PREAMBLE, at(0));
   for (const sec of secs) {
     // The heading is a unit of its own. It was the anchor and nothing else, so
     // a heading that gave an instruction was never disposed of by any row.
     out.push({ text: sec.heading, anchor: sec.heading, block: false });
-    out.push(...unitsIn(sec.body, sec.heading));
+    out.push(...unitsIn(sec.body, sec.heading, at(sec.startLine)));
   }
-  return out;
+  return { units: out, refusals };
+}
+
+export function contentUnits(skillText) {
+  return extract(skillText).units;
+}
+
+/**
+ * Every construct in the skill that the extractor does not model, by line.
+ * `checkSkill` reports these, and this export lets a caller ask for them
+ * without a matrix to compare against.
+ */
+export function unmodelled(skillText) {
+  return extract(skillText).refusals;
 }
 
 export function checkSkill({ skillText, matrixText }) {
@@ -188,8 +266,19 @@ export function checkSkill({ skillText, matrixText }) {
     return [{ level: 'error', code: 'no-matrix', message: 'Skill has no grounding matrix.' }];
   }
   const rows = parseMatrix(matrixText);
-  const stmts = contentUnits(skillText);
+  const { units: stmts, refusals } = extract(skillText);
   const findings = [];
+
+  // Refusals lead, because every finding under them rests on a reading the
+  // extractor has just said it cannot make.
+  for (const r of refusals) {
+    findings.push({
+      level: 'error',
+      code: 'unmodelled-construct',
+      message: `line ${r.line}: ${r.shape} is outside the Markdown this check models. `
+        + 'Write it at column 0, or move it out of the container.',
+    });
+  }
 
   // Two passes, because one was order-dependent. A row was matched against the
   // first unused unit with its text, so a row naming the wrong anchor could

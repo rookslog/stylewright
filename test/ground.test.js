@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { parseMatrix, checkSkill, checkAll, contentUnits } from '../src/ground.js';
+import { parseMatrix, checkSkill, checkAll, contentUnits, unmodelled } from '../src/ground.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 
@@ -265,6 +265,89 @@ test('an N row carries no rule, and an unknown prefix is refused', () => {
   const bogus = withN.replace('| N-01 |', '| X-01 |');
   assert.ok(checkSkill({ skillText: narrative, matrixText: bogus })
     .some((f) => f.code === 'unknown-row-kind'));
+});
+
+// The extractor holds no stack of open containers, so it read a construct
+// nested in a blockquote or under an indent as the wrong unit. Five rounds
+// patched five shapes and the sixth arrived each time, so it now refuses what
+// it does not model and names the line. Issue 37 carries the four shapes below,
+// and the ones after them are shapes nobody reported. A guard that closes the
+// class refuses those too, without a patch for each.
+
+const refused = (text) => checkSkill({
+  skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
+}).filter((f) => f.code === 'unmodelled-construct').map((f) => f.message).join(' ');
+
+test('a paragraph indented under a list item is refused, not read as code', () => {
+  // The extractor read the continuation as a code block, so a row could
+  // dispose of a directive by its digest without quoting a word of it.
+  assert.match(refused('- Context.\n\n    Always preserve safety.'),
+    /a paragraph indented under a list item/);
+});
+
+test('a fence that does not open at column 0 is refused', () => {
+  // Four leading spaces are a code block to a reader and a fence here, so the
+  // prose below the opener was swallowed into the block.
+  assert.match(refused('    ```js\nconst x = 1;\n```\n\nAlways preserve safety.'),
+    /a fenced block that does not open at column 0/);
+});
+
+test('a heading with leading spaces is refused, not merged into prose', () => {
+  // `   ## Rules` opened no section, so the heading and the directive below it
+  // became one unit under the previous anchor.
+  assert.match(refused('   ## Rules\n\nAlways preserve safety.'),
+    /a heading that does not begin at column 0/);
+});
+
+test('a list inside a blockquote is refused, not flattened into one unit', () => {
+  // Two directives were read as one paragraph, so one row disposed of both.
+  const found = refused('> - Do first.\n> - Do second.');
+  assert.equal(found.match(/a blockquote/g).length, 2);
+});
+
+test('a list item indented under another is refused', () => {
+  // Not a shape anyone reported. The extractor reads a nested item as a
+  // sibling at the top level, which loses which item the guidance qualifies.
+  assert.match(refused('- Do first.\n  - Do second.'), /a list item indented under another/);
+});
+
+test('a fence inside a blockquote is refused', () => {
+  assert.match(refused('> ```js\n> const x = 1;\n> ```'), /a blockquote/);
+});
+
+test('a table indented under a list item is refused', () => {
+  // Read as a top-level table, its designator says nothing about the item it
+  // belongs to, and the rest of the item disappears into the block.
+  assert.match(refused('- Do first.\n\n    | a | b |\n    |---|---|\n    | c | d |'),
+    /a table under an indent/);
+});
+
+test('an indented construct with no list above it is code, and stands', () => {
+  // Refusing is not narrowing. An indented block that begins its own paragraph
+  // is read here exactly as a reader reads it, so it needs no refusal, and a
+  // wrapped continuation line is not a container either.
+  assert.equal(refused('Prose here.\n\n    const x = 1;\n    > quoted'), '');
+  assert.equal(refused('- Do not use a semicolon,\n  because it joins two ideas.'), '');
+  assert.equal(refused('```md\n> quoted\n```'), '');
+  assert.equal(refused('- Do first.\n\nProse here.\n\n    const x = 1;'), '');
+});
+
+test('a refusal names the line in the file, front matter counted', () => {
+  const skillText = `${SKILL}\n> Quoted.\n`;
+  const line = skillText.split('\n').indexOf('> Quoted.') + 1;
+  assert.deepEqual(unmodelled(skillText), [{ line, shape: 'a blockquote' }]);
+  assert.ok(checkSkill({ skillText, matrixText: MATRIX })
+    .some((f) => f.code === 'unmodelled-construct' && f.message.startsWith(`line ${line}:`)));
+});
+
+test('every shipped skill stays inside the Markdown the extractor models', async () => {
+  // The guard costs the author a subset to write in. This is the check that
+  // the subset is one the shipped skills already sit inside.
+  const all = await checkAll(path.join(import.meta.dirname, '..'));
+  const refusals = Object.entries(all)
+    .flatMap(([name, fs]) => fs.filter((f) => f.code === 'unmodelled-construct')
+      .map((f) => `${name}: ${f.message}`));
+  assert.deepEqual(refusals, []);
 });
 
 test('checkAll covers every skill in the repository', async () => {

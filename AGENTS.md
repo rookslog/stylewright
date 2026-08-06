@@ -63,12 +63,19 @@ thing outside the check, because it is metadata for the harness.
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
 
-The checker reads Markdown a line at a time, and it models no container. A list
-item, a heading or a fence nested inside a blockquote or under an indent is read
-as the wrong unit. Issue 37 carries the four shapes that reproduce, and it
-carries the design decision that closes the class. Report a fifth shape there
-rather than as a new finding, because patching one variant has produced the next
-one five rounds running.
+The checker reads Markdown a line at a time, and it models no container. So it
+reads a subset and refuses the rest: every construct written at column 0, a
+wrapped continuation line, and an indented code block that stands on its own.
+A blockquote, an indented fence opener, a heading that does not begin at column
+0, a nested list item, and anything indented under a list item fail as
+`unmodelled-construct`, with the line and what to write instead. ADR-0016
+records the decision, and it names the evidence that would flip it: a skill
+that needs a container to say what it means. Report such a skill on issue 37
+rather than as a new finding, and do not patch a sixth shape, because patching
+one variant produced the next one five rounds running.
+
+Refusing is not narrowing. Every unit the checker saw before it still sees, and
+a refusal is one more finding rather than a replacement for one.
 
 ### A skill that substitutes for its source
 

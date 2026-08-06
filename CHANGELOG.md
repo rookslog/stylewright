@@ -28,6 +28,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`ground --check` refuses the Markdown it cannot model, instead of reading it
+  wrongly.** The extractor reads a line at a time and holds no stack of open
+  containers, so a heading, a list item, a fence or a table nested inside a
+  blockquote or under an indent became the wrong unit, and a matrix over that
+  reading disposed of something the skill does not say. Five review rounds each
+  patched one shape and the next one arrived. The check now reads a stated
+  subset — every construct at column 0, a wrapped continuation line, and an
+  indented code block that stands on its own — and reports anything else as
+  `unmodelled-construct` with its line. Every unit it saw before it still sees.
+  ADR-0016 records the choice of a guard over a Markdown parser, and the
+  evidence that would flip it.
+
 - **A skill name is unique across both tiers, and a collision is now an error
   that names both directories.** The two tiers share one flat namespace, and
   every consumer selects by name alone. Install built a map keyed on the name,
