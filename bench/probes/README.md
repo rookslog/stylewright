@@ -34,7 +34,7 @@ Every pathway runs the same flags, because the bench runs one control:
 
 ```
 node bench/collect-probe.mjs --skill <name> --pathway claude:user --dry-run
-ANTHROPIC_API_KEY=... node bench/collect-probe.mjs --skill <name> --pathway claude:user
+CLAUDE_CODE_OAUTH_TOKEN=... node bench/collect-probe.mjs --skill <name> --pathway claude:user
 ```
 
 The collector installs the skill into a throwaway redirected home through one
@@ -79,15 +79,26 @@ and answers that it is not logged in. Observed on 2026-08-06 on macOS, with the
 Claude Code CLI, on an empty home and again on a home holding only an
 onboarding flag.
 
-ADR-0017 settles it. Set `ANTHROPIC_API_KEY` in the shell that runs the
-collector, and both homes stay empty. The collector refuses to run without the
-key, and nothing here reads, prints, or records its value. The check refuses a
-record that carries anything shaped like a key, because a record is committed
-and a leaked key would be published.
+ADR-0017 settles it, and there are two routes. Run `claude setup-token` once and
+set `CLAUDE_CODE_OAUTH_TOKEN`, which bills a subscription. Or set
+`ANTHROPIC_API_KEY`, which bills the API. Either one reaches the arm as
+environment over an empty home, so neither changes the isolation.
 
-A subscription token is the other route, and issue #77 carries it. It reaches an
-arm the same way, as environment over an empty home, so nothing about the
-isolation changes. The collector reads the API key alone until #77 lands.
+Set both and the subscription wins. The collector hands the arm exactly one
+credential and removes the other, so the route a record names is the route that
+served it.
+
+Nothing here reads, prints, or records what either variable holds. The check
+refuses a record carrying anything shaped like a credential, by either route,
+and it never quotes back what it matched. A record is committed, and a leaked
+credential would be published.
+
+A record names its route, and the route is not part of the identity tuple. Two
+routes can bill and rate-limit differently, so silence would leave a reader
+unable to ask whether that mattered. The tuple stays as section 4.1 defines it,
+because splitting probe coverage by route on an unmeasured suspicion would cost
+more than it buys. ADR-0017 carries the reasoning and the condition that would
+change it.
 
 That is the environment class, and the record names it `api-key-empty-home`. A
 home holding a credential would be a different environment, so it would need

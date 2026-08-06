@@ -47,3 +47,25 @@ subscription route wins when both are set, and the missing-credential refusal
 names both. Issue #77 carries the implementation and the open question of
 whether a record names the route it authenticated by. Until #77 lands, the
 collector reads the API key alone.
+
+Amended again on 2026-08-06, closing that open question. **A record names the
+route, and the route is not part of the identity tuple.** It is provenance,
+beside the flags and the planted nonce.
+
+Two routes can bill, rate-limit, and tier a request differently, and any of
+those could move what a harness returns. A record that stayed silent would
+leave a reader unable to ask whether it mattered, which is the failure the
+whole design exists to prevent. So the route is recorded, and `check:probes`
+refuses a record without it.
+
+It stays out of the tuple because the tuple is defined once, in section 4.1 of
+the measurement design, and nothing generalises across any element of it.
+Adding an element would split probe coverage in two overnight, so that a
+subscription probe stopped covering an API-key study, on a suspicion nobody has
+measured. The evidence for that split does not exist yet. Recording the route
+is what makes gathering it possible: when two probes differ only by route and
+their bytes disagree, the tuple gains an element and this note is the thing
+that gets amended. Silence would have made that comparison impossible to run.
+
+The credential itself never enters a record. `check:probes` refuses anything
+shaped like one, by either route, and the refusal never quotes what it matched.

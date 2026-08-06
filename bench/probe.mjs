@@ -74,8 +74,23 @@ const ASSERTED = ['outcome', 'pass', 'passed', 'fail', 'failed', 'verdict', 'res
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ARMS = ['installed', 'control'];
-/** An Anthropic key, in the shape the vendor issues them. */
+/**
+ * A credential, in the shapes this vendor issues.
+ *
+ * Both routes are covered: an API key and a subscription token from
+ * `claude setup-token` share the `sk-ant-` family, and they differ in the
+ * segment that follows. The pattern is written over the family rather than over
+ * either spelling, so a new segment name inside it stays caught.
+ *
+ * The residue, stated: a credential of some other shape entirely would pass.
+ * This catches what the vendor issues today, and it is a backstop rather than
+ * the mechanism — the mechanism is that nothing ever writes a credential into a
+ * record in the first place.
+ */
 const SECRET = /sk-ant-[A-Za-z0-9_-]{8,}/;
+
+/** The auth routes a record may name, from `bench/collect-probe.mjs`. */
+export const AUTH_ROUTE_NAMES = ['subscription', 'api-key'];
 
 const isText = (v) => typeof v === 'string' && v.trim().length > 0;
 
@@ -259,6 +274,12 @@ export function checkRecord(record, name = 'record') {
     say('nonce is a string of at least eight characters.');
   }
   if (!isText(record.ask)) say('ask retains the question both arms answered.');
+  // The route, never the credential. Two routes can bill and rate-limit
+  // differently, so a record that stayed silent about which one served it would
+  // leave a reader unable to ask whether that mattered.
+  if (!AUTH_ROUTE_NAMES.includes(record.auth_route)) {
+    say(`auth_route names how the arm authenticated: ${AUTH_ROUTE_NAMES.join(' or ')}.`);
+  }
   if (isText(record.nonce) && isText(record.ask) && record.ask.includes(record.nonce)) {
     say('the ask carries the nonce, so a repeat proves nothing about the installed tree.');
   }
@@ -303,7 +324,8 @@ export function checkRecord(record, name = 'record') {
   // and the key never enters the tree. A record is committed, so a key that
   // reached one would be published. The match is never quoted back.
   if (SECRET.test(JSON.stringify(record))) {
-    say('something in this record looks like an API key. Nothing here may carry one.');
+    say('something in this record looks like a credential. Nothing here may carry one, '
+      + 'by either route.');
   }
 
   for (const at of keyPaths(record)) {

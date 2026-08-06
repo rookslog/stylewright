@@ -266,6 +266,46 @@ export async function plantNonce(skillDir, nonce, {
 }
 
 /**
+ * The record, assembled from what the run produced.
+ *
+ * Pure, and separate from `main`, because everything a reader depends on is
+ * decided here: which arm names the tuple's model, which route authenticated,
+ * and which environment class the collector actually built. Inside `main` none
+ * of it could be tested without paying for two live calls.
+ */
+export function buildRecord({
+  date, skill, nonce, pathway, flags, route, build, installedArm, controlArm, treeDigest: digest,
+}) {
+  return {
+    kind: 'isolation-probe',
+    date,
+    skill,
+    nonce,
+    nonce_plant: 'appended to SKILL.md in a throwaway install, which no study measures',
+    ask: ASK,
+    flags,
+    // Provenance, not identity. The route names how the arm authenticated, and
+    // ADR-0017 states why it sits outside the tuple.
+    auth_route: route,
+    identity: {
+      harness_build: build,
+      model: tupleModel(installedArm, controlArm),
+      platform: `${process.platform}-${process.arch}`,
+      pathway,
+      // This collector builds one environment: two empty homes, with the
+      // credential in the environment. A representative stack is a different
+      // protocol, and labelling this one with that class would let an
+      // empty-home probe cover a study that ran under an operator's own
+      // configuration.
+      environment_class: 'api-key-empty-home',
+      stack_digest: null,
+    },
+    installed: { ...installedArm, tree_digest: digest, trace: null },
+    control: { ...controlArm, trace: null },
+  };
+}
+
+/**
  * The record's filename. One probe, one file, named for what it covers.
  *
  * Built from the PARSED pathway, never from the string an operator typed, so
@@ -340,21 +380,64 @@ export function readRun({ raw, err = '', home }) {
 }
 
 /**
+ * The two routes a probe arm can authenticate by, in precedence order.
+ *
+ * A subscription token wins when both are set, by owner directive on #77. The
+ * order of this list IS the precedence, so there is one place to read it.
+ */
+export const AUTH_ROUTES = [
+  { route: 'subscription', variable: 'CLAUDE_CODE_OAUTH_TOKEN' },
+  { route: 'api-key', variable: 'ANTHROPIC_API_KEY' },
+];
+
+/**
+ * Which route this environment authenticates by, or null for neither.
+ *
+ * Presence, never the value. Nothing in this repository reads, prints, or
+ * records what either variable holds — the route NAME is what a record carries.
+ */
+export function authRoute(env) {
+  for (const { route, variable } of AUTH_ROUTES) {
+    if (env[variable]) return route;
+  }
+  return null;
+}
+
+/**
+ * The environment one arm runs under.
+ *
+ * Precedence is delivered by REMOVING the loser rather than by asking the
+ * harness to prefer one. With both variables set the harness decides for
+ * itself, and the directive is that the subscription wins, so the arm is handed
+ * exactly one credential and the record can name the route that served it
+ * truthfully. Deleting a variable never reads it.
+ *
+ * The configuration variables go for a different reason: one naming the
+ * operator's own configuration directory survives a redirected HOME and points
+ * the harness back at the tree the probe exists to exclude.
+ */
+export function armEnv(parent, home) {
+  const env = { ...parent };
+  for (const key of ['CLAUDE_CONFIG_DIR', 'XDG_CONFIG_HOME', 'CLAUDE_HOME']) delete env[key];
+  const winner = authRoute(env);
+  for (const { route, variable } of AUTH_ROUTES) {
+    if (route !== winner) delete env[variable];
+  }
+  env.HOME = home;
+  env.USERPROFILE = home;
+  return env;
+}
+
+/**
  * One harness run, with the home redirected. Returns the answer verbatim and
  * the build that served it, or the reason neither exists.
  *
- * The environment carries ANTHROPIC_API_KEY through, and that is how the
- * harness authenticates over an empty home (ADR-0017). Nothing here reads the
- * value, and nothing writes it anywhere. The config variables are deleted
- * instead, because one naming the operator's own configuration directory
- * survives a redirected HOME and points the harness back at the tree the probe
- * exists to exclude.
+ * The environment carries one credential through, and that is how the harness
+ * authenticates over an empty home (ADR-0017). Nothing here reads its value,
+ * and nothing writes it anywhere.
  */
 export function runArm({ harness, flags, cwd, home, ask }) {
-  const env = { ...process.env };
-  for (const key of ['CLAUDE_CONFIG_DIR', 'XDG_CONFIG_HOME', 'CLAUDE_HOME']) delete env[key];
-  env.HOME = home;
-  env.USERPROFILE = home;
+  const env = armEnv(process.env, home);
   return new Promise((resolve) => {
     const child = spawn(harness, [...flags, ask], {
       cwd, env, stdio: ['ignore', 'pipe', 'pipe'],
@@ -482,14 +565,15 @@ async function main(argv) {
   const nonce = `sw-probe-${crypto.randomBytes(8).toString('hex')}`;
 
   // ADR-0017: the harness authenticates from the environment, over an empty
-  // home. Without the key both arms answer that they are not logged in, and the
-  // probe never reaches its question. The value is never read, printed, or
-  // written — only its presence is.
-  if (!opts.dryRun && !process.env.ANTHROPIC_API_KEY) {
+  // home. Without a credential both arms answer that they are not logged in,
+  // and the probe never reaches its question. Presence is all that is read.
+  const route = authRoute(process.env);
+  if (!opts.dryRun && !route) {
     throw new Error(
-      'ANTHROPIC_API_KEY is not set. The probe runs over an empty home, so the '
-      + 'harness has nothing else to authenticate with. Set it in this shell and '
-      + 'run again.');
+      `Set one of ${AUTH_ROUTES.map((r) => r.variable).join(' or ')} in this shell. `
+      + 'The probe runs over an empty home, so the harness has nothing else to '
+      + 'authenticate with. `claude setup-token` issues a subscription token, and '
+      + 'the subscription route wins when both are set.');
   }
 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-probe-'));
@@ -536,29 +620,10 @@ async function main(argv) {
     harness, flags, cwd: arms.control.cwd, home: arms.control.home, ask: ASK,
   });
 
-  const record = {
-    kind: 'isolation-probe',
-    date,
-    skill: opts.skill,
-    nonce,
-    nonce_plant: 'appended to SKILL.md in a throwaway install, which no study measures',
-    ask: ASK,
-    flags,
-    identity: {
-      harness_build: build,
-      model: tupleModel(installedArm, controlArm),
-      platform: `${process.platform}-${process.arch}`,
-      pathway: opts.pathway,
-      // This collector builds one environment: two empty homes, with the key
-      // in the environment. A representative stack is a different protocol,
-      // and labelling this one with that class would let a pristine probe
-      // cover a study that ran under an operator's own configuration.
-      environment_class: 'api-key-empty-home',
-      stack_digest: null,
-    },
-    installed: { ...installedArm, tree_digest: digest, trace: null },
-    control: { ...controlArm, trace: null },
-  };
+  const record = buildRecord({
+    date, skill: opts.skill, nonce, pathway: opts.pathway, flags, route, build,
+    installedArm, controlArm, treeDigest: digest,
+  });
 
   // One directory, always. A record written anywhere else is not committed, and
   // an uncommitted probe record is the retention gap in miniature. It also

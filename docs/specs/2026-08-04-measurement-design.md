@@ -266,13 +266,13 @@ does not start until the probe passes or fails.
 **How a probed home authenticates.** Amended 2026-08-06, in ADR-0017. A
 redirected home holds no credentials, so the harness refuses to run in one
 and answers that it is not logged in. A probe arm therefore authenticates
-from `ANTHROPIC_API_KEY` in the environment, and its home stays empty. The
+from a credential in the environment, and its home stays empty. The
 environment class the tuple carries is `api-key-empty-home`, named for how
 the arm authenticates, because a home holding a credential is a different
-environment and compares as one only under its own name. ADR-0017 carries an
-amendment on the owner's directive: a subscription token is a second route,
-delivered as environment over the same empty home, and issue #77 implements
-it.
+environment and compares as one only under its own name. Two credentials serve
+that role, an API key and a subscription token, and a record names which one
+served the arm. ADR-0017 carries both amendments, including why the route is
+provenance and not a tuple element.
 
 **Environment equivalence, and what a figure generalises to.** Installed
 runs get one pristine environment snapshot, cloned per arm, fingerprinted,

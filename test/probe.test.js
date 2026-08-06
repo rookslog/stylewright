@@ -17,8 +17,9 @@ import {
   TUPLE, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory, describe,
 } from '../bench/probe.mjs';
 import {
-  armFlags, chainProblems, openFailure, parseArgs, parsePathway, plantFlags, plantNonce,
-  plantedText, readRun, recordName, servingBuild, treeDigest, tupleModel, writeRecord, ASK,
+  armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs,
+  parsePathway, plantFlags, plantNonce, plantedText, readRun, recordName, servingBuild,
+  treeDigest, tupleModel, writeRecord, ASK, AUTH_ROUTES,
 } from '../bench/collect-probe.mjs';
 
 const NONCE = 'sw-probe-0123456789abcdef';
@@ -47,6 +48,7 @@ const record = (over = {}) => ({
   nonce: NONCE,
   ask: ASK,
   flags: armFlags('opus'),
+  auth_route: 'api-key',
   identity: {
     harness_build: '2.1.220',
     model: 'claude-opus-4-6-20260514',
@@ -325,12 +327,95 @@ test('the flag set must be complete, not merely free of strangers', () => {
   /--output-format carried "text"/);
 });
 
-test('a record carrying anything shaped like an api key is refused', () => {
-  const leaked = record();
-  leaked.installed.stderr = 'env had sk-ant-api03-AAAABBBBCCCC';
-  const problems = checkRecord(leaked).join(' ');
-  assert.match(problems, /looks like an API key/);
-  assert.equal(problems.includes('sk-ant-api03-AAAABBBBCCCC'), false);
+// Fake-shaped strings only. No real credential is ever handled here, and the
+// refusal must not quote back whatever it matched.
+test('a record carrying anything shaped like a credential is refused, by either route', () => {
+  for (const fake of ['sk-ant-api03-AAAABBBBCCCC', 'sk-ant-oat01-DDDDEEEEFFFF']) {
+    const leaked = record();
+    leaked.installed.stderr = `the environment held ${fake}`;
+    const problems = checkRecord(leaked).join(' ');
+    assert.match(problems, /looks like a credential/);
+    assert.equal(problems.includes(fake), false, 'the refusal must not quote the match');
+  }
+});
+
+// The collector's own side of the route. The check requiring `auth_route` says
+// nothing about whether anything writes it, and the assembly lived where no
+// test could reach it without paying for two live calls.
+test('the assembled record carries the route that served it', () => {
+  const arm = (over = {}) => ({
+    answer: 'NONE', model_id: 'claude-opus-4-6-20260514', is_error: false,
+    home: '/tmp/h', stderr: '', ...over,
+  });
+  const built = buildRecord({
+    date: '2026-08-06',
+    skill: 'compressed-deliberation',
+    nonce: NONCE,
+    pathway: 'claude:user',
+    flags: armFlags('opus'),
+    route: 'subscription',
+    build: '2.1.222',
+    installedArm: arm({ answer: NONCE }),
+    controlArm: arm(),
+    treeDigest: 'abc123',
+  });
+  assert.equal(built.auth_route, 'subscription');
+  assert.deepEqual(checkRecord(built), []);
+  assert.equal(deriveOutcome(built).passes, true);
+  // The credential itself is not among the bytes, whatever the route.
+  assert.equal(/sk-ant-/.test(JSON.stringify(built)), false);
+});
+
+test('a record names the route it authenticated by', () => {
+  assert.deepEqual(checkRecord(record({ auth_route: 'subscription' })), []);
+  assert.match(checkRecord(record({ auth_route: 'oauth' })).join(' '), /auth_route names how/);
+  const silent = record();
+  delete silent.auth_route;
+  assert.match(checkRecord(silent).join(' '), /auth_route names how/);
+});
+
+// Presence decides the route. The value is never read, so these use strings
+// that could not be credentials.
+test('the subscription route wins when both variables are set', () => {
+  const both = { CLAUDE_CODE_OAUTH_TOKEN: 'fake-token', ANTHROPIC_API_KEY: 'fake-key' };
+  assert.equal(authRoute(both), 'subscription');
+  assert.equal(authRoute({ ANTHROPIC_API_KEY: 'fake-key' }), 'api-key');
+  assert.equal(authRoute({ CLAUDE_CODE_OAUTH_TOKEN: 'fake-token' }), 'subscription');
+  assert.equal(authRoute({}), null);
+  assert.equal(authRoute({ ANTHROPIC_API_KEY: '' }), null);
+});
+
+// Precedence is delivered by removing the loser, so the arm holds exactly one
+// credential and the recorded route is the one that served it.
+test('an arm is handed one credential, and the loser is removed', () => {
+  const both = { CLAUDE_CODE_OAUTH_TOKEN: 'fake-token', ANTHROPIC_API_KEY: 'fake-key' };
+  const env = armEnv(both, '/tmp/home');
+  assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, 'fake-token');
+  assert.equal('ANTHROPIC_API_KEY' in env, false);
+  assert.equal(env.HOME, '/tmp/home');
+  assert.equal(env.USERPROFILE, '/tmp/home');
+
+  const keyOnly = armEnv({ ANTHROPIC_API_KEY: 'fake-key' }, '/tmp/home');
+  assert.equal(keyOnly.ANTHROPIC_API_KEY, 'fake-key');
+  assert.equal('CLAUDE_CODE_OAUTH_TOKEN' in keyOnly, false);
+});
+
+test('an arm never inherits a configuration directory that outlives the redirected home', () => {
+  const env = armEnv({
+    CLAUDE_CONFIG_DIR: '/home/me/.claude',
+    XDG_CONFIG_HOME: '/home/me/.config',
+    CLAUDE_HOME: '/home/me/.claude',
+    ANTHROPIC_API_KEY: 'fake-key',
+  }, '/tmp/home');
+  for (const key of ['CLAUDE_CONFIG_DIR', 'XDG_CONFIG_HOME', 'CLAUDE_HOME']) {
+    assert.equal(key in env, false, `${key} must not reach an arm`);
+  }
+});
+
+test('the routes are declared in precedence order, and name their variables', () => {
+  assert.deepEqual(AUTH_ROUTES.map((r) => r.route), ['subscription', 'api-key']);
+  assert.deepEqual(AUTH_ROUTES.map((r) => r.variable),
+    ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
 });
 
 test('a probe run outside the isolation flags derives a failure', () => {
