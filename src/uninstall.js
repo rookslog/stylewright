@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   hashFile, readManifestWithIdentity, writeManifest, removeManifest, isStale,
-  clearStaleWrite,
+  refuseStaleWrite,
 } from './manifest.js';
 import { hasPending, recoverPending } from './journal.js';
 import { withTargetLock } from './lock.js';
@@ -65,7 +65,7 @@ export async function uninstallSkills(options) {
   // Held for the whole command, like install. This one deletes before it
   // records, so a second run inside the directory is worse here than there.
   const { emptied, ...result } = await withTargetLock(
-    options.targetDir, () => remove(options), { create: false });
+    options.targetDir, (state) => remove(options, state), { create: false });
   // After the lock is released, because the lock file lives in this directory
   // and an empty directory is one that holds nothing at all. `rmdir` refuses a
   // directory that is not empty, which is the whole of the check: a hand
@@ -74,12 +74,20 @@ export async function uninstallSkills(options) {
   return result;
 }
 
-async function remove({ targetDir, names, force = false }) {
+async function remove({ targetDir, names, force = false }, { absent = false } = {}) {
+  // The lock, not a look, said the directory was not there. Answering from
+  // the tree instead would read whatever a concurrent command has created
+  // since, while holding nothing.
+  if (absent) {
+    return {
+      removed: [], missing: [...names], skipped: [], recovered: [], cleared: [], emptied: false,
+    };
+  }
   // Before anything is deleted, because this command cannot refuse afterwards.
-  // A manifest write a killed run left half done holds the exclusion that the
-  // record needs at the end, and this command holds the directory, so nobody
-  // else can be inside that write.
-  await clearStaleWrite(targetDir);
+  // A half-finished manifest write left in the way is refused by name, not
+  // cleared: the lock proves no command is active now, and it cannot prove
+  // who wrote an existing file.
+  await refuseStaleWrite(targetDir);
   let { manifest, identity } = await readManifestWithIdentity(targetDir);
   const removed = [];
   const missing = [];

@@ -53,22 +53,27 @@ export function isHeldError(err) {
 
 export async function withTargetLock(targetDir, run, { create = true } = {}) {
   const abs = path.join(targetDir, LOCK_NAME);
-  // `stat`, which follows a link, and not `lstat`. A target directory that is a
-  // symbolic link is one every other write in this tool follows, so a lock that
-  // read the link itself as "not a directory" skipped the exclusion exactly
-  // where the work still happened — and a live run holding the real directory
-  // could then have its files deleted underneath it.
-  const there = await fs.stat(targetDir).then((st) => st.isDirectory(), () => false);
-  if (!create && !there) {
-    // Nothing to hold. A directory that does not exist holds no work of ours,
-    // and creating one to lock it is how `uninstall` used to leave a skills
-    // directory behind on a machine that never had one.
-    return run();
-  }
-  await fs.mkdir(targetDir, { recursive: true });
+  if (create) await fs.mkdir(targetDir, { recursive: true });
   try {
+    // The acquisition is also the existence test. Asking `stat` first and
+    // running unlocked on "absent" left a window: a concurrent install could
+    // create and populate the directory between the look and the callback,
+    // which then deleted a fresh install while holding nothing. `wx` through
+    // the path resolves a symlinked target the way every other write does,
+    // and it fails ENOENT exactly when there is no directory to hold.
     await fs.writeFile(abs, '', { flag: 'wx' });
   } catch (err) {
+    // ENOTDIR is the same answer through a different door: the user has a
+    // FILE standing at the target path, so nothing of ours is under it and
+    // there is no directory to hold.
+    if ((err.code === 'ENOENT' || err.code === 'ENOTDIR') && !create) {
+      // No directory existed at the moment of acquisition, and creating one
+      // to lock it is how `uninstall` used to leave a skills directory behind
+      // on a machine that never had one. The callback is told, and must
+      // answer from that fact alone — never from a fresh look at a tree that
+      // may have appeared since, because nothing here holds it.
+      return run({ absent: true });
+    }
     if (err.code !== 'EEXIST') throw err;
     const held = new Error(
       `Another stylewright command is working in ${targetDir}. Run again when it `

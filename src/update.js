@@ -99,17 +99,6 @@ export async function updateSkills({
     }
   }
 
-  // A name this repository ships but no manifest records passes the check
-  // above and then matches nothing. Saying so is the same rule that made an
-  // unsupported platform-and-scope pair an error: a request that selected
-  // nothing must not report success. This is its third instance, so it is
-  // stated once here over everything the caller named.
-  // And nothing is unmatched while a directory is held, for the same reason:
-  // the skill may well be installed in the one this command would not read.
-  const unmatched = locked.length ? [] : (names ?? [])
-    .filter((n) => !installs.some(
-      (i) => i.names.includes(n) || i.pending.includes(n))).sort();
-
   const results = [];
 
   for (const install of installs) {
@@ -163,5 +152,16 @@ export async function updateSkills({
     if (emptied) await fs.rmdir(install.targetDir).catch(() => {});
     results.push({ ...install, ...rest });
   }
+  // A name this repository ships but no manifest records matches nothing, and
+  // a request that selected nothing must not report success — the same rule
+  // that made an unsupported platform-and-scope pair an error. Computed after
+  // the loop, over the FINAL locked list: a directory taken between the
+  // snapshot and its lock joins `locked` mid-loop, and nothing is unmatched
+  // while any directory is held, because the skill may well be installed in
+  // the one this command could not read.
+  const unmatched = locked.length ? [] : (names ?? [])
+    .filter((n) => !installs.some(
+      (i) => i.names.includes(n) || i.pending.includes(n))).sort();
+
   return { results, unmatched, locked };
 }

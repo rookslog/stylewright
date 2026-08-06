@@ -3,7 +3,7 @@ import path from 'node:path';
 import { loadCatalog } from './catalog.js';
 import {
   contained, hashFile, readManifestWithIdentity, writeManifest, recordSkill,
-  clearStaleWrite,
+  refuseStaleWrite,
   removeManifest,
 } from './manifest.js';
 import {
@@ -188,9 +188,10 @@ export async function installHeld(options) {
 async function installUnderLock(byName, {
   targetDir, names, pathway = 'engine', now, force = false,
 }) {
-  // This command holds the directory, so a half-finished manifest write can
-  // only be a killed run's. Left there it refuses every write below.
-  await clearStaleWrite(targetDir);
+  // A half-finished manifest write left in the way would refuse every write
+  // below, and the lock cannot prove whose file it is — so it is refused by
+  // name here, before anything is copied or deleted.
+  await refuseStaleWrite(targetDir);
   // The identity travels from the read to every write this run makes. It is
   // what makes each write a statement about the file this command read, rather
   // than about whatever stands at the path by then.

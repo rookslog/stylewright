@@ -10,7 +10,7 @@ import { readManifest } from './manifest.js';
 import { lintText } from './lint.js';
 import { checkAll } from './ground.js';
 import { scaffoldSkill } from './scaffold.js';
-import { isLocked } from './lock.js';
+import { isLocked, isHeldError } from './lock.js';
 import { VERSION } from './version.js';
 
 const USAGE = `stylewright ${VERSION}
@@ -547,6 +547,11 @@ export async function run(argv, ctx) {
     let changed = 0;
     let refused = held;
     for (const [targetDir, selected] of selections) {
+      // The probe above answered for the moment it ran. A directory taken
+      // since gets the same treatment the probe would have given it — said,
+      // counted, and passed over — instead of failing the whole command with
+      // the remaining targets never processed.
+      try {
       if (command === 'install') {
         const res = await installSkills({
           repoRoot, targetDir, names: selected, now, force: Boolean(flags.force),
@@ -580,6 +585,11 @@ export async function run(argv, ctx) {
         }
         changed += res.removed.length + res.cleared.length;
         refused += res.skipped.length;
+      }
+      } catch (err) {
+        if (!isHeldError(err)) throw err;
+        sayLocked(targetDir);
+        refused++;
       }
     }
     if (!changed) {

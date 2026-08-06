@@ -427,15 +427,17 @@ export async function writeManifest(targetDir, manifest, expected) {
 }
 
 /**
- * Clear a manifest write that a killed run left half done.
+ * Refuse a manifest write that something left half done.
  *
- * The temporary file is the exclusion, so one left behind refuses every later
- * write — including `uninstall`'s, which by then has already deleted the files
- * and can only leave the record claiming them. It is only debris when nobody
- * holds it, and the caller of this knows that: it holds the directory, and a
- * run that was writing would have held that first.
+ * This function used to delete the file, on the argument that the caller
+ * holds the directory, so the file could only be a killed run's debris. A
+ * review broke the inference: the lock proves no command is active NOW, and
+ * it proves nothing about who wrote an existing file — the user can put one
+ * at this name too, and deleting on the guess took theirs silently. Called
+ * before anything else is deleted, so a command that will need the exclusion
+ * at its end refuses up front, while the tree is still whole.
  */
-export async function clearStaleWrite(targetDir) {
+export async function refuseStaleWrite(targetDir) {
   const tmp = tmpPath(path.join(targetDir, MANIFEST_NAME));
   // Refused, never deleted. Holding the lock proves no command is active NOW.
   // It does not prove an existing file at this name is a killed run's
