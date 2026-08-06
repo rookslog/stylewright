@@ -58,11 +58,10 @@ installed arm repeated the nonce. The empty-home control answered and did not
 repeat it, which catches a probe passing for the wrong reason. And the flags
 were the control arm's.
 
-An arm answered when a build is named, the harness reported no error, and the
-answer carries text. `armAnswered` in `bench/probe.mjs` is the definition, and
-every check reads it from there. Saying only that the control did not repeat the
-nonce is true of a control that never ran at all, which is the reading three
-review rounds each caught in a different place.
+`armAnswered` in `bench/probe.mjs` defines what answering means, and every
+check reads it from there. Saying only that the control did not repeat the nonce
+is true of a control that never ran at all, which is the reading three review
+rounds each caught in a different place.
 
 A failure is a result. A record of a probe that failed stays here, and the
 status a later reader computes says the probe failed rather than saying nothing.

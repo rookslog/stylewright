@@ -238,7 +238,8 @@ export function checkRecord(record, name = 'record') {
   // tuple took one of them. The tuple's model means the build that SERVED the
   // probe, so the refusal is about answering, and it says so.
   if (!answered.length && isText(identity.model)) {
-    say('identity.model names a build, and no arm answered, so nothing served this probe.');
+    say('identity.model names a build, and no arm answered, so nothing served this probe. '
+      + 'Drop the element rather than editing the arms, because it was never true.');
   }
   if (identity.environment_class && !ENV_CLASSES.includes(identity.environment_class)) {
     say(`identity.environment_class must be one of: ${ENV_CLASSES.join(', ')}.`);

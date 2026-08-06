@@ -17,11 +17,28 @@ import {
   TUPLE, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory, describe,
 } from '../bench/probe.mjs';
 import {
-  armFlags, chainProblems, parseArgs, parsePathway, plantFlags, plantNonce, plantedText,
-  readRun, recordName, servingBuild, treeDigest, tupleModel, writeRecord, ASK,
+  armFlags, chainProblems, openFailure, parseArgs, parsePathway, plantFlags, plantNonce,
+  plantedText, readRun, recordName, servingBuild, treeDigest, tupleModel, writeRecord, ASK,
 } from '../bench/collect-probe.mjs';
 
 const NONCE = 'sw-probe-0123456789abcdef';
+
+/**
+ * Can this machine create a symbolic link at all? Windows refuses one to an
+ * unprivileged account, so the two link tests below would fail there for a
+ * reason that has nothing to do with what they check.
+ */
+const canSymlink = async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-caps-'));
+  try {
+    await fs.writeFile(path.join(dir, 'target'), 'x');
+    await fs.symlink(path.join(dir, 'target'), path.join(dir, 'link'));
+    return true;
+  } catch {
+    return false;
+  }
+};
+const NO_SYMLINKS = 'this machine refuses to create a symbolic link, so the swap cannot be set up';
 
 const record = (over = {}) => ({
   kind: 'isolation-probe',
@@ -112,7 +129,9 @@ test('a record whose only build came from an errored arm names no build', () => 
   both.installed.is_error = true;
   both.control.is_error = true;
   both.identity.model = 'claude-opus-4-6-20260514';
-  assert.match(checkRecord(both).join(' '), /no arm answered, so nothing served this probe/);
+  const problems = checkRecord(both).join(' ');
+  assert.match(problems, /no arm answered, so nothing served this probe/);
+  assert.match(problems, /Drop the element rather than editing the arms/);
 });
 
 test('a well-formed record passes and derives a pass', () => {
@@ -406,6 +425,19 @@ test('output that is not JSON is a failed run, and keeps what arrived', () => {
   assert.match(arm.stderr, /not JSON/);
 });
 
+// JSON that parses and is not a run. `null` threw out of the collector after
+// both live calls were paid for, and a bare number reported a clean run with
+// nothing in it. `extract.mjs` exits non-zero on both.
+test('JSON that is not a run object is a failed run, not a crash', () => {
+  for (const raw of ['null', '123', '"text"', '[]', 'true']) {
+    const arm = readRun({ raw, home: '/tmp/h' });
+    assert.equal(arm.is_error, true, `${raw} should be a failed run`);
+    assert.equal(arm.answer, '');
+    assert.equal(arm.model_id, '');
+    assert.match(arm.stderr, /JSON, but not a run/);
+  }
+});
+
 test('a tie in the model usage names no build, the way extract.mjs refuses one', () => {
   assert.equal(servingBuild({ a: { outputTokens: 9 }, b: { outputTokens: 4 } }), 'a');
   assert.equal(servingBuild({ a: { outputTokens: 9 }, b: { outputTokens: 9 } }), '');
@@ -426,7 +458,8 @@ test('the nonce lands in the installed SKILL.md', async () => {
 
 // `appendFile` resolves the path, so a SKILL.md swapped for a link between the
 // install and the plant appended the nonce outside the throwaway tree.
-test('a SKILL.md that is a symlink is refused, and its target is untouched', async () => {
+test('a SKILL.md that is a symlink is refused, and its target is untouched', async (t) => {
+  if (!await canSymlink()) return t.skip(NO_SYMLINKS);
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
   const skill = path.join(dir, 'skill');
   const outside = path.join(dir, 'outside.md');
@@ -437,6 +470,39 @@ test('a SKILL.md that is a symlink is refused, and its target is untouched', asy
   assert.equal(await fs.readFile(outside, 'utf8'), 'someone else\n');
 });
 
+// The check that FOLLOWS a write, which no test could reach until the write
+// became injectable. It is the half that still catches a swapped ancestor on a
+// platform without O_NOFOLLOW, so it is the half that most needs an anchor.
+test('a tree that moves while the nonce is planted is reported', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
+  const home = path.join(root, 'home');
+  const skill = path.join(home, 'skill');
+  await fs.mkdir(skill, { recursive: true });
+  await fs.writeFile(path.join(skill, 'SKILL.md'), '# A skill\n');
+  await assert.rejects(
+    plantNonce(skill, NONCE, {
+      baseDir: home,
+      write: async (fh, text) => {
+        await fh.write(text);
+        await fs.rm(skill, { recursive: true });
+        await fs.writeFile(skill, 'not a directory any more\n');
+      },
+    }),
+    /moved while the nonce was planted/);
+});
+
+// Unreachable through `plantNonce`, because the classification refuses a link
+// before the open runs. Only a swap between the two steps reaches it, so the
+// mapping is tested where it lives.
+test('an open refused for following a link says so, and other failures pass through', () => {
+  const loop = Object.assign(new Error('ELOOP'), { code: 'ELOOP' });
+  assert.match(openFailure(loop, '/tmp/x/SKILL.md').message, /became a symbolic link/);
+  const many = Object.assign(new Error('EMLINK'), { code: 'EMLINK' });
+  assert.match(openFailure(many, '/tmp/x/SKILL.md').message, /became a symbolic link/);
+  const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+  assert.equal(openFailure(denied, '/tmp/x/SKILL.md'), denied);
+});
+
 test('a missing SKILL.md is refused rather than created', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
   await assert.rejects(plantNonce(dir, NONCE), /SKILL.md is missing/);
@@ -444,7 +510,8 @@ test('a missing SKILL.md is refused rather than created', async () => {
 
 // The leaf check alone let the whole directory be swapped. Measured: the nonce
 // landed outside the tree with no error at all.
-test('a skill directory that is a symlink is refused, and its target is untouched', async () => {
+test('a skill directory that is a symlink is refused, and its target is untouched', async (t) => {
+  if (!await canSymlink()) return t.skip(NO_SYMLINKS);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
   const home = path.join(root, 'home');
   const outside = path.join(root, 'outside');
@@ -453,14 +520,15 @@ test('a skill directory that is a symlink is refused, and its target is untouche
   await fs.writeFile(path.join(outside, 'SKILL.md'), 'someone else\n');
   await fs.symlink(outside, path.join(home, 'skill'));
   await assert.rejects(
-    plantNonce(path.join(home, 'skill'), NONCE, home), /is not a directory/);
+    plantNonce(path.join(home, 'skill'), NONCE, { baseDir: home }), /is not a directory/);
   assert.equal(await fs.readFile(path.join(outside, 'SKILL.md'), 'utf8'), 'someone else\n');
 });
 
 // The open branch, which the classify-time refusal above never reaches. This
 // builds both flag words and records what each one permits, so the residue in
 // `plantNonce`'s docstring is a measurement rather than a claim.
-test('O_NOFOLLOW refuses a swapped leaf, and a platform without it does not', async () => {
+test('O_NOFOLLOW refuses a swapped leaf, and a platform without it does not', async (t) => {
+  if (!await canSymlink()) return t.skip(NO_SYMLINKS);
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-flags-'));
   const outside = path.join(dir, 'outside.md');
   const link = path.join(dir, 'SKILL.md');
@@ -499,6 +567,47 @@ test('a record is written once, and never over an existing file', async () => {
   await assert.rejects(writeRecord(out, record(), dir), /never replaced/);
 });
 
+// The record writer's own post-write chain check, anchored so that ONLY it can
+// fire. The ancestor becomes a symbolic link to the directory it already was,
+// so the record still resolves to the same inode and the handle-identity check
+// is satisfied. Deleting the chain check makes this record land quietly under a
+// link, which is the whole defect.
+test('an ancestor that becomes a link while the record is written is reported', async (t) => {
+  if (!await canSymlink()) return t.skip(NO_SYMLINKS);
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-write-'));
+  const outPath = path.join(base, 'a', 'b', 'r.json');
+  await assert.rejects(
+    writeRecord(outPath, record(), base, {
+      write: async (fh, text) => {
+        await fh.writeFile(text);
+        await fs.rename(path.join(base, 'a'), path.join(base, 'a-real'));
+        await fs.symlink(path.join(base, 'a-real'), path.join(base, 'a'));
+      },
+    }),
+    /was not written where it was meant to go/);
+  // The record is gone, and only through the path the check refused.
+  assert.equal(await fs.readFile(outPath, 'utf8').catch(() => null), null);
+});
+
+// The walk splits a relative path, so a `dir` above the base produced `..`
+// components and `path.join` collapsed them into a walk back up the tree that
+// reported nothing. A project-scope pathway produces exactly that path.
+test('a directory outside the base is refused rather than walked upward', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-chain-'));
+  const base = path.join(root, 'home', '.claude', 'skills');
+  const outside = path.join(root, 'work', '.claude', 'skills', 'mine');
+  await fs.mkdir(base, { recursive: true });
+  await fs.mkdir(outside, { recursive: true });
+  const problems = await chainProblems(base, outside);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /is not under/);
+});
+
+test('a base equal to the directory is the ordinary case, not an escape', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-chain-'));
+  assert.deepEqual(await chainProblems(dir, dir), []);
+});
+
 test('a record path outside the probe directory is refused', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-write-'));
   await assert.rejects(
@@ -509,7 +618,8 @@ test('a record path outside the probe directory is refused', async () => {
 // `ensureDir` compares paths BELOW the base and never the base itself, so a
 // symlinked probe directory was walked through rather than refused, and the
 // exclusive write landed in whatever the link pointed at.
-test('a symlinked record directory is refused, and nothing is written through it', async () => {
+test('a symlinked record directory is refused, and nothing is written through it', async (t) => {
+  if (!await canSymlink()) return t.skip(NO_SYMLINKS);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-link-'));
   const real = path.join(root, 'elsewhere');
   const link = path.join(root, 'probes');

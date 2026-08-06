@@ -154,7 +154,15 @@ export function plantFlags(noFollow = constants.O_NOFOLLOW ?? 0) {
 
 /**
  * Every ancestor between `baseDir` and `dir`, including `baseDir` itself, that
- * is not a plain directory.
+ * is not a plain directory. `dir` may be `baseDir`, which is the ordinary case
+ * for a record written directly into the probe directory.
+ *
+ * Containment is asserted rather than assumed. The walk splits a relative path,
+ * so a `dir` ABOVE the base produced `..` components, and `path.join` collapsed
+ * them into a walk back up the tree that reported nothing — the caller learned
+ * the chain was clean about directories it never asked about. A project-scope
+ * pathway produces exactly that relative path. Safety survived on
+ * normalisation, which is an accident, and this makes it a decision.
  *
  * Both write surfaces in this file read it, before and after they write. A
  * check and the call it guards are two steps, so the answer is re-read
@@ -164,6 +172,10 @@ export function plantFlags(noFollow = constants.O_NOFOLLOW ?? 0) {
  * can do.
  */
 export async function chainProblems(baseDir, dir) {
+  const same = path.resolve(baseDir) === path.resolve(dir);
+  if (!same && !isBelow(baseDir, dir)) {
+    return [`${dir} is not under ${baseDir}, so the chain between them is not a chain.`];
+  }
   const problems = [];
   if (await destinationState(baseDir) !== 'directory') {
     problems.push(`${baseDir} is not a directory.`);
@@ -174,6 +186,21 @@ export async function chainProblems(baseDir, dir) {
     if (await destinationState(cur) !== 'directory') problems.push(`${cur} is not a directory.`);
   }
   return problems;
+}
+
+/**
+ * What an open refused with, said in this repository's terms.
+ *
+ * Separate and exported because the branch is otherwise unreachable: the
+ * classification above refuses a link before the open ever runs, so only a swap
+ * between the two steps reaches this, and no deterministic test can arrange
+ * that. Testing the mapping directly is what anchors it.
+ */
+export function openFailure(err, target) {
+  if (err.code === 'ELOOP' || err.code === 'EMLINK') {
+    return new Error(`${target} became a symbolic link, and nothing is written through one.`);
+  }
+  return err;
 }
 
 /**
@@ -194,9 +221,17 @@ export async function chainProblems(baseDir, dir) {
  * reasoned: `test/probe.test.js` builds both flag words and records that the
  * POSIX word refuses the swap and the Windows word permits it. The chain
  * re-read after the write is what still catches a swapped ancestor there.
+ *
+ * `write` is injected for the same reason `installSkills` takes its clock: the
+ * check that follows a write is unreachable by any deterministic test unless
+ * something can act between the two. A test passes a `write` that moves the
+ * tree. Production passes nothing.
  */
-export async function plantNonce(skillDir, nonce, baseDir = path.dirname(skillDir),
-  flags = plantFlags()) {
+export async function plantNonce(skillDir, nonce, {
+  baseDir = path.dirname(skillDir),
+  flags = plantFlags(),
+  write = (fh, text) => fh.write(text),
+} = {}) {
   const before = await chainProblems(baseDir, skillDir);
   if (before.length) {
     throw new Error(`The installed tree moved before the nonce was planted. ${before.join(' ')}`);
@@ -207,24 +242,19 @@ export async function plantNonce(skillDir, nonce, baseDir = path.dirname(skillDi
     throw new Error(`The installed SKILL.md is ${state === 'absent' ? 'missing' : `a ${state}`}, `
       + 'so the nonce has nowhere to go.');
   }
-  const fh = await fs.open(target, flags).catch((err) => {
-    if (err.code === 'ELOOP' || err.code === 'EMLINK') {
-      throw new Error(`${target} became a symbolic link, and nothing is written through one.`);
-    }
-    throw err;
-  });
+  const fh = await fs.open(target, flags).catch((err) => { throw openFailure(err, target); });
   try {
     const st = await fh.stat();
     if (!st.isFile()) {
       throw new Error(`${target} is not a plain file, and nothing is written through it.`);
     }
-    await fh.write(plantedText(nonce));
+    await write(fh, plantedText(nonce));
   } finally {
     await fh.close();
   }
   const after = await chainProblems(baseDir, skillDir);
   if (after.length) {
-    throw new Error(`The installed tree moved while the nonce was planted, so the nonce may `
+    throw new Error('The installed tree moved while the nonce was planted, so the nonce may '
       + `have gone somewhere else. ${after.join(' ')}`);
   }
 }
@@ -277,14 +307,22 @@ export function servingBuild(modelUsage) {
  * been baked into the record before anything could check it.
  */
 export function readRun({ raw, err = '', home }) {
+  const failed = (why) => ({
+    answer: '', model_id: '', is_error: true,
+    stderr: `${err}\n${why}:\n${String(raw).slice(0, 400)}`, home,
+  });
   let run;
   try {
     run = JSON.parse(raw);
   } catch {
-    return {
-      answer: '', model_id: '', is_error: true,
-      stderr: `${err}\nnot JSON:\n${String(raw).slice(0, 400)}`, home,
-    };
+    return failed('not JSON');
+  }
+  // JSON that parses and is not a run. `null` threw a TypeError out of the
+  // collector, after both live calls were paid for and before any record
+  // existed, and a bare number reported a clean run with nothing in it.
+  // `extract.mjs` exits non-zero on both.
+  if (!run || typeof run !== 'object' || Array.isArray(run)) {
+    return failed('JSON, but not a run');
   }
   return {
     answer: typeof run.result === 'string' ? run.result : '',
@@ -348,7 +386,9 @@ export function harnessBuild(harness) {
  * surface in this repository: a contained destination, no symbolic link, and
  * exclusive creation, so an existing record is refused rather than replaced.
  */
-export async function writeRecord(outPath, record, baseDir) {
+export async function writeRecord(outPath, record, baseDir, {
+  write = (fh, text) => fh.writeFile(text),
+} = {}) {
   if (!isBelow(baseDir, outPath)) {
     throw new Error(`A probe record is written under ${baseDir}, not at ${outPath}.`);
   }
@@ -377,7 +417,9 @@ export async function writeRecord(outPath, record, baseDir) {
   let identity;
   try {
     identity = await fh.stat();
-    await fh.writeFile(`${JSON.stringify(record, null, 2)}\n`);
+    // Injected for the same reason the plant's is: the check that follows a
+    // write cannot be reached by a test unless something can act between them.
+    await write(fh, `${JSON.stringify(record, null, 2)}\n`);
   } finally {
     await fh.close();
   }
@@ -466,7 +508,7 @@ async function main(argv) {
   const skillDir = path.join(targetDir, opts.skill);
   // The whole chain from the throwaway home down, not just the skill's parent,
   // because a link anywhere along it sends the plant outside the tree.
-  await plantNonce(skillDir, nonce, arms.installed.home);
+  await plantNonce(skillDir, nonce, { baseDir: arms.installed.home });
   const digest = await treeDigest(skillDir);
 
   const flags = armFlags(opts.model);
