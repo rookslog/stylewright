@@ -14,10 +14,12 @@ speaks of them as covered.
 
 **Decision.** The discoverability probe runs once per harness build per
 pathway, on a calendar, with a committed record naming the build, the
-served model, the pathway, and the date. A probe is stale for a status
-line when the study's harness build or served model postdates it, and
-staleness is computed at read time, never hand-tracked. Installed delivery
-stays publication-tier, and injection stays the drafting tool.
+served model, the pathway, and the date. A probe applies to a study only
+when the harness build and the served model are identical between them —
+identity, not ordering, because a study on an older or merely different
+model is as unprobed as one on a newer. The comparison is computed at read
+time, never hand-tracked. Installed delivery stays publication-tier, and
+injection stays the drafting tool.
 
 **Consequences.** Probe cost is spread and scheduled instead of spiked and
 skipped. A status line can say that its pathway's probe is stale, which is

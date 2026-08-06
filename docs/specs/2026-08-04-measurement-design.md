@@ -31,10 +31,12 @@ The owner decided both of these on 2026-08-04, recorded on the issues.
 - The craft tier admits operating discipline, not prose alone (#18), so the
   protocol must eventually reach agentic behaviour. Section 8 defers that.
 
-Five further decisions were ratified on 2026-08-05 after an adversarial
-review of draft 3, and each is an ADR: citation checking (ADR-0009), the
-public ledger (ADR-0010), fresh-scenario provenance (ADR-0011), supersession
-and retirement (ADR-0012), and probe cadence (ADR-0013).
+Six further decisions were ratified on 2026-08-05 after adversarial review,
+and each is an ADR: citation checking (ADR-0009), the public ledger
+(ADR-0010), fresh-scenario provenance (ADR-0011), per-claim supersession
+(ADR-0012), probe cadence (ADR-0013), and retirement of unaudited
+credentials (ADR-0014, split from ADR-0012 when a codex review caught the
+pair breaking the one-decision rule).
 
 ## 3. Retention, by promotion
 
@@ -65,12 +67,17 @@ the engine: contained names only, no symbolic links, exclusive creation,
 and refusal to touch an existing study. Promotion is a reviewed act, never
 a glob, and the review has named refusals:
 
-- An arm collected under `--rules user` is refused, or redacted before
-  promotion, because its sidecars record the operator's private rule
-  filenames and hashes, and its samples may quote the rules themselves.
-- A treatment arm whose samples reproduce licensed source text is checked
-  against the skill's `SOURCE.md` record, and the check is recorded in the
-  study manifest.
+- An arm collected under `--rules user` is refused, or redacted, because
+  its sidecars record the operator's private rule filenames and hashes, and
+  its samples may quote the rules themselves. Redaction happens before
+  scoring and labelling, deterministically, with the rule and its effects
+  recorded in the study manifest, so every published result derives from
+  exactly the retained bytes and never from bytes the tree no longer holds.
+- Every retained file is checked for reproduced licensed text — samples
+  from either arm, and the prompt files the study retains, including an
+  externally derived fresh scenario — against the relevant license record,
+  the skill's `SOURCE.md` or the scenario's recorded provenance. The check
+  is recorded in the study manifest.
 - Samples are scanned for operator configuration content before they enter
   the tree.
 
@@ -82,8 +89,13 @@ commit can still change bytes, and the digests are what make the change
 visible. The citation check verifies them. A correction is a new study,
 never an edit.
 
-An arm whose error files are non-empty is retained as a failed attempt.
-It is not a scorable arm, and no figure cites it.
+An arm whose error files are non-empty is retained as a failed attempt,
+and so is an arm that aborted before finishing. An aborted arm cannot
+produce the completion manifest, so the runner writes a failure manifest
+instead: the files that exist, their digests, and the fact and point of
+the abort. Promotion accepts either manifest, because a failed run that
+can disappear is the retention gap again. Neither kind is a scorable arm,
+and no figure cites either.
 
 **Null studies.** A clean control is a result, and step 2 of the workflow
 requires recording it. A study may therefore hold one arm and no
@@ -101,22 +113,25 @@ figure is refused when the study it names could only score under
 
 **The numeral check.** The inverse link — that every figure carries a
 marker — is checked by proximity, not by parsing prose. In
-`bench/README.md`, any decimal, or any integer of two or more digits,
-appearing in prose outside a fence must sit in a paragraph or table row
-that also carries a `bench-study:` marker or the word unaudited. Version
-strings live in an allowlist. This is a regex in the shape of the checks
-`src/lint.js` already runs. A figure written out in words escapes it, and
-that is the residue section 1 names.
+`bench/README.md`, any numeral — a decimal or an integer of any length,
+single digits included, because a median of 5 is a figure — appearing in
+prose outside a fence must sit in a paragraph or table row that also
+carries a `bench-study:` marker or the word unaudited. Inline code is
+masked the way the linter masks it, and version strings, section
+references, and step references live in an allowlist. This is a regex in
+the shape of the checks `src/lint.js` already runs. A figure written out
+in words escapes it, and that is the residue section 1 names.
 
-**Supersession and retirement.** These are two decisions, not one. A new
-figure supersedes an old one only when a person judges the two comparable
-and links them, per claim. Blanket supersession was a draft 1 claim, and it
-was wrong: a new study on a new prompt or build measures a different thing.
-Separately: when the first retained study lands, every unaudited figure
-moves out of the figures tables in `bench/README.md` into a dated
-historical appendix, written as prose rather than as table rows, so it can
-no longer be quoted as a row. The record is kept. The credential is
-retired.
+**Supersession and retirement.** These are two decisions, and each has its
+own ADR. Supersession (ADR-0012): a new figure supersedes an old one only
+when a person judges the two comparable and links them, per claim. Blanket
+supersession was a draft 1 claim, and it was wrong: a new study on a new
+prompt or build measures a different thing. Retirement (ADR-0014): when
+the first retained study lands, every unaudited figure in
+`bench/README.md` — in a table row or in running prose, and the current
+file publishes them in prose — moves into a dated historical appendix,
+written so it cannot be quoted as a live row. The record is kept. The
+credential is retired.
 
 ## 4. Activation, measured end to end
 
@@ -146,10 +161,13 @@ control catches a probe that passes for the wrong reason. A harness trace
 that names the loaded file is better evidence than either, and the probe
 uses one wherever the harness offers it.
 
-**Cadence and staleness.** Probe cadence is decoupled from publication: the
-probe runs once per harness build per pathway, on a calendar, and the
-record is committed. A probe is stale for a status line when the harness
-build or the served model of the study postdates it, and staleness is
+**Cadence and applicability.** Probe cadence is decoupled from publication:
+the probe runs once per harness build per pathway, on a calendar, and the
+record is committed. A probe applies to a study only when the harness
+build and the served model are identical between them, and applicability
+is identity, never ordering: a study on an older or merely different model
+than the probe's is as unprobed as a study on a newer one. A status line
+whose study has no applicable probe says unprobed, and the comparison is
 computed, never hand-tracked. A probe result binds to the exact harness,
 build, model, platform, and pathway it ran on, and the record says so.
 Nothing generalises across pathways. The copy pathways share one static
@@ -162,19 +180,29 @@ Stage two is one end-to-end measurement, deliberately undivided: discovery,
 selection, loading, and effect, together, because together is how the
 product ships. A treatment arm that resembles its control does not say
 which link failed. It says the installed product did not change the output,
-which is the honest headline figure. Diagnosing the failed link is the
-probe's job, after the fact.
+which is the honest headline figure. After the fact, the probe diagnoses
+discoverability alone. Selection, loading, and effect stay entangled, and
+no record this design retains separates them.
 
-**Provenance.** The sidecar gains five fields: the delivery mode, the
-canonical digest of the skill content, the digest of the installed tree,
-the pathway, and the package revision. The canonical digest is computed the
-same way for injected text and installed files, so the scorer compares
-content, not category. The installed tree is re-hashed before and after
-every invocation, exactly as the runner already re-hashes the injected
-treatment, and a sample collected across a drift is discarded. An
-injection-versus-installation contrast requires every field equal except
-delivery mode, and the scorer refuses anything less, exactly as it refuses
-a mixed build today.
+**Provenance.** The sidecar fields split into shared and
+delivery-specific, because draft 4 required every field equal except
+delivery mode, and that was unsatisfiable: an injected arm has no
+installed tree, so a tree digest can never match across the contrast.
+
+Shared fields, and a contrast requires them equal: the canonical digest of
+the skill content, computed the same way for injected text and installed
+files so the scorer compares content and not category, the package
+revision, the platform, and the environment class. The last two also enter
+the study manifest, because section 7 binds derived status to both and a
+status command cannot derive what no record retains.
+
+Delivery-specific fields, validated by arm type: the delivery mode itself,
+and for an installed arm the pathway and the digest of the installed tree,
+re-hashed before and after every invocation exactly as the runner already
+re-hashes the injected treatment, with a sample collected across a drift
+discarded. The scorer requires the shared fields equal, the
+delivery-specific fields well-formed for their arm type, and refuses
+anything less, exactly as it refuses a mixed build today.
 
 **The isolation prerequisite.** The current runner isolates by working
 directory and by suppressing configuration surfaces with invocation flags.
@@ -208,26 +236,52 @@ This is issue #21 restated as steps, with the mechanisms above in place.
 
 **The attempt ledger.** The ledger is `bench/samples/LEDGER.jsonl`,
 append-only, one JSON object per line. An entry records an event: a rubric
-registration, a scenario registration, an arm attempt with its outcome, a
-promotion, an abandonment. Every entry carries the skill's canonical
-content digest and the digests of the files it registers. Ordering is not
-self-attested: an entry counts as pre-registered only when it was pushed to
-the public repository before the earliest `at=` timestamp of the samples it
-governs, and the check compares the server-side push time against the
-sidecars. A back-dated commit changes nothing the server recorded.
+registration, a scenario-frame registration, a scenario selection, an arm
+attempt with its outcome, a promotion, an abandonment. Every arm attempt
+is an entry, exploratory arms included, so no attempt is invisible. Every
+entry carries the skill's canonical content digest and the digests of the
+files it registers.
 
-1. Run an exploratory control with no guidance, and read the samples.
+Ordering is not self-attested, and the boundary is the start of the arm,
+not the completion of its samples: the runner records an arm-start
+timestamp in the arm manifest, because the sidecar `at=` field is written
+when an invocation returns, and a registration pushed mid-arm would pass a
+completion-time comparison it should fail. An entry counts as
+pre-registered only when it was pushed to the public repository before the
+arm-start timestamp of every arm it governs. A back-dated commit changes
+nothing the server recorded.
+
+Push time is the server's fact, and a clone does not carry it, so
+verification is contemporaneous: a CI check runs on the push that carries
+a registration, compares the server's record against the ledger while the
+server still attests it, and its verdict — run identifier, timestamp,
+result — is recorded in the study manifest. The later static check
+verifies the recorded attestation, not the vanished push event. The honest
+residue: the attestation chain is as durable as the forge that issued it.
+
+1. Run an exploratory control with no guidance, and read the samples. The
+   attempt is on the ledger before it starts, like every arm.
 2. Stop if the control is already clean, and promote it as a null study.
-   One documented exception: when the control is clean but the failure is
-   real in a fuller stack — the case this repository's own baseline
-   records — the investigation moves to a declared representative-stack
-   control arm, and the skill measures against that arm and says so.
-3. Write the skill only against a failure a control actually shows.
-4. Register in the ledger, before any treatment sample exists: the
-   judgment rubric, at least one fresh scenario, the primary metric, the
-   primary scenario, the repetition count, the predicted direction, and
-   the stopping rule. Everything else the study reports is secondary and
-   labelled secondary.
+   A null study promoted from exploration is exploratory class, and its
+   line says so: evidence that a control looked clean, never a
+   confirmatory claim, because nothing about it was pre-registered. The
+   confirmatory claim that no skill is needed takes a pre-registered
+   control like any other confirmatory run. The ledger is what closes
+   selection here: every exploratory attempt was registered before it
+   started, so a clean control cannot be picked from attempts nobody can
+   see. One documented exception: when the control is clean but the
+   failure is real in a fuller stack — the case this repository's own
+   baseline records — the investigation moves to a declared
+   representative-stack control arm, and the skill measures against that
+   arm and says so.
+3. Register the fresh-scenario sampling frame and its deterministic
+   selection rule, then write the skill only against a failure a control
+   actually shows.
+4. Register in the ledger, before any treatment arm starts: the judgment
+   rubric, the fresh scenario the pre-registered rule selects from the
+   pre-registered frame, the primary metric, the primary scenario, the
+   repetition count, the predicted direction, and the stopping rule.
+   Everything else the study reports is secondary and labelled secondary.
 5. Collect the confirmatory control and the treatment in one declared
    window. The `at=` ranges of the two arms must overlap, and the scorer
    refuses a contrast whose arms are disjoint in time. Alternating
@@ -249,13 +303,16 @@ primary metric and scenario close the forking paths: the bench prints
 many numbers per study, and without a declared primary, an author reads
 them all and publishes the one that moved. The stopping rule closes the
 other door, extending an arm until a difference appears. The fresh
-scenario bounds tuning to the committed set, and its provenance rule is
-what keeps it honest: the scenario derives from material the author did
-not compose — a field report, a real task from this repository's history,
-a prompt from an external corpus — and the ledger entry records that
-provenance. A scenario the author writes freely can be written to suit the
-skill, and this rule is the check against that direction. Late disclosure
-is still the ceiling: a public repository cannot hold a test set back.
+scenario bounds tuning to the committed set, and two rules keep it honest.
+Provenance: the scenario derives from material the author did not
+compose — a field report, a real task from this repository's history, a
+prompt from an external corpus — because a scenario written freely can be
+written to suit the skill. Selection: the frame and a deterministic rule
+are registered at step 3, before the skill exists, because provenance
+alone still permits searching a corpus until a favourable scenario turns
+up, and a rule fixed before the skill closes that search. The ledger
+records frame, rule, and selection. Late disclosure is still the ceiling:
+a public repository cannot hold a test set back.
 
 Step 5 exists because the exploratory control goes stale: a control
 collected days before its treatment measures a service that may have
@@ -309,10 +366,13 @@ statements, in three classes.
   line that says the study found nothing, because a line that only says
   measured reads as a credential. A line is printed as stale when the
   skill's current content digest differs from the digest the study
-  measured, and when the pathway's probe predates the harness build or
-  served model the study ran on. Staleness is computed at read time. A
-  derived line can go stale the moment the skill changes, and the
-  computation is what makes that visible instead of silent.
+  measured, and as unprobed when no probe matches the study's harness
+  build and served model under the identity rule in section 4.1. The
+  platform and environment class a line names come from the study
+  manifest, which section 4.2 requires to carry both. Staleness is
+  computed at read time. A derived line can go stale the moment the skill
+  changes, and the computation is what makes that visible instead of
+  silent.
 
 Nothing aggregates the lines into a verdict. A reader who wants one reads
 the studies.
@@ -354,5 +414,14 @@ decision, taken only with ADR-0007's test extended first.
   the attempt ledger with push-time ordering, enlarged the pre-registered
   payload, added the promotion review, the third status class, the
   numeral check, retirement of unaudited figures, probe cadence, and the
-  isolation prerequisite. The five decisions are ADR-0009 through
+  isolation prerequisite. The five decisions became ADR-0009 through
   ADR-0013.
+- Draft 5 disposed of a codex review of draft 4: fourteen findings, every
+  one accepted. Failure manifests for aborted arms, ledger coverage of
+  every arm with push-before-start and a contemporaneous attestation,
+  probe applicability by identity, shared versus delivery-specific
+  provenance with platform and environment class retained, the numeral
+  check widened to every numeral, two classes of null study, license
+  review over every retained file, redaction before scoring, sampling
+  frames registered before the skill, retirement covering prose as well
+  as tables, and ADR-0012 split into ADR-0012 and ADR-0014.

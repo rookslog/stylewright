@@ -15,10 +15,11 @@ scorer exists because it did.
 **Decision.** A published figure carries a `bench-study:<study>#<result>`
 marker. A check verifies the marker resolves, the study validates under its
 digests, and its scorer status is not unaudited. The inverse direction is
-checked by proximity: in `bench/README.md`, a numeral in prose must sit
-beside a marker or the word unaudited, with an allowlist for version
-strings. A figure written out in words escapes the regex, and that named
-residue stays convention.
+checked by proximity: in `bench/README.md`, any numeral in prose — single
+digits included, because a median of 5 is a figure — must sit beside a
+marker or the word unaudited, with inline code masked and an allowlist for
+version, section, and step references. A figure written out in words
+escapes the regex, and that named residue stays convention.
 
 **Consequences.** An uncited number fails CI instead of review. The check
 is a regex, not a prose parser, so it cannot be right about everything —

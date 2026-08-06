@@ -48,12 +48,15 @@ times with no measured gain looks like exactly that.
 ## The record precedes the result
 
 Selective reporting is the default failure of self-run experiments. So the
-ledger entry that precedes any treatment sample names the rubric, the
-fresh scenario, the primary metric, the primary scenario, the repetition
-count, the predicted direction, and the stopping rule. Every arm is
-promoted including the failures, and a promoted study is tamper-evident
-under its digests. Ordering is not self-attested: the public push time is
-the clock.
+ledger entry that precedes any treatment arm names the rubric, the
+scenario frame and its selection, the primary metric, the primary
+scenario, the repetition count, the predicted direction, and the stopping
+rule — and every arm attempt enters the ledger before it starts,
+exploratory included, so a clean result cannot be picked from attempts
+nobody can see. Every arm is promoted including the failures, and a
+promoted study is tamper-evident under its digests. Ordering is not
+self-attested: the public push time is the clock, verified while the
+server still attests it.
 
 ## Results survive their own multiplicity
 
@@ -110,3 +113,5 @@ confirmatory one. The bench tests.
   review: the probe-localisation and retention-buys overclaims corrected,
   the severity honesty note added, and the multiplicity and
   construct-validity commitments written.
+- Draft 3 carried the codex-round corrections: ledger coverage of every
+  arm before it starts, and the scenario frame fixed before the skill.
