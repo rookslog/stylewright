@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { loadCatalog, readFrontmatter } from '../src/catalog.js';
+import { contained } from '../src/manifest.js';
+import { walk } from '../src/tree.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 
@@ -69,4 +71,17 @@ test('the same name in one tier only stays a catalog of one', async () => {
   const repo = await repoWith([['craft', 'twinned']]);
   const cat = await loadCatalog(repo);
   assert.deepEqual(cat.map((s) => [s.name, s.tier]), [['twinned', 'craft']]);
+});
+
+test('every skill this repository ships records portably', async () => {
+  // The write-side gate in install refuses these at run time. This is the
+  // build-time partner: a skill shipping a colon, a backslash, or any other
+  // spelling `contained` refuses fails CI before it can reach a user.
+  const cat = await loadCatalog(path.join(import.meta.dirname, '..'));
+  assert.ok(cat.length > 0);
+  for (const skill of cat) {
+    for (const rel of await walk(skill.dir)) {
+      assert.ok(contained(rel), `${skill.name} ships an unrecordable name: ${rel}`);
+    }
+  }
 });

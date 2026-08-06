@@ -84,10 +84,16 @@ export async function ensureDir(dir, stopAt) {
   await fs.mkdir(dir, { recursive: true });
 }
 
-/** The directory components of `rel`, outermost first. */
+/**
+ * The directory components of `rel`, outermost first.
+ *
+ * `rel` is a manifest key or a `walk` result, and both spell their separator
+ * `/` on every platform. Splitting on `path.sep` instead found no ancestors at
+ * all on Windows, so the symlink checks consuming this list inspected nothing.
+ */
 export function ancestorsOf(rel) {
-  const parts = rel.split(path.sep).slice(0, -1);
-  return parts.map((_, i) => parts.slice(0, i + 1).join(path.sep));
+  const parts = rel.split('/').slice(0, -1);
+  return parts.map((_, i) => parts.slice(0, i + 1).join('/'));
 }
 
 /**
@@ -157,11 +163,17 @@ export async function reachability(baseDir, rels, exempt = () => false) {
   return { baseBlocked: false, blocked, reachable };
 }
 
-/** Every file under `dir`, as paths relative to it, sorted. */
+/**
+ * Every file under `dir`, as paths relative to it, sorted.
+ *
+ * Joined with `/` and not `path.sep`, because these become manifest keys and a
+ * manifest travels between machines. `path.join` recorded `references\guide.md`
+ * on Windows, a spelling every other platform's read refuses.
+ */
 export async function walk(dir, base = '') {
   const out = [];
   for (const e of await fs.readdir(dir, { withFileTypes: true })) {
-    const rel = path.join(base, e.name);
+    const rel = base ? `${base}/${e.name}` : e.name;
     if (e.isDirectory()) out.push(...await walk(path.join(dir, e.name), rel));
     else out.push(rel);
   }

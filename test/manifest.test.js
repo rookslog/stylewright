@@ -118,6 +118,79 @@ test('refuses a component whose Win32 spelling would be trimmed', async () => {
   }
 });
 
+test('migrates a legacy Windows key instead of refusing the manifest', async () => {
+  // Releases up to 0.2.0 built keys with path.join, so a Windows install
+  // recorded agents\openai.yaml. Refusing that spelling outright would strand
+  // the install: every command reads the manifest, so not even uninstall
+  // could clean it up. The read rewrites the separator, and the rewritten
+  // manifest still passes the same containment gate as any other.
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+    schema: 1,
+    skills: {
+      'demo-craft': {
+        tier: 'craft',
+        pathway: 'engine',
+        files: { 'SKILL.md': 'a'.repeat(64), 'agents\\openai.yaml': 'b'.repeat(64) },
+      },
+    },
+  }));
+  const mf = await readManifest(dir);
+  assert.equal(mf.skills['demo-craft'].files['agents/openai.yaml'], 'b'.repeat(64));
+  assert.equal(mf.skills['demo-craft'].files['agents\\openai.yaml'], undefined);
+  assert.equal(mf.skills['demo-craft'].files['SKILL.md'], 'a'.repeat(64));
+});
+
+test('a legacy key that rewrites to an escape is still refused', async () => {
+  // Migration is a spelling change, not a wider gate. The rewritten key goes
+  // through the same containment check, so a hostile manifest gains nothing
+  // by spelling its escape with backslashes.
+  const dir = await tmp();
+  for (const rel of ['..\\victim', 'a\\..\\b', 'a\\\\b', 'refs\\guide.md ']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
+test('a legacy key that rewrites onto an existing key is refused', async () => {
+  // Two recorded keys must stay two keys. If refs\guide.md rewrote onto an
+  // existing refs/guide.md, one recorded hash would silently vanish, and the
+  // survivor would speak for a file the manifest recorded twice.
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+    schema: 1,
+    skills: {
+      'demo-craft': {
+        tier: 'craft',
+        pathway: 'engine',
+        files: { 'refs/guide.md': 'a'.repeat(64), 'refs\\guide.md': 'b'.repeat(64) },
+      },
+    },
+  }));
+  // `/twice/` alone, because without the migration the backslash gate refuses
+  // this manifest with "outside", and an alternation accepting that message
+  // passes whether or not the collision branch exists.
+  await assert.rejects(() => readManifest(dir), /twice/);
+});
+
+test('refuses a component that contains a colon', async () => {
+  // Win32 reads `C:victim` as relative to another drive's working directory
+  // and `SKILL.md:payload` as an alternate data stream on SKILL.md. Neither
+  // spelling means what the containment checks read, on the one platform
+  // where the colon is special, so it is refused everywhere.
+  const dir = await tmp();
+  for (const rel of ['C:victim', 'refs/a:b.md', 'SKILL.md:payload']) {
+    await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', pathway: 'engine', files: { [rel]: 'a'.repeat(64) } } },
+    }));
+    await assert.rejects(() => readManifest(dir), /outside/, `must refuse ${JSON.stringify(rel)}`);
+  }
+});
+
 test('an ordinary nested path is still accepted', async () => {
   const dir = await tmp();
   await fs.writeFile(path.join(dir, MANIFEST_NAME), JSON.stringify({
@@ -266,4 +339,30 @@ test('a write leaves no temporary file behind, and replaces in one step', async 
   // carries a write out of its directory.
   const st = await fs.lstat(path.join(dir, MANIFEST_NAME));
   assert.ok(st.isFile());
+});
+
+test('a file named __proto__ is a recorded key, not a prototype', async () => {
+  const dir = await tmp();
+  // Written raw, because JSON.parse produces `__proto__` as an own property
+  // and the migration loop must keep it one. Assigned into an object literal
+  // it would set the prototype instead — a silent no-op — and uninstall could
+  // never reach the file it named.
+  // The JSON is spelled as a string, because a quoted '__proto__' in a JS
+  // object literal still sets the prototype — the fixture itself would lose
+  // the key it exists to test.
+  await fs.writeFile(path.join(dir, MANIFEST_NAME),
+    '{"schema":1,"skills":{"demo-craft":{"tier":"craft","pathway":"engine",'
+    + `"files":{"SKILL.md":"${'a'.repeat(64)}","__proto__":"${'b'.repeat(64)}"}}}}`);
+  const mf = await readManifest(dir);
+  const keys = Object.keys(mf.skills['demo-craft'].files);
+  assert.deepEqual(keys.sort(), ['SKILL.md', '__proto__']);
+});
+
+test('a skill named __proto__ is a recorded entry, not a prototype', async () => {
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME),
+    '{"schema":1,"skills":{"__proto__":{"tier":"craft","pathway":"engine",'
+    + `"files":{"SKILL.md":"${'a'.repeat(64)}"}}}}`);
+  const mf = await readManifest(dir);
+  assert.ok(Object.keys(mf.skills).includes('__proto__'));
 });

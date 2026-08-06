@@ -24,8 +24,22 @@ export function emptyManifest() {
  * was cause a skip. Retirement made it a delete instruction, executed
  * verbatim, and a recorded `..` took the whole skills directory.
  */
-function contained(rel) {
-  if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel)) return false;
+export function contained(rel) {
+  if (typeof rel !== 'string' || rel === '') return false;
+  // A manifest travels between machines, so a key carries one separator: `/`.
+  // `walk` records it, and every check here reads it. Where `path.sep` is `\`,
+  // a backslash key would be one component to these checks and two to
+  // `path.join`, so `..\victim` walks out of the tree with no `..` component
+  // to find. The colon is Win32's other resolver hazard: `C:victim` is
+  // relative to another drive's working directory, and `SKILL.md:payload` is
+  // an alternate data stream on SKILL.md. Every one of these spellings means
+  // something different to the one resolver that treats it specially, so all
+  // of them are refused rather than translated — on every platform, because a
+  // manifest written on one may be read on another. The one translation that
+  // does happen lives in readManifest, which rewrites a legacy path.join key
+  // before this check runs. A backslash that survives to here is refused.
+  if (rel.includes('\\') || rel.includes(':')) return false;
+  if (path.posix.isAbsolute(rel)) return false;
   // **The key must already be in normal form.** Every consumer joins the RAW
   // key, so a key that normalization would change is a key whose text and whose
   // effect disagree — and every containment escape found on this pull request
@@ -37,32 +51,26 @@ function contained(rel) {
   // Four review rounds went into rejecting those one shape at a time, and each
   // round found another shape. This states the rule instead: the recorded text
   // is the resolved path, or the manifest is refused.
-  //
-  // It settles the separator question too. Where `path.sep` is `\`, the key
-  // `link/file` is not in normal form, so it is refused rather than read as one
-  // component by a check that splits on `path.sep` and as two by `path.join` —
-  // which would walk a symlinked `link` that no ancestor check had inspected.
-  const norm = path.normalize(rel);
+  const norm = path.posix.normalize(rel);
   if (norm !== rel) return false;
   // Normal form is not by itself containment. `..`, `.` and `a/` are all
   // already normal, and none of them names a file below this directory.
-  if (norm.split(path.sep).includes('..')) return false;
-  if (norm === '.' || norm.endsWith(path.sep)) return false;
+  const parts = norm.split('/');
+  if (parts.includes('..')) return false;
+  if (norm === '.' || norm.endsWith('/')) return false;
   // Normal form is not enough for a second reason: `path.normalize` is not the
   // resolver the filesystem uses. Win32 strips trailing spaces and periods from
-  // a path component and `path.normalize` keeps them, so a key of `.. \victim`
+  // a path component and `path.normalize` keeps them, so a key of `.. /victim`
   // is already normal, has no component equal to `..`, and is still resolved
   // through the parent directory. Any component whose spelling would be trimmed
   // is ambiguous between our check and the resolver, so it is refused rather
-  // than interpreted. [REPORTED — the Win32 trimming rule is documented
-  // behaviour; this repository has never run its tests on Windows.]
-  return !norm.split(path.sep).some((part) => /[ .]+$/.test(part));
+  // than interpreted.
+  return !parts.some((part) => /[ .]+$/.test(part));
 }
 
 /** A skill name is one path segment, because it is joined as one. */
 function nameContained(name) {
-  return contained(name) && !name.includes('/') && !name.includes(path.sep)
-    && name !== '.';
+  return contained(name) && !name.includes('/') && name !== '.';
 }
 
 /**
@@ -137,6 +145,50 @@ function checkContained(manifest, targetDir) {
   return manifest;
 }
 
+/**
+ * Releases up to 0.2.0 built keys with path.join, so a Windows install
+ * recorded agents\openai.yaml. Refusing that spelling would strand the
+ * install: every command reads the manifest, so not even uninstall could
+ * clean it up. The read rewrites the separator instead, and the rewritten
+ * manifest faces the same containment gate as any other — an escape spelled
+ * with backslashes is refused after the rewrite, exactly as it is spelled
+ * with slashes. Two keys that rewrite onto one another are refused too,
+ * because a silent merge would drop a recorded hash.
+ *
+ * The rewrite assumes every backslash key is a legacy Windows spelling. A
+ * pre-0.2.1 POSIX install of a file literally named a\b — a legal POSIX
+ * name — is misread as the nested path a/b by this assumption, and the
+ * manifest cannot say which platform wrote it. The trade is deliberate: no
+ * skill this repository ever shipped carries such a name, install now
+ * refuses to record one, and the alternative — refusing the ambiguous
+ * manifest — strands every real legacy Windows install to protect a
+ * population that is empty.
+ */
+function migrateLegacyKeys(manifest, targetDir) {
+  if (!manifest?.skills) return manifest;
+  // Built through Object.fromEntries, never by assignment, because
+  // `__proto__` is a legal filename and a legal directory name. Assignment
+  // into an object literal sets the prototype instead of creating a property,
+  // and setting a prototype to a string is a silent no-op — the key vanishes,
+  // and uninstall can never reach the file. fromEntries defines the property,
+  // so the key survives.
+  const skills = Object.entries(manifest.skills).map(([name, entry]) => {
+    const pairs = [];
+    const seen = new Set();
+    for (const [rel, hash] of Object.entries(entry?.files ?? {})) {
+      const key = rel.replaceAll('\\', '/');
+      if (seen.has(key)) {
+        throw new Error(
+          `Manifest in ${targetDir} records "${key}" twice, once per separator.`);
+      }
+      seen.add(key);
+      pairs.push([key, hash]);
+    }
+    return [name, { ...entry, files: Object.fromEntries(pairs) }];
+  });
+  return { ...manifest, skills: Object.fromEntries(skills) };
+}
+
 export async function readManifest(targetDir) {
   const abs = path.join(targetDir, MANIFEST_NAME);
   if (await regularOrAbsent(abs, targetDir) === 'absent') return emptyManifest();
@@ -165,7 +217,8 @@ export async function readManifest(targetDir) {
   } finally {
     await fh.close();
   }
-  return checkContained(checkShape(JSON.parse(raw), targetDir), targetDir);
+  return checkContained(
+    migrateLegacyKeys(checkShape(JSON.parse(raw), targetDir), targetDir), targetDir);
 }
 
 /**
