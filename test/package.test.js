@@ -27,6 +27,7 @@ const npm = (args, options) => run(
   onWindows ? args.map((a) => `"${a}"`) : args,
   { ...options, shell: onWindows },
 );
+
 test('the packed artifact serves every advertised command', async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'stylewright-pack-'));
   t.after(() => fs.rm(tmp, { recursive: true, force: true }));

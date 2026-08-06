@@ -52,9 +52,9 @@ jobs:
       fail-fast: false
       matrix:
         # Both ends of the supported range, because Node's own behaviour moves
-        # inside it: releases after 20.11.0 refuse to spawn a `.cmd` without a
-        # shell, and `npm` is `npm.cmd` here. One version would test one side
-        # of that refusal.
+        # inside it: a release above the floor began refusing to spawn a `.cmd`
+        # without a shell, and `npm` is `npm.cmd` here. One version would test
+        # one side of that refusal.
         node: ['20.11.0', '24']
     steps:
       - uses: actions/checkout@v7
