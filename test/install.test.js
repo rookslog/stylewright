@@ -1176,3 +1176,17 @@ test('a bad name in a later skill leaves no earlier skill half-installed', {
   assert.ok(!(await exists(path.join(target, 'good-craft'))));
   assert.ok(!(await exists(path.join(target, MANIFEST_NAME))));
 });
+
+test('a file at the manifest staging name is refused, never deleted', async () => {
+  // Holding the lock proves no command is active now — not that an existing
+  // file at this name is a killed run's. Deleting on that guess took a
+  // user-created file silently.
+  const target = await tmp();
+  const tmpFile = path.join(target, `${MANIFEST_NAME}.tmp`);
+  await fs.mkdir(target, { recursive: true });
+  await fs.writeFile(tmpFile, 'mine, not yours\n');
+  await assert.rejects(
+    () => installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW }),
+    /is in the way/);
+  assert.equal(await fs.readFile(tmpFile, 'utf8'), 'mine, not yours\n');
+});

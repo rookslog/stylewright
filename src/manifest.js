@@ -436,14 +436,27 @@ export async function writeManifest(targetDir, manifest, expected) {
  * run that was writing would have held that first.
  */
 export async function clearStaleWrite(targetDir) {
-  await fs.rm(tmpPath(path.join(targetDir, MANIFEST_NAME)), { force: true })
-    // `force` covers a path that is not there. It does not cover a path whose
-    // PARENT is a file rather than a directory, which is a target the user has
-    // something else at — nothing of ours is under it, so there is nothing to
-    // clear, and `uninstall` reports the skill as not installed as it should.
+  const tmp = tmpPath(path.join(targetDir, MANIFEST_NAME));
+  // Refused, never deleted. Holding the lock proves no command is active NOW.
+  // It does not prove an existing file at this name is a killed run's
+  // leavings rather than the user's own — and a genuine killed run also left
+  // its lock behind, so the person who removed that lock is already cleaning
+  // by hand and can take this named file with it. Deleting on the guess took
+  // a user-created file silently, which is the one thing this tool must
+  // never do.
+  const state = await destinationState(tmp)
+    // A path whose PARENT is a file rather than a directory is a target the
+    // user has something else at — nothing of ours is under it, so there is
+    // nothing in the way, and `uninstall` reports the skill as not installed
+    // as it should.
     .catch((err) => {
       if (err.code !== 'ENOTDIR') throw err;
+      return 'absent';
     });
+  if (state === 'absent') return;
+  throw new Error(
+    `${tmp} is in the way. A killed run can leave it, and so can you, and this `
+    + 'tool cannot tell which. Remove it and run again.');
 }
 
 /**

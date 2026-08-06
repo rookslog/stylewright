@@ -1,7 +1,8 @@
+import fs from 'node:fs/promises';
 import { PLATFORMS, SCOPES, resolveTarget } from './targets.js';
 import { readManifest } from './manifest.js';
-import { isLocked } from './lock.js';
-import { installSkills } from './install.js';
+import { isLocked, withTargetLock, isHeldError } from './lock.js';
+import { installHeld } from './install.js';
 import { loadCatalog } from './catalog.js';
 
 function validateNames(given, known, label) {
@@ -121,16 +122,46 @@ export async function updateSkills({
     // named, because the files it left belong to no skill entry at all.
     if (!wanted.length && !install.pending.length) continue;
 
-    // A skill can be renamed or withdrawn between releases. Its files stay on
-    // disk and its manifest row stays valid, so report it rather than throwing.
-    const orphaned = wanted.filter((n) => !known.has(n));
-    const fresh = wanted.filter((n) => known.has(n));
-
-    const res = (fresh.length || install.pending.length)
-      ? await installSkills({ repoRoot, targetDir: install.targetDir, names: fresh, now, force })
-      : { installed: [], skipped: [], recovered: [], cleared: [] };
-
-    results.push({ ...install, ...res, orphaned });
+    // The decision and the act share one held lock. The snapshot above was
+    // read without one, so a concurrent uninstall can complete between that
+    // read and the mutation — and acting on the snapshot then reinstalls the
+    // skill the user just removed. Everything decided below is decided from a
+    // fresh read taken while the directory is held.
+    let res;
+    try {
+      res = await withTargetLock(install.targetDir, async () => {
+        const manifest = await readManifest(install.targetDir);
+        let wantedNow = Object.keys(manifest.skills);
+        if (names?.length) wantedNow = wantedNow.filter((n) => names.includes(n));
+        const pendingNow = Object.keys(manifest.pending ?? {});
+        // A skill can be renamed or withdrawn between releases. Its files stay
+        // on disk and its manifest row stays valid, so report it rather than
+        // throwing.
+        const orphaned = wantedNow.filter((n) => !known.has(n));
+        const fresh = wantedNow.filter((n) => known.has(n));
+        if (!fresh.length && !pendingNow.length) {
+          return {
+            installed: [], skipped: [], recovered: [], cleared: [], orphaned, emptied: false,
+          };
+        }
+        const held = await installHeld({
+          repoRoot, targetDir: install.targetDir, names: fresh, now, force,
+        });
+        return { ...held, orphaned };
+      });
+    } catch (err) {
+      // Held is a skip, not a failure: the pre-loop probe asked the same
+      // question, and a run that took the directory in between gets the same
+      // answer it would have gotten a moment earlier.
+      if (!isHeldError(err)) throw err;
+      locked.push(install.targetDir);
+      continue;
+    }
+    const { emptied, ...rest } = res;
+    // After the lock is released, because the lock file lives in this
+    // directory — the same ordering installSkills keeps for itself.
+    if (emptied) await fs.rmdir(install.targetDir).catch(() => {});
+    results.push({ ...install, ...rest });
   }
   return { results, unmatched, locked };
 }

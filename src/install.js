@@ -166,6 +166,25 @@ export async function installSkills(options) {
   return result;
 }
 
+/**
+ * The same install, for a caller that already holds the target lock.
+ *
+ * `update` must decide what to refresh and refresh it under one held lock,
+ * because a work list read outside the lock can name a skill that an
+ * uninstall removes before the lock is taken — and acting on that list
+ * reinstalls what the user just removed. Taking the lock here would deadlock
+ * that caller, so this returns `emptied` for the caller to act on after its
+ * own lock is released.
+ */
+export async function installHeld(options) {
+  const catalog = await loadCatalog(options.repoRoot);
+  const byName = new Map(catalog.map((s) => [s.name, s]));
+  for (const name of options.names) {
+    if (!byName.has(name)) throw new Error(`Unknown skill "${name}".`);
+  }
+  return installUnderLock(byName, options);
+}
+
 async function installUnderLock(byName, {
   targetDir, names, pathway = 'engine', now, force = false,
 }) {

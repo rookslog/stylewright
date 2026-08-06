@@ -228,3 +228,20 @@ test('a statement is added and withdrawn without mutating the manifest', async (
   const two = addPending(addPending(before, 'a', { x: '1' }), 'b', { y: '2' });
   assert.deepEqual(clearPending(two, 'a').pending, { b: { y: '2' } });
 });
+
+test('a pending skill named constructor is judged by its record, not the prototype', async () => {
+  // `constructor` satisfies the skill-name rule, and `manifest.skills[name]`
+  // finds the prototype's member for it, so the retention condition read an
+  // absent record as present and kept the emptied directory.
+  const target = await tmp();
+  const dir = path.join(target, 'constructor');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'SKILL.md'), 'half-installed\n');
+  const manifest = {
+    ...emptyManifest(),
+    pending: { constructor: { 'SKILL.md': sha('half-installed\n') } },
+  };
+  const done = await recoverPending(target, manifest);
+  assert.deepEqual(done.cleared, ['constructor']);
+  assert.ok(!(await exists(dir)), 'the emptied directory must be pruned');
+});

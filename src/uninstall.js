@@ -102,7 +102,10 @@ async function remove({ targetDir, names, force = false }) {
   const skills = { ...manifest.skills };
 
   for (const name of names) {
-    const entry = skills[name];
+    // `hasOwn`, because `constructor` is a legal skill name and the bare
+    // lookup would hand this loop the prototype's member — an uninstall of a
+    // skill that was never installed, proceeding on a function as its entry.
+    const entry = Object.hasOwn(skills, name) ? skills[name] : undefined;
     if (!entry) {
       // Unless this command has just cleared what an interrupted run left under
       // that name. It was there, and this command dealt with it, so reporting

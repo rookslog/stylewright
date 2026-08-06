@@ -449,19 +449,25 @@ test('an uninstall keeps a skill another run installed while it worked', async (
   }
 });
 
-test('a manifest write a killed run left half done does not stop a removal', async () => {
-  // The temporary file is the exclusion on the manifest, so one left behind
-  // refuses every later write — including this command's, which by then has
-  // already deleted the files and can only leave the record claiming them. This
-  // command holds the directory, so that file can only be a killed run's.
+test('a manifest write a killed run left half done is refused by name, not deleted', async () => {
+  // This test once asserted the opposite: that the command deletes the file
+  // and carries on, on the argument that holding the lock means the file can
+  // only be a killed run's. A review broke the inference — the lock proves no
+  // command is active NOW, not who wrote an existing file, and the user can
+  // put a file at this name too. The refusal comes before any deletion, so
+  // nothing is removed while the record still claims it, and the message
+  // names the one file to remove.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
-  await fs.writeFile(path.join(target, `${MANIFEST_NAME}.tmp`), 'half a manifest');
+  const half = path.join(target, `${MANIFEST_NAME}.tmp`);
+  await fs.writeFile(half, 'half a manifest');
 
-  const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
-
-  assert.deepEqual(res.removed, ['demo-craft']);
-  assert.ok(!(await exists(target)), 'the record kept up with the deletion');
+  await assert.rejects(
+    () => uninstallSkills({ targetDir: target, names: ['demo-craft'] }),
+    /is in the way/);
+  assert.equal(await fs.readFile(half, 'utf8'), 'half a manifest');
+  assert.ok(await exists(path.join(target, 'demo-craft', 'SKILL.md')),
+    'nothing is deleted while the write is refused');
 });
 
 test('an uninstall whose only work was the cleanup leaves nothing behind', async () => {
@@ -523,4 +529,14 @@ test('an uninstall clears what an interrupted install left', async () => {
   assert.deepEqual(res.recovered, ['demo-standard/SKILL.md']);
   assert.ok(!(await exists(path.join(target, 'demo-standard'))));
   assert.ok(!(await exists(target)), 'and the emptied directory goes with the last skill');
+});
+
+test('a skill named constructor that was never installed is missing, not an entry', async () => {
+  // The bare lookup handed the loop the prototype's `constructor` as the
+  // entry, so an uninstall of a never-installed name proceeded on a function.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  const res = await uninstallSkills({ targetDir: target, names: ['constructor'] });
+  assert.deepEqual(res.missing, ['constructor']);
+  assert.deepEqual(res.removed, []);
 });

@@ -97,7 +97,12 @@ export function clearPending(manifest, name) {
  */
 export async function discardStated(targetDir, name, stated, manifest) {
   const destDir = path.join(targetDir, name);
-  const recorded = manifest.skills?.[name]?.files ?? {};
+  // `hasOwn`, because `constructor` is a legal skill name and a bare lookup
+  // finds the prototype's member for it — an entry that does not exist reads
+  // as one that does. The same class as a file named `__proto__`, one
+  // property up.
+  const recorded = Object.hasOwn(manifest.skills ?? {}, name)
+    ? manifest.skills[name]?.files ?? {} : {};
   const rels = Object.keys(stated ?? {});
   const { baseBlocked, reachable } = await reachability(destDir, rels);
   if (baseBlocked) return []; // The skill directory is not ours. Nothing under it is either.
@@ -129,8 +134,11 @@ export async function discardStated(targetDir, name, stated, manifest) {
   }
   // Only when no record keeps the directory alive. A skill the manifest still
   // holds keeps its directory even when every file under it went, because the
-  // record is what the next install restores from.
-  if (!manifest.skills?.[name]) await pruneEmpty(destDir, targetDir);
+  // record is what the next install restores from. `hasOwn` for the same
+  // reason as above: a pending skill named `constructor` has no record, and
+  // the inherited property made this condition say it did, so its emptied
+  // directory was retained.
+  if (!Object.hasOwn(manifest.skills ?? {}, name)) await pruneEmpty(destDir, targetDir);
   return removed.sort();
 }
 

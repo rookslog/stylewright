@@ -39,6 +39,18 @@ export async function isLocked(targetDir) {
   return fs.stat(path.join(targetDir, LOCK_NAME)).then(() => true, () => false);
 }
 
+/**
+ * A refusal caused by another run holding the directory, carried as a code so
+ * a caller can tell it from every other failure. `update` skips a held
+ * directory and reports it, and matching on the message is the drift the
+ * STALE code in manifest.js already refused once.
+ */
+const HELD = 'ESTYLEWRIGHTHELD';
+
+export function isHeldError(err) {
+  return err?.code === HELD;
+}
+
 export async function withTargetLock(targetDir, run, { create = true } = {}) {
   const abs = path.join(targetDir, LOCK_NAME);
   // `stat`, which follows a link, and not `lstat`. A target directory that is a
@@ -58,9 +70,11 @@ export async function withTargetLock(targetDir, run, { create = true } = {}) {
     await fs.writeFile(abs, '', { flag: 'wx' });
   } catch (err) {
     if (err.code !== 'EEXIST') throw err;
-    throw new Error(
+    const held = new Error(
       `Another stylewright command is working in ${targetDir}. Run again when it `
       + `has finished, or remove ${abs} if no other run is active.`);
+    held.code = HELD;
+    throw held;
   }
   try {
     return await run();
