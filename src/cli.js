@@ -211,7 +211,7 @@ export async function run(argv, ctx) {
       say('ground needs --check.');
       return 2;
     }
-    const all = await checkAll(repoRoot);
+    const all = await checkAll(repoRoot, { now });
     const names = flags.all ? Object.keys(all) : flags.skill;
     if (!names.length) {
       say('ground needs --all or --skill <name>.');
@@ -227,11 +227,16 @@ export async function run(argv, ctx) {
       say(`Available: ${Object.keys(all).sort().join(', ')}.`);
       return 2;
     }
+    // Every finding prints. Only an error decides the exit code. The audit
+    // coverage of a matrix is something a reader must see on every run and
+    // nothing a gate can act on, because no run of this program can raise it.
+    // Counting the printed lines instead made the two indistinguishable, and
+    // the number that says how little has been checked would have failed CI.
     let failed = 0;
     for (const name of names) {
       for (const f of all[name] ?? []) {
         say(`${name}: ${f.code}: ${f.message}`);
-        failed++;
+        if (f.level !== 'note') failed++;
       }
     }
     if (failed) {

@@ -64,6 +64,76 @@ thing outside the check, because it is metadata for the harness.
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
 
+No check here opens a source, so no check can say whether a `G` row reads its
+rule correctly. Each `G` row therefore records its own audit, in a sixth cell.
+The cell says `unaudited`, or it carries the date a person read that row
+against the source and a digest of the four cells they read. Every other kind
+of row leaves the cell empty, for the same reason its rule cell is empty. The
+cell itself is never absent. A row without it is refused whatever kind it is,
+because coalescing an absent cell with an empty one let a matrix of `E` and
+`N` rows drop the column and stay clean.
+
+Three things are defects. A date written for a reading nobody did is the worst
+of them, and it is the `G` row defect in its newest form. A digest that no
+longer matches its row is the second, and the check catches that one. A change
+that makes the checker fill the cell is the third, because the cell records a
+person and nothing else can. ADR-0018 records the decision.
+
+The date is a UTC day, and the check refuses one later than the day it runs
+on. It takes that day from the command line, which is where every other moment
+this program needs comes from. `checkSkill` throws `InvalidMoment` when the
+caller omits the day, rather than defaulting, because a default turns the rule
+off for whoever forgot the argument. It throws on a day the calendar does not
+carry as well. A bound that is not a day bounds nothing, and `9999-99-99`
+sorted above every real date and let a future audit through.
+
+The moment is written in UTC: a bare day, or a day and a bounded time ending in
+`Z` or a zero offset. A non-zero offset names one day where it was written and
+another in UTC, and the check read the written one. A zero offset is UTC and is
+admitted. The time is bounded because `24:00:00Z` is a legal spelling of
+midnight ENDING that day, so its written day put the bound a day early.
+
+**The matrix table is checked, not just its rows.** The header and the
+delimiter each carry six columns, and the sixth heading is `Audited`. Delete
+either line, cut either to five cells, or rename that heading, and GFM drops
+the rendered column or stops the block being a table at all. The person loses
+the audit record while the check reports it intact, so the column the reader
+sees is the column that counts. A seventh cell is refused for the mirror
+reason: GFM drops it, so text there is seen by no reader and read by no check.
+
+A row must begin at column 0. A row indented four spaces or fenced is an
+example to a reader and was a recorded audit to the checker. Fenced content is
+skipped, and any other line that looks like a row and is not read is named as
+`unread-matrix-row` rather than dropped. Dropping one shrank the coverage
+DENOMINATOR, so the count described fewer rows than the file carried.
+
+The table is contiguous. The header sits on the line directly above the
+delimiter, and the rows run unbroken from the line directly below it. GFM ends
+a table at the first blank line, heading, or thematic break, so a scattered
+table is no table to the reader while every row still parsed here. The check
+binds one table, at the FIRST delimiter, and names a later one rather than
+rebinding to it.
+
+When any of that fails, the run prints `not counted: the matrix table is
+broken` in place of the ratio. A count taken over a table the reader cannot see
+reports on a file nobody has, which is this decision's own defect one level
+out. A wrong number is worse than no number.
+
+Two legal GFM shapes are refused as house style, and the message names the real
+cause rather than an artifact: a row that does not end in a pipe, because the
+text after the last pipe is dropped and the column count that followed was
+nonsense, and an indented table, where the earlier message said the file had no
+table at all.
+
+`readMatrix` is the matrix's own reader. It is not the `SKILL.md` extractor,
+and the two share no grammar, so a shape refused there says nothing about
+issues 37 and 69.
+
+`ground --check` prints the audited count for each matrix beside its verdict.
+That line is a note, so it fails nothing. Do not promote it to an error, and do
+not remove it to quiet the output. A green run over a matrix nobody has read
+is what issue 40 reports, and the count is the answer to it.
+
 The checker reads Markdown a line at a time, and it models no container. So it
 states the forms it reads and refuses every line outside them. Those forms are
 a blank line, any construct at column 0, a line that continues the paragraph

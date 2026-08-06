@@ -4,28 +4,138 @@ import crypto from 'node:crypto';
 import { sections, indentOf, isIndented } from './markdown.js';
 import { loadCatalog } from './catalog.js';
 
-export function parseMatrix(text) {
-  const rows = [];
-  for (const line of text.split('\n')) {
-    if (!/^\s*\|/.test(line)) continue;
-    // Split on UNESCAPED pipes only. Without this a paragraph containing a
-    // pipe — guidance about a shell pipeline, or about Markdown itself — could
-    // not be reproduced in any cell, so `ground --check` stayed red for valid
-    // content and no row could fix it.
-    const cells = line.split(/(?<!\\)\|/).slice(1, -1)
-      .map((c) => c.trim().replace(/\\\|/g, '|'));
-    if (cells.length < 5) continue;
-    if (/^-+$/.test(cells[0].replace(/[\s:]/g, ''))) continue;
-    if (/^id$/i.test(cells[0])) continue;
-    rows.push({
-      id: cells[0],
-      guidance: cells[1],
-      anchor: cells[2],
-      rule: cells[3],
-      location: cells[4],
+/** The columns a matrix carries, in order. The sixth is the audit. */
+export const MATRIX_COLUMNS = ['ID', 'Our guidance', 'Our anchor', 'Source rule', 'Source location', 'Audited'];
+
+// Split on UNESCAPED pipes only. Without this a paragraph containing a pipe —
+// guidance about a shell pipeline, or about Markdown itself — could not be
+// reproduced in any cell, so `ground --check` stayed red for valid content and
+// no row could fix it.
+const cellsOf = (line) => line.split(/(?<!\\)\|/).slice(1, -1)
+  .map((c) => c.trim().replace(/\\\|/g, '|'));
+
+const MATRIX_FENCE = /^(\s*)(`{3,}|~{3,})/;
+/** Anything a reader would take for a table row, wherever it sits. */
+const LOOKS_LIKE_ROW = /^\s*>?\s*\|/;
+const IS_DELIMITER = (cells) => cells.length > 0
+  && cells.every((c) => /^:?-+:?$/.test(c.replace(/\s/g, '')));
+
+/**
+ * The matrix table, read as a reader sees it.
+ *
+ * This used to take any line beginning with optional space and a pipe, and to
+ * skip the header and the delimiter by pattern. Both halves leaked.
+ *
+ * The header and the delimiter were skipped rather than checked, so deleting
+ * either one, or cutting either to five cells, or renaming the sixth heading
+ * to `Notes`, left every row parsing and the coverage note printing full
+ * marks. In GFM each of those either drops the rendered column or stops the
+ * block being a table at all, so the person reading the matrix loses the audit
+ * record while the check reports it intact. The record exists for the person,
+ * so the column they see is the column that counts.
+ *
+ * A row inside a fenced block or indented four spaces is an EXAMPLE to a
+ * reader and was a row to the checker, which is the same disagreement pointing
+ * the other way: a code sample could carry a recorded audit. Fenced content is
+ * skipped, and a row that does not begin at column 0 is refused by name.
+ *
+ * A row inside a blockquote fell out of the parse entirely, which shrank the
+ * DENOMINATOR — `1 of 1` printed over a matrix visibly carrying two G rows.
+ * A line that looks like a row and is not read is now named rather than
+ * dropped, so the count cannot quietly describe fewer rows than the file has.
+ *
+ * This reader is the matrix's own. It is not the `SKILL.md` extractor, and the
+ * two do not share a grammar, so a shape refused here says nothing about
+ * issues 37 and 69.
+ */
+export function readMatrix(text) {
+  const read = [];
+  const refusals = [];
+  const AT_ZERO = 'Write it at column 0, or move it into a fenced block if it is an example.';
+  let fence = null;
+  let opened = 0;
+  for (const [i, line] of text.split('\n').entries()) {
+    const marker = MATRIX_FENCE.exec(line);
+    if (fence) {
+      if (marker && marker[2][0] === fence[0] && marker[2].length >= fence.length) fence = null;
+      continue;
+    }
+    if (marker) { fence = marker[2]; opened = i + 1; continue; }
+    if (!LOOKS_LIKE_ROW.test(line)) continue;
+    if (/^\s*>/.test(line)) {
+      refusals.push({ line: i + 1, shape: 'a table row inside a blockquote', remedy: AT_ZERO });
+      continue;
+    }
+    if (/^\s/.test(line)) {
+      refusals.push({ line: i + 1, shape: 'a table row that does not begin at column 0', remedy: AT_ZERO });
+      continue;
+    }
+    // A row that does not end in a pipe is legal GFM and is not house style.
+    // It matters here because `cellsOf` drops the text after the last pipe, so
+    // an unclosed row reported "carries 5 columns, not 6" — a count that is an
+    // artifact of the reading rather than the author's mistake.
+    read.push({ line: i + 1, cells: cellsOf(line), closed: /(?<!\\)\|\s*$/.test(line) });
+  }
+  // A fence nobody closed swallows the rest of the file, so every row below it
+  // leaves the parse at once. That is the silent denominator shrink again, by
+  // a different door: the count fell from two G rows to none with nothing
+  // saying why.
+  if (fence) {
+    refusals.push({
+      line: opened,
+      shape: 'a fenced block that is never closed',
+      remedy: `Close it with ${fence[0].repeat(fence.length)}, or the rest of the file is inside it.`,
     });
   }
-  return rows;
+
+  const at = read.findIndex((l) => IS_DELIMITER(l.cells));
+  if (at === -1) {
+    return { header: null, delimiter: null, rows: [], strays: read, refusals };
+  }
+
+  // Contiguity. Every line above recorded where it sits and nothing compared
+  // the numbers, so a table could be scattered down the file and still parse:
+  // a blank line or a paragraph between the header and the delimiter, a header
+  // twelve lines up, a blank line under the delimiter, or a heading or a
+  // thematic break between two body rows. GFM ends the table at every one of
+  // those. The rows kept parsing and the coverage note kept printing, over a
+  // file where the reader sees no table at all.
+  const delimiter = read[at];
+  const above = at > 0 ? read[at - 1] : null;
+  const header = above && above.line === delimiter.line - 1 ? above : null;
+  const rows = [];
+  const strays = [];
+  let expected = delimiter.line + 1;
+  for (const entry of read.slice(at + 1)) {
+    if (entry.line === expected && !IS_DELIMITER(entry.cells)) {
+      rows.push(entry);
+      expected += 1;
+    } else strays.push(entry);
+  }
+  // A detached header is not part of the table, so it is a stray too, and it
+  // is reported as one rather than silently becoming the row above nothing.
+  if (above && !header) strays.unshift(above);
+  return { header, delimiter, rows, strays, refusals, detached: Boolean(above && !header) };
+}
+
+export function parseMatrix(text) {
+  return readMatrix(text).rows.map(({ cells }) => ({
+    id: cells[0],
+    guidance: cells[1],
+    anchor: cells[2],
+    rule: cells[3],
+    location: cells[4],
+    // An absent sixth cell is NOT an empty one. Coalescing the two here made
+    // the column optional for any matrix without a G row: delete the header,
+    // the delimiter and every cell from a matrix of E and N rows and the
+    // check stayed clean, because each missing cell read as an empty audit
+    // and no G row was left to complain. `undefined` reaches the check and
+    // the check names it.
+    audit: cells[5],
+    // Everything past the sixth cell. GFM drops it from the render, so text
+    // here is seen by no reader and was read by no check.
+    extra: cells.slice(6),
+  }));
 }
 
 /**
@@ -71,6 +181,156 @@ const digest = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(
  * which is what every other row already does.
  */
 const DESIGNATOR = /^\[(?:table|code) [0-9a-f]{8}\]$/;
+
+/**
+ * What a `G` row records about its own audit.
+ *
+ * A `G` row claims the authority of a source. No program here can open that
+ * source, so no program can confirm the row reads it correctly. The check
+ * confirms that a rule is cited and stops there, and a clean run therefore
+ * said nothing at all about whether the citation is true. Reading a green
+ * check as an audited matrix is the gap issue 40 names.
+ *
+ * So the row carries the audit itself. `unaudited` is the honest default and
+ * the state every row starts in. The other spelling is a date and a digest,
+ * which together say that a person compared this row against the source on
+ * that day.
+ *
+ * The digest names the row's CONTENTS, for the reason `[table 8f3a2b1c]`
+ * does. A bare date beside a row id would survive a rewrite of every other
+ * cell in that row, so an audit of words nobody audited would keep reading as
+ * current. Edit the guidance, the anchor, the rule or the location and the
+ * audit goes stale, which is what every other row in this file already does
+ * when the thing it describes moves underneath it.
+ *
+ * The cell names no auditor. The commit that wrote it does, and one record of
+ * who is enough.
+ */
+const UNAUDITED = 'unaudited';
+const AUDIT = /^(\d{4})-(\d{2})-(\d{2}) ([0-9a-f]{8})$/;
+
+const LEAP = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+
+/**
+ * Whether the three numbers name a day that exists. `2026-02-31` parses under
+ * the pattern above and names nothing, and an audit dated on a day that never
+ * happened is not a record of anything.
+ *
+ * This counts days rather than building a date, because no module under `src/`
+ * may reach the clock and a constructed date is one argument away from it.
+ */
+function isRealDate(year, month, day) {
+  if (month < 1 || month > 12 || day < 1) return false;
+  const lengths = [31, LEAP(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= lengths[month - 1];
+}
+
+/**
+ * The digest an audit of this row would carry. Every cell the audit is a
+ * claim about goes in: our guidance, where it sits, the rule it cites and
+ * where that rule lives. The id stays out, because renumbering a matrix
+ * rewrites no claim.
+ */
+export function rowDigest(row) {
+  return digest([row.guidance, row.anchor, row.rule, row.location].join('\n'));
+}
+
+/**
+ * The UTC day the checker is running on, from the time the command line hands
+ * in. No module here reads a clock, so the day arrives as a parameter like
+ * every other moment this program needs.
+ *
+ * A caller that omits it is refused rather than defaulted. The one thing this
+ * value does is reject an audit dated in the future, and a default would turn
+ * that check off for whoever forgot the argument. A gate that fails open on a
+ * missing argument is the defect `ground --check` already carries a fix for,
+ * one floor down.
+ *
+ * The day it names must exist, by the same rule the audit date obeys. This
+ * read the first ten characters and asked no more, so `9999-99-99` arrived as
+ * the upper bound, every real date sorted below it, and an audit dated
+ * `9999-12-31` came back counted as read. A bound that is not a day cannot
+ * bound anything, and applying the calendar to one of these dates and not the
+ * other is the same check-narrower-than-the-claim shape one argument over.
+ *
+ * The tail after the day is the time, which nothing here reads. It may be
+ * absent, and it may not be arbitrary text, because text that is not a
+ * timestamp is a caller passing something other than a moment.
+ *
+ * The moment must be UTC. An offset timestamp names a day in one zone and a
+ * different day in UTC, and this read the written day: `2026-08-07T00:30:00
+ * +05:00` is still 6 August in UTC, so an audit dated the 7th passed and was
+ * counted as read. Normalising an offset needs date arithmetic in a module
+ * that may not build a date, and the one caller hands in `toISOString`, which
+ * is always UTC. So the grammar states the forms it reads and refuses the
+ * rest, which is how this file already treats Markdown.
+ *
+ * A ZERO offset is UTC, and the first version of that rule refused `+00:00`
+ * and `+0000` on a day-shifting warrant that cannot apply to an offset of no
+ * hours. Those are admitted. A non-zero offset still is not, because the
+ * refusal is what stops the day moving.
+ *
+ * The time is bounded rather than waved through. `24:00:00Z` is a legal ISO
+ * spelling of MIDNIGHT ENDING that day, so reading its written day put the
+ * bound one day early and over-refused an honest audit, and `99:99:99Z` was
+ * simply accepted. Neither is a moment this program should guess at.
+ *
+ * A leap second is `23:59:60` and nothing else. Allowing `:60` after any
+ * minute admitted 1439 times that have never existed. The fraction attaches to
+ * the SECONDS, because it sat outside that group and `12:00.500Z` — a fraction
+ * of no seconds — parsed.
+ */
+const TIME = '(?:23:59:60(?:\\.\\d+)?|(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?)';
+const ISO_DAY = new RegExp(`^(\\d{4})-(\\d{2})-(\\d{2})(?:T${TIME}(?:Z|[+-]00:?00))?$`);
+
+/**
+ * A moment this check cannot read. It carries the value and the spellings it
+ * accepts, because a refusal the caller cannot act on is worse than none.
+ *
+ * It is not a `TypeError`. The type is usually right and the shape is wrong,
+ * and every other refusal in this file is data rather than a throw. This one
+ * stays a throw because a bad bound cannot be reported as a finding without
+ * first being used as a bound.
+ */
+export class InvalidMoment extends Error {
+  constructor(value) {
+    super('`now` must be a UTC moment: a day as YYYY-MM-DD, or that day with a time ending '
+      + `in Z or a zero offset. Got ${JSON.stringify(value)}.`);
+    this.name = 'InvalidMoment';
+    this.value = value;
+  }
+}
+function dayOf(now) {
+  const stamp = typeof now === 'string' ? ISO_DAY.exec(now) : null;
+  if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
+    throw new InvalidMoment(now);
+  }
+  return `${stamp[1]}-${stamp[2]}-${stamp[3]}`;
+}
+
+/**
+ * What a row's audit cell amounts to, read once and used twice. The findings
+ * below and the coverage count above disagreed when each read the cell for
+ * itself: a stale or impossible stamp still matched the pattern, so the count
+ * called the row audited while the check called it broken.
+ *
+ * `recorded` is the only state that counts as a person having read the row.
+ */
+function auditState(row, today) {
+  const audit = row.audit;
+  if (audit === undefined) return { state: 'missing' };
+  if (!audit) return { state: 'absent' };
+  if (audit === UNAUDITED) return { state: 'unaudited' };
+  const stamp = AUDIT.exec(audit);
+  if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
+    return { state: 'malformed' };
+  }
+  const day = `${stamp[1]}-${stamp[2]}-${stamp[3]}`;
+  // Zero-padded ISO days sort as text, so this needs no date arithmetic.
+  if (day > today) return { state: 'ahead', day };
+  if (stamp[4] !== rowDigest(row)) return { state: 'stale', day };
+  return { state: 'recorded', day };
+}
 
 const PREAMBLE = '(before the first heading)';
 
@@ -362,13 +622,100 @@ export function unmodelled(skillText) {
   return extract(skillText).refusals;
 }
 
-export function checkSkill({ skillText, matrixText }) {
+export function checkSkill({ skillText, matrixText, now }) {
+  const today = dayOf(now);
   if (matrixText === null || matrixText === undefined) {
     return [{ level: 'error', code: 'no-matrix', message: 'Skill has no grounding matrix.' }];
   }
   const rows = parseMatrix(matrixText);
   const { units: stmts, refusals } = extract(skillText);
   const findings = [];
+
+  // The table itself, before any row in it. A matrix whose header or delimiter
+  // no longer carries six columns is not the file the audit record lives in,
+  // whatever its rows still say.
+  const table = readMatrix(matrixText);
+  for (const r of table.refusals) {
+    findings.push({
+      level: 'error',
+      code: 'unread-matrix-row',
+      message: `matrix line ${r.line}: ${r.shape} is not read by this check. ${r.remedy}`,
+    });
+  }
+  // An unclosed line is reported for what it is. The column count that follows
+  // from it is an artifact, so it is not reported as well.
+  const unclosed = (what, entry) => {
+    if (entry.closed) return false;
+    findings.push({
+      level: 'error',
+      code: 'matrix-row-unclosed',
+      message: `matrix line ${entry.line}: the ${what} does not end with a pipe. `
+        + 'GFM allows that and this check does not, because the text after the last '
+        + 'pipe is dropped. End the line with a pipe.',
+    });
+    return true;
+  };
+  const named = (what, entry) => {
+    if (unclosed(what, entry)) return;
+    const cells = entry.cells;
+    if (cells.length !== MATRIX_COLUMNS.length) {
+      findings.push({
+        level: 'error',
+        code: `matrix-${what}-columns`,
+        message: `the matrix ${what} carries ${cells.length} columns, not ${MATRIX_COLUMNS.length}. `
+          + `The columns are: ${MATRIX_COLUMNS.join(', ')}.`,
+      });
+      return;
+    }
+    if (what === 'header' && cells[5] !== MATRIX_COLUMNS[5]) {
+      findings.push({
+        level: 'error',
+        code: 'matrix-header-not-audited',
+        message: `the matrix names its sixth column "${cells[5]}", not "${MATRIX_COLUMNS[5]}".`,
+      });
+    }
+  };
+  if (!table.delimiter) {
+    // The cause matters more than the absence. An indented table has a
+    // delimiter the check refused above, and "no table" sent the author
+    // looking for a missing line rather than at the indentation.
+    const why = table.refusals.length
+      ? `Every line that looks like one was refused above, at line ${table.refusals.map((r) => r.line).join(', ')}.`
+      : 'A row needs a header and a delimiter directly above it.';
+    findings.push({
+      level: 'error',
+      code: 'matrix-no-table',
+      message: `the matrix has no table this check can read. ${why}`,
+    });
+  } else {
+    named('delimiter', table.delimiter);
+    if (!table.header) {
+      findings.push({
+        level: 'error',
+        code: 'matrix-no-header',
+        message: table.detached
+          ? `the matrix header does not sit directly above its delimiter on line ${table.delimiter.line}. `
+            + 'GFM ends the table at the gap, so the reader sees no table.'
+          : 'the matrix table has no header row above its delimiter.',
+      });
+    } else named('header', table.header);
+  }
+  // Anything below a gap. A second delimiter is called out on its own, because
+  // this check binds ONE table, at the first delimiter, and a later one is the
+  // shape that would make a different selection rule look reasonable.
+  for (const stray of table.strays) {
+    const second = table.delimiter && IS_DELIMITER(stray.cells);
+    findings.push({
+      level: 'error',
+      code: second ? 'matrix-second-delimiter' : 'row-outside-the-table',
+      message: second
+        ? `matrix line ${stray.line}: a second delimiter. The matrix carries one table, `
+          + `bound at the delimiter on line ${table.delimiter.line}.`
+        : `matrix line ${stray.line}: this row does not sit in the table. GFM ends a table `
+          + 'at the first blank line, heading, or break, so a row below one is not read.',
+    });
+  }
+  for (const row of table.rows) unclosed('row', row);
 
   // Refusals lead, because every finding under them rests on a reading the
   // extractor has just said it cannot make.
@@ -439,6 +786,76 @@ export function checkSkill({ skillText, matrixText }) {
         message: `${row.id}: only a G row cites a source rule.`,
       });
     }
+
+    // The audit is checked on its own, not as another branch of the chain
+    // above. A G row can both omit its rule and carry a stale audit, and both
+    // are true findings. Folding them into one chain reported whichever came
+    // first and hid the rest until it was fixed.
+    if (!kind) return;
+    const { state, day } = auditState(row, today);
+    // The column is the format, not a courtesy a G row extends. A row that
+    // does not carry the cell is refused whatever kind it is, because the
+    // alternative is a matrix that quietly drops the column the moment it
+    // cites no source.
+    if (state === 'missing') {
+      findings.push({
+        level: 'error',
+        code: 'row-missing-audit-cell',
+        message: `${row.id}: the row has no Audited cell. Every row carries six columns, `
+          + 'and only a G row fills the sixth.',
+      });
+      return;
+    }
+    // A seventh cell is read by nobody and was refused by nobody. GFM drops it
+    // from the render, so text could sit in a row that neither the checker nor
+    // the person reading the matrix ever sees.
+    if (row.extra.length) {
+      findings.push({
+        level: 'error',
+        code: 'row-has-extra-cell',
+        message: `${row.id}: the row carries ${MATRIX_COLUMNS.length + row.extra.length} columns, `
+          + `not ${MATRIX_COLUMNS.length}. Nothing reads past the sixth, and no reader sees it.`,
+      });
+    }
+    if (kind !== 'G') {
+      if (state !== 'absent') {
+        findings.push({
+          level: 'error',
+          code: 'e-row-has-audit',
+          message: `${row.id}: only a G row records an audit, because only a G row cites a source.`,
+        });
+      }
+      return;
+    }
+    const remedy = `Write \`${UNAUDITED}\`, or a date and \`${rowDigest(row)}\`.`;
+    if (state === 'absent') {
+      findings.push({
+        level: 'error',
+        code: 'g-row-no-audit',
+        message: `${row.id}: a G row records its audit. ${remedy}`,
+      });
+    } else if (state === 'malformed') {
+      findings.push({
+        level: 'error',
+        code: 'audit-malformed',
+        message: `${row.id}: "${row.audit}" is not an audit. ${remedy}`,
+      });
+    } else if (state === 'ahead') {
+      findings.push({
+        level: 'error',
+        code: 'audit-ahead-of-the-check',
+        message: `${row.id}: ${day} has not happened yet on ${today}, `
+          + `so nobody read this row that day. ${remedy}`,
+      });
+    } else if (state === 'stale') {
+      findings.push({
+        level: 'error',
+        code: 'audit-stale',
+        message: `${row.id}: the row changed since ${day}, so its audit describes other `
+          + `words. Read it against the source again and write \`${rowDigest(row)}\`, `
+          + `or write \`${UNAUDITED}\`.`,
+      });
+    }
   });
 
   stmts.forEach((s, i) => {
@@ -460,10 +877,39 @@ export function checkSkill({ skillText, matrixText }) {
     }
   });
 
+  // Last, and at a level that fails nothing. `Grounding clean.` printed over a
+  // matrix where nobody has read a single row against its source is the whole
+  // of what issue 40 reports, and a check that failed on it would be red for
+  // every matrix from the day it landed. So the run says the number out loud
+  // instead, beside the verdict, where a reader cannot mistake one for the
+  // other. A matrix with no G row claims no source, so it gets no line.
+  // A ratio computed over a table the reader cannot see is this decision's own
+  // defect one level out: it reports on a file nobody has. So when the
+  // container is broken the count is withheld rather than printed, because a
+  // wrong number here is worse than no number. It also covers the fenced row,
+  // which silently rebased the denominator to `1 of 1`.
+  const BROKEN = /^matrix-|^unread-matrix-row$|^row-outside-the-table$/;
+  const broken = findings.some((f) => BROKEN.test(f.code));
+  const sourced = rows.filter((r) => /^G-/i.test(r.id));
+  if (broken) {
+    findings.push({
+      level: 'note',
+      code: 'audit-coverage',
+      message: 'not counted: the matrix table is broken.',
+    });
+  } else if (sourced.length) {
+    findings.push({
+      level: 'note',
+      code: 'audit-coverage',
+      message: `${sourced.filter((r) => auditState(r, today).state === 'recorded').length} `
+        + `of ${sourced.length} G rows record a person reading them against the source.`,
+    });
+  }
+
   return findings;
 }
 
-export async function checkAll(repoRoot) {
+export async function checkAll(repoRoot, { now } = {}) {
   const out = {};
   for (const skill of await loadCatalog(repoRoot)) {
     const skillText = await fs.readFile(path.join(skill.dir, 'SKILL.md'), 'utf8');
@@ -473,7 +919,7 @@ export async function checkAll(repoRoot) {
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
-    out[skill.name] = checkSkill({ skillText, matrixText });
+    out[skill.name] = checkSkill({ skillText, matrixText, now });
   }
   return out;
 }

@@ -101,7 +101,12 @@ function groundingMd({ name, tier, skillText, source }) {
     }
     counts[kind] += 1;
     const rule = kind === 'G' ? 'RULE-ID' : '';
-    return `| ${kind}-${String(counts[kind]).padStart(2, '0')} | ${cell(u.text)} | ${cell(u.anchor)} | ${rule} | ${note} |`;
+    // A scaffolded G row is unaudited by construction. The scaffold guessed
+    // the rule identifier a line above, so nobody has read anything against
+    // anything, and seeding a date here would be the matrix lying on the day
+    // it was created.
+    const audit = kind === 'G' ? 'unaudited' : '';
+    return `| ${kind}-${String(counts[kind]).padStart(2, '0')} | ${cell(u.text)} | ${cell(u.anchor)} | ${rule} | ${note} | ${audit} |`;
   });
 
   return `# Grounding: ${name}
@@ -113,6 +118,12 @@ Disposes of every unit of content in \`skills/${tier}/${name}/SKILL.md\`${tier =
 - An **\`N\` row** is narrative. It orients the reader and asserts no rule, so it
   claims no authority at all. Its rule cell is empty.
 
+The \`Audited\` cell of a \`G\` row says whether a person has read that row against
+the source. Every row starts at \`unaudited\`, and no run of the checker raises
+it. A person who checks a row writes the date and the row's digest in place of
+the word. Editing any other cell changes that digest, so the audit goes stale
+and the check says so.
+
 A row that tells the reader to do something is never an \`N\` row. The kinds
 below are a starting guess. Revise them as you write the skill.
 
@@ -120,8 +131,8 @@ This file stays in the repository. It does not install with the skill.
 
 Checked by \`stylewright ground --check --skill ${name}\`.
 
-| ID | Our guidance | Our anchor | Source rule | Source location |
-|---|---|---|---|---|
+| ID | Our guidance | Our anchor | Source rule | Source location | Audited |
+|---|---|---|---|---|---|
 ${rows.join('\n')}
 `;
 }

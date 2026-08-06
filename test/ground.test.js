@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
 import {
-  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO,
+  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO, rowDigest, InvalidMoment, readMatrix,
 } from '../src/ground.js';
 import { sections } from '../src/markdown.js';
 
@@ -24,13 +24,27 @@ description: d
 
 const MATRIX = `# Grounding: s
 
-| ID | Our guidance | Our anchor | Source rule | Source location |
-|---|---|---|---|---|
-| N-01 | S | S |  | Section title |
-| N-02 | Rules | Rules |  | Section title |
-| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | Part 1, Section 5 |
-| G-02 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 |
+| ID | Our guidance | Our anchor | Source rule | Source location | Audited |
+|---|---|---|---|---|---|
+| N-01 | S | S |  | Section title |  |
+| N-02 | Rules | Rules |  | Section title |  |
+| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | Part 1, Section 5 | unaudited |
+| G-02 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 | unaudited |
 `;
+
+/**
+ * The findings that decide the exit code. `audit-coverage` is a note, and it
+ * appears beside every matrix that carries a G row, so a test asserting "no
+ * findings" would now be asserting that the coverage line is absent.
+ */
+const errors = (findings) => findings.filter((f) => f.level !== 'note');
+
+/**
+ * The day the check runs on, injected. `src/` reads no clock, so an audit
+ * dated after today is refused against a moment the caller hands in.
+ */
+const NOW = '2026-08-06T12:00:00.000Z';
+const check = (args) => checkSkill({ now: NOW, ...args });
 
 test('parses rows and skips the separator', () => {
   const rows = parseMatrix(MATRIX);
@@ -40,36 +54,427 @@ test('parses rows and skips the separator', () => {
   assert.equal(rows[3].rule, 'Rule 8.1');
 });
 
-test('a matching skill and matrix produce no findings', () => {
-  assert.deepEqual(checkSkill({ skillText: SKILL, matrixText: MATRIX }), []);
+test('a matching skill and matrix produce no errors', () => {
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: MATRIX })), []);
 });
 
 test('detects a quote that no longer appears in the skill', () => {
   const drifted = SKILL.replace('Do not use semicolons.', 'Avoid semicolons.');
-  const found = checkSkill({ skillText: drifted, matrixText: MATRIX });
+  const found = check({ skillText: drifted, matrixText: MATRIX });
   assert.ok(found.some((f) => f.code === 'missing-quote'));
 });
 
 test('detects a quote under the wrong anchor', () => {
   const moved = MATRIX.replace('| Rules | Rule 8.1', '| Nowhere | Rule 8.1');
-  const found = checkSkill({ skillText: SKILL, matrixText: moved });
+  const found = check({ skillText: SKILL, matrixText: moved });
   assert.ok(found.some((f) => f.code === 'wrong-anchor'));
 });
 
 test('detects a skill statement with no row', () => {
   const extra = `${SKILL}- Write one idea in each sentence.\n`;
-  const found = checkSkill({ skillText: extra, matrixText: MATRIX });
+  const found = check({ skillText: extra, matrixText: MATRIX });
   assert.ok(found.some((f) => f.code === 'uncovered-statement'));
 });
 
 test('a G row must carry a rule and an E row must not', () => {
   const gNoRule = MATRIX.replace('| Rule 5.1 |', '|  |');
-  assert.ok(checkSkill({ skillText: SKILL, matrixText: gNoRule })
+  assert.ok(check({ skillText: SKILL, matrixText: gNoRule })
     .some((f) => f.code === 'g-row-no-rule'));
 
   const eWithRule = MATRIX.replace('| G-01 |', '| E-01 |');
-  assert.ok(checkSkill({ skillText: SKILL, matrixText: eWithRule })
+  assert.ok(check({ skillText: SKILL, matrixText: eWithRule })
     .some((f) => f.code === 'e-row-has-rule'));
+});
+
+// The audit column. No program here opens ASD-STE100 or the plain language
+// guidelines, so no program can say whether a `G` row reads its rule
+// correctly. `ground --check` confirmed that a rule was cited and printed
+// "Grounding clean.", and a reader had nothing to tell that apart from an
+// audited matrix. These tests hold the record that closes the difference.
+
+const audited = (row) => MATRIX.replace(
+  '| Part 1, Section 5 | unaudited |',
+  `| Part 1, Section 5 | ${row} |`,
+);
+
+const CURRENT = rowDigest(parseMatrix(MATRIX).find((r) => r.id === 'G-01'));
+
+test('a G row records its audit and a row of another kind does not', () => {
+  const silent = MATRIX.replace('| Part 1, Section 5 | unaudited |', '| Part 1, Section 5 |  |');
+  const found = check({ skillText: SKILL, matrixText: silent });
+  assert.ok(found.some((f) => f.code === 'g-row-no-audit' && f.message.startsWith('G-01:')));
+  // The remedy names the digest to write, because a contributor cannot compute
+  // one by hand and would otherwise guess or write `unaudited` to be rid of it.
+  assert.ok(found.some((f) => f.code === 'g-row-no-audit' && f.message.includes(CURRENT)));
+
+  const narrated = MATRIX.replace('| Section title |  |', '| Section title | unaudited |');
+  assert.ok(check({ skillText: SKILL, matrixText: narrated })
+    .some((f) => f.code === 'e-row-has-audit'));
+});
+
+test('an audit is a real date and a digest, or it is nothing', () => {
+  const refused = (cell) => check({ skillText: SKILL, matrixText: audited(cell) })
+    .filter((f) => f.code === 'audit-malformed').length;
+  assert.equal(refused('checked'), 1);
+  assert.equal(refused('2026-08-06'), 1, 'a date with no digest names no words');
+  assert.equal(refused(`2026-8-6 ${CURRENT}`), 1, 'a date the pattern cannot sort is refused');
+  // A day that never happened is not a record of anybody reading anything.
+  assert.equal(refused(`2026-02-31 ${CURRENT}`), 1);
+  assert.equal(refused(`2027-02-29 ${CURRENT}`), 1);
+  assert.equal(refused(`2028-02-29 ${CURRENT}`), 0, '2028 is a leap year');
+  assert.equal(refused(`2026-08-06 ${CURRENT}`), 0);
+});
+
+test('an audit cannot be dated after the day the check runs', () => {
+  // `9999-12-31` passed every other rule and the coverage note counted the row
+  // as read. A date that has not arrived certifies a reading nobody could have
+  // done, which is the same defect as `2026-02-31` and needs the same answer.
+  const ahead = check({ skillText: SKILL, matrixText: audited(`9999-12-31 ${CURRENT}`) });
+  assert.ok(ahead.some((f) => f.code === 'audit-ahead-of-the-check'));
+  assert.ok(ahead.some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 2')));
+
+  // The boundary is today, which is a real reading, and tomorrow, which is not.
+  const on = (day) => check({ skillText: SKILL, matrixText: audited(`${day} ${CURRENT}`) })
+    .some((f) => f.code === 'audit-ahead-of-the-check');
+  assert.equal(on('2026-08-06'), false, 'the day the check runs is a day someone can read on');
+  assert.equal(on('2026-08-07'), true);
+  assert.equal(on('2026-08-05'), false);
+});
+
+test('the check refuses to run without the day, rather than skipping the future rule', () => {
+  // A default would turn the future rule off for whoever forgot the argument,
+  // and `ground --check` already carries the lesson about a gate that fails
+  // open on a missing name.
+  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX }), InvalidMoment);
+  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now: 'today' }), InvalidMoment);
+
+  // The refusal carries the value and the spellings it accepts. A TypeError
+  // said the type was wrong when the shape is what the check objects to.
+  const thrown = (now) => {
+    try { checkSkill({ skillText: SKILL, matrixText: MATRIX, now }); return null; } catch (e) { return e; }
+  };
+  const err = thrown('2026-08-06T12:00:00+05:00');
+  assert.equal(err.name, 'InvalidMoment');
+  assert.equal(err.value, '2026-08-06T12:00:00+05:00');
+  assert.match(err.message, /YYYY-MM-DD/);
+  assert.match(err.message, /2026-08-06T12:00:00\+05:00/);
+});
+
+test('the day the check runs on must itself be a day', () => {
+  // The bound was read as the first ten characters and asked nothing more, so
+  // `9999-99-99` arrived as the upper bound, every real date sorted below it,
+  // and an audit dated `9999-12-31` came back counted as read. A bound that is
+  // not a day cannot bound anything.
+  const ahead = audited(`9999-12-31 ${CURRENT}`);
+  for (const now of ['9999-99-99', '0000-00-00', '2026-02-31', '2026-08-06extra', '2026-8-6']) {
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: ahead, now }), InvalidMoment,
+      `${now} was accepted as the day the check runs on`);
+
+  }
+
+  // A bare day and a UTC timestamp are both moments, and both still refuse the
+  // audit dated after them.
+  for (const now of ['2026-08-06', '2026-08-06T12:00:00.000Z', '2026-08-06T12:00Z']) {
+    assert.ok(checkSkill({ skillText: SKILL, matrixText: ahead, now })
+      .some((f) => f.code === 'audit-ahead-of-the-check'), `${now} was refused`);
+  }
+});
+
+test('the day the check runs on is UTC, so an offset cannot move it', () => {
+  // `2026-08-07T00:30:00+05:00` is still 6 August in UTC. The pattern read the
+  // WRITTEN day, so an audit dated the 7th passed and was counted as read.
+  // Normalising an offset needs date arithmetic in a module that may not build
+  // a date, so the grammar refuses the form instead.
+  const seventh = audited(`2026-08-07 ${CURRENT}`);
+  for (const now of ['2026-08-07T00:30:00+05:00', '2026-08-06T19:30:00-05:00', '2026-08-06 12:00:00']) {
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: seventh, now }), InvalidMoment,
+      `${now} was read as a UTC day`);
+  }
+
+  // The same instant written in UTC is the day the check compares against.
+  assert.ok(checkSkill({ skillText: SKILL, matrixText: seventh, now: '2026-08-06T19:30:00.000Z' })
+    .some((f) => f.code === 'audit-ahead-of-the-check'));
+});
+
+test('the coverage count and the findings read the audit cell the same way', () => {
+  // Each read the cell for itself, so a stamp that merely matched the pattern
+  // counted as audited while the check called it broken. One reading, used by
+  // both.
+  for (const cell of [`9999-12-31 ${CURRENT}`, '2026-08-06 00000000', `2026-02-31 ${CURRENT}`]) {
+    const found = check({ skillText: SKILL, matrixText: audited(cell) });
+    assert.ok(found.some((f) => f.level === 'error'), `${cell} passed`);
+    assert.ok(found.some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 2')),
+      `${cell} was counted as read`);
+  }
+});
+
+test('an audit describes the row it sits in, so editing the row voids it', () => {
+  // This is the whole reason the cell carries a digest. A bare date beside a
+  // row id survives a rewrite of every other cell, so an audit of words nobody
+  // audited goes on reading as current — the defect an ordinal designator had.
+  const fresh = audited(`2026-08-06 ${CURRENT}`);
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: fresh })), []);
+
+  for (const [was, now] of [
+    ['| Rule 5.1 |', '| Rule 5.2 |'],
+    ['| Part 1, Section 5 |', '| Part 1, Section 6 |'],
+    ['| Rules | Rule 5.1', '| Elsewhere | Rule 5.1'],
+  ]) {
+    const changed = fresh.replace(was, now);
+    assert.notEqual(changed, fresh, `${was} appears once`);
+    assert.ok(check({ skillText: SKILL, matrixText: changed })
+      .some((f) => f.code === 'audit-stale'), `${now} left the audit standing`);
+  }
+
+  // The guidance moves with `SKILL.md`, so both files change together and the
+  // audit still goes stale. An edited sentence was never audited.
+  const reworded = 'Use no more than 25 words in a sentence.';
+  const both = check({
+    skillText: SKILL.replace('20 words', '25 words'),
+    matrixText: fresh.replace('Use no more than 20 words in a sentence.', reworded),
+  });
+  assert.ok(both.some((f) => f.code === 'audit-stale'));
+  assert.deepEqual(both.filter((f) => f.code === 'missing-quote'), []);
+});
+
+test('the run says how much of the matrix a person has read, and fails nothing', () => {
+  // "Grounding clean." over a matrix nobody has audited is what issue 40
+  // reports. The count prints beside the verdict so the two cannot be confused.
+  const none = check({ skillText: SKILL, matrixText: MATRIX });
+  assert.deepEqual(none.filter((f) => f.level !== 'note'), []);
+  assert.deepEqual(none.filter((f) => f.code === 'audit-coverage').map((f) => f.message),
+    ['0 of 2 G rows record a person reading them against the source.']);
+
+  const one = check({ skillText: SKILL, matrixText: audited(`2026-08-06 ${CURRENT}`) });
+  assert.ok(one.some((f) => f.code === 'audit-coverage' && f.message.startsWith('1 of 2')));
+});
+
+// The container, not the cell. Every attack below left the audit VALUES
+// untouched and went after the table around them. A matrix whose rendered
+// column is gone is not the record, whatever its rows still parse as, because
+// the record exists for the person reading the file.
+
+const HEADER = '| ID | Our guidance | Our anchor | Source rule | Source location | Audited |';
+const DELIM = '|---|---|---|---|---|---|';
+const FULLY = MATRIX
+  .replace('| Part 1, Section 5 | unaudited |', `| Part 1, Section 5 | 2026-08-06 ${CURRENT} |`);
+
+test('the header and the delimiter are checked, not skipped', () => {
+  // Each of these printed full coverage and no error. In GFM each either drops
+  // the rendered column or stops the block being a table at all, so the person
+  // loses the audit record while the check reports it intact.
+  const codes = (m) => check({ skillText: SKILL, matrixText: m }).map((f) => f.code);
+
+  const FIVE = '| ID | Our guidance | Our anchor | Source rule | Source location |';
+  assert.ok(codes(FULLY.replace(HEADER, FIVE).replace(DELIM, '|---|---|---|---|---|'))
+    .includes('matrix-header-columns'));
+  assert.ok(codes(FULLY.replace(DELIM, '|---|---|---|---|---|')).includes('matrix-delimiter-columns'));
+  assert.ok(codes(FULLY.replace(DELIM, '|---|---|---|')).includes('matrix-delimiter-columns'));
+  assert.ok(codes(FULLY.replace(`${DELIM}\n`, '')).includes('matrix-no-table'));
+  assert.ok(codes(FULLY.replace(`${HEADER}\n`, '')).includes('matrix-no-header'));
+  assert.ok(codes(FULLY.replace('| Source location | Audited |', '| Source location | Notes |'))
+    .includes('matrix-header-not-audited'));
+
+  // The intact matrix stays clean, so none of the above is a rule the shipped
+  // files break.
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: FULLY })), []);
+});
+
+test('a row a reader sees as an example is not read as a row', () => {
+  // Fenced or indented four spaces, a row is a code sample to a reader and was
+  // a recorded audit to the checker. This is the MATRIX reader, not the
+  // SKILL.md extractor, so it says nothing about issues 37 and 69.
+  const fenced = FULLY.replace('| G-01 | Use', '```\n| G-01 | Use')
+    .replace(`2026-08-06 ${CURRENT} |`, `2026-08-06 ${CURRENT} |\n\`\`\``);
+  const inFence = check({ skillText: SKILL, matrixText: fenced });
+  assert.ok(inFence.some((f) => f.code === 'uncovered-statement'), 'the fenced row stopped counting');
+  // The fence also splits the table, so the count is withheld rather than
+  // silently rebased onto the rows that survived.
+  assert.ok(inFence.some((f) => f.code === 'audit-coverage'
+    && f.message === 'not counted: the matrix table is broken.'));
+
+  const indented = check({ skillText: SKILL, matrixText: FULLY.replace('| G-01 |', '    | G-01 |') });
+  assert.ok(indented.some((f) => f.code === 'unread-matrix-row'
+    && /does not begin at column 0/.test(f.message)));
+});
+
+test('a row that is not read is named, so the denominator cannot shrink quietly', () => {
+  // A blockquoted row fell out of the parse, and the count printed "1 of 1"
+  // over a matrix visibly carrying two G rows. The run was red for another
+  // reason, but the number ADR-0018 calls the whole answer was wrong.
+  const quoted = check({ skillText: SKILL, matrixText: FULLY.replace('| G-01 |', '> | G-01 |') });
+  assert.ok(quoted.some((f) => f.code === 'unread-matrix-row' && /blockquote/.test(f.message)));
+});
+
+test('a seventh cell is refused, because no reader and no check sees it', () => {
+  const smuggled = FULLY.replace(
+    `| Part 1, Section 5 | 2026-08-06 ${CURRENT} |`,
+    `| Part 1, Section 5 | 2026-08-06 ${CURRENT} | INVISIBLE IN RENDER |`,
+  );
+  assert.ok(check({ skillText: SKILL, matrixText: smuggled })
+    .some((f) => f.code === 'row-has-extra-cell' && f.message.startsWith('G-01:')));
+});
+
+test('a zero offset is UTC, and a bounded time is required', () => {
+  // The first version of the UTC rule refused `+00:00` on a day-shifting
+  // warrant that cannot apply to an offset of no hours.
+  for (const now of ['2026-08-06T12:00:00+00:00', '2026-08-06T12:00:00-00:00',
+    '2026-08-06T12:00:00.000+0000', '2026-08-06T12:00:00Z']) {
+    assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: FULLY, now })), [],
+      `${now} is UTC and was refused`);
+  }
+
+  // `24:00:00Z` is a legal ISO spelling of midnight ENDING that day, so its
+  // written day put the bound a day early. `99:99:99Z` was simply accepted.
+  for (const now of ['2026-08-06T24:00:00Z', '2026-08-06T99:99:99Z', '2026-08-06T12:60:00Z',
+    '2026-08-06T12:00:00+05:00', '2026-08-06 12:00:00']) {
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: FULLY, now }), InvalidMoment,
+      `${now} was read as a UTC moment`);
+  }
+});
+
+test('the table is contiguous, because GFM ends one at the first gap', () => {
+  // readMatrix recorded every line number and compared none of them, so a
+  // table could be scattered down the file and still parse with full coverage
+  // while the reader saw no table at all.
+  const codes = (m) => check({ skillText: SKILL, matrixText: m }).map((f) => f.code);
+  const G1 = '| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | Part 1, Section 5 | unaudited |';
+
+  // Between the header and the delimiter.
+  assert.ok(codes(MATRIX.replace(DELIM, `\n${DELIM}`)).includes('matrix-no-header'));
+  assert.ok(codes(MATRIX.replace(DELIM, `Some prose.\n\n${DELIM}`)).includes('matrix-no-header'));
+  // Under the delimiter, and between two body rows.
+  assert.ok(codes(MATRIX.replace(`${DELIM}\n`, `${DELIM}\n\n`)).includes('row-outside-the-table'));
+  assert.ok(codes(MATRIX.replace(G1, `\n${G1}`)).includes('row-outside-the-table'));
+  assert.ok(codes(MATRIX.replace(G1, `## Later\n\n${G1}`)).includes('row-outside-the-table'));
+  assert.ok(codes(MATRIX.replace(G1, `---\n\n${G1}`)).includes('row-outside-the-table'));
+
+  // And none of it fires on the table as written.
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: MATRIX })), []);
+});
+
+test('a fence nobody closes swallows the table, and says so', () => {
+  // The last silent denominator shrink: an unclosed fence takes the rest of
+  // the file with it, so every row below leaves the parse at once and the
+  // count fell from two G rows to none with nothing saying why.
+  const swallowed = MATRIX.replace('| G-01 |', '```\n| G-01 |');
+  const found = check({ skillText: SKILL, matrixText: swallowed });
+  assert.ok(found.some((f) => f.code === 'unread-matrix-row'
+    && /never closed/.test(f.message) && /Close it with ```/.test(f.message)));
+  assert.ok(found.some((f) => f.code === 'audit-coverage'
+    && f.message === 'not counted: the matrix table is broken.'));
+});
+
+test('the table is the FIRST delimiter, and a later one is named', () => {
+  // This kills the selection mutant that survived the reviewer's battery:
+  // flipping first-delimiter to last left the suite green. Under last, the
+  // rows below bind to the wrong delimiter and the real rows become strays.
+  const twoTables = `${MATRIX}\n${DELIM}\n`;
+  const found = check({ skillText: SKILL, matrixText: twoTables });
+  assert.ok(found.some((f) => f.code === 'matrix-second-delimiter'));
+  // Under a last-delimiter rule these four rows stop parsing entirely.
+  assert.equal(readMatrix(twoTables).rows.length, 4);
+  assert.equal(readMatrix(twoTables).delimiter.line, readMatrix(MATRIX).delimiter.line);
+  assert.deepEqual(found.filter((f) => f.code === 'uncovered-statement'), []);
+});
+
+test('a legal GFM shape this check refuses is named for what it is', () => {
+  // Both of these are valid GFM and are not house style. The complaint used to
+  // name an artifact of the reading instead of the author's line: an unclosed
+  // row reported "carries 5 columns, not 6", and an indented table reported
+  // "no table" while the real cause was the indentation.
+  const unclosed = MATRIX.split('\n').map((l) => l.replace(/\|$/, '')).join('\n');
+  const onUnclosed = check({ skillText: SKILL, matrixText: unclosed });
+  assert.ok(onUnclosed.some((f) => f.code === 'matrix-row-unclosed'
+    && /end the line with a pipe/i.test(f.message)));
+  assert.deepEqual(onUnclosed.filter((f) => f.code === 'matrix-delimiter-columns'), [],
+    'the column count is an artifact of the unclosed line, so it is not also reported');
+
+  const indented = MATRIX.split('\n').map((l) => (l.startsWith('|') ? `   ${l}` : l)).join('\n');
+  const onIndented = check({ skillText: SKILL, matrixText: indented });
+  const noTable = onIndented.find((f) => f.code === 'matrix-no-table');
+  assert.match(noTable.message, /refused above, at line/);
+  assert.ok(onIndented.some((f) => f.code === 'unread-matrix-row'
+    && /does not begin at column 0/.test(f.message)));
+});
+
+test('the coverage count is withheld when the table is broken', () => {
+  // Adjudicated against printing a ratio over a table the reader cannot see.
+  // A wrong number is worse than no number, and this is ADR-0018's own defect
+  // one level out.
+  for (const m of [
+    MATRIX.replace('| Source location | Audited |', '| Source location | Notes |'),
+    MATRIX.replace(DELIM, '|---|---|---|---|---|'),
+    MATRIX.replace(`${DELIM}\n`, `${DELIM}\n\n`),
+  ]) {
+    const note = check({ skillText: SKILL, matrixText: m }).find((f) => f.code === 'audit-coverage');
+    assert.equal(note.message, 'not counted: the matrix table is broken.');
+  }
+  // An intact table still reports the ratio.
+  assert.ok(check({ skillText: SKILL, matrixText: MATRIX })
+    .some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 2')));
+});
+
+test('a leap second is 23:59:60 and a fraction belongs to the seconds', () => {
+  // `|60` after any minute admitted 1439 times that never existed, and the
+  // fraction sat outside the seconds group so `12:00.500Z` parsed.
+  for (const now of ['2026-08-06T23:59:60Z', '2026-08-06T23:59:60.5Z', '2026-08-06T12:00:00.000Z']) {
+    assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: MATRIX, now })), [],
+      `${now} is a moment and was refused`);
+  }
+  for (const now of ['2026-08-06T12:00:60Z', '2026-08-06T23:58:60Z', '2026-08-06T12:00.500Z']) {
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now }), InvalidMoment,
+      `${now} is not a moment and was accepted`);
+  }
+});
+
+test('readMatrix finds the table by its delimiter, not by a heading word', () => {
+  const table = readMatrix(MATRIX);
+  assert.equal(table.header.cells.length, 6);
+  assert.equal(table.header.cells[5], 'Audited');
+  assert.equal(table.rows.length, 4);
+  assert.deepEqual(table.refusals, []);
+});
+
+test('every row carries the sixth cell, including a matrix that cites no source', () => {
+  // An absent cell used to coalesce to an empty one, so a matrix of E and N
+  // rows could drop the column from its header, its delimiter and every row
+  // and still pass. No G row was left to complain, and the format quietly
+  // became optional for exactly the matrices nobody would check by hand.
+  const ours = SKILL.replace(/- Use no more.*\n- Do not use semicolons\.\n/, '- Ours alone.\n');
+  const fiveColumns = `# Grounding: s
+
+| ID | Our guidance | Our anchor | Source rule | Source location |
+|---|---|---|---|---|
+| N-01 | S | S |  | Section title |
+| N-02 | Rules | Rules |  | Section title |
+| E-01 | Ours alone. | Rules |  | Ours |
+`;
+  const found = check({ skillText: ours, matrixText: fiveColumns });
+  assert.deepEqual(found.filter((f) => f.code === 'row-missing-audit-cell').length, 3,
+    'every row without the cell is named, not just the ones that cite a source');
+
+  // A G row missing the cell is refused for the missing cell, and not reported
+  // as though it had left an audit blank.
+  const short = MATRIX.replace('| Part 1, Section 5 | unaudited |', '| Part 1, Section 5 |');
+  const codes = check({ skillText: SKILL, matrixText: short }).map((f) => f.code);
+  assert.ok(codes.includes('row-missing-audit-cell'));
+  assert.ok(!codes.includes('g-row-no-audit'));
+});
+
+test('a matrix that cites no source reports no audit coverage', () => {
+  // navigable-references has no G row and cannot have one. "0 of 0 audited"
+  // would read as a gap where there is nothing to audit.
+  const ours = SKILL.replace(/- Use no more.*\n- Do not use semicolons\.\n/, '- Ours alone.\n');
+  const matrix = `# Grounding: s
+
+| ID | Our guidance | Our anchor | Source rule | Source location | Audited |
+|---|---|---|---|---|---|
+| N-01 | S | S |  | Section title |  |
+| N-02 | Rules | Rules |  | Section title |  |
+| E-01 | Ours alone. | Rules |  | Ours |  |
+`;
+  assert.deepEqual(check({ skillText: ours, matrixText: matrix }), []);
 });
 
 // The checker used to see one shape: a `-` bullet on a single line. Everything
@@ -77,7 +482,7 @@ test('a G row must carry a rule and an E row must not', () => {
 // reported clean, under a sentence claiming every statement was traced. Each
 // case is the shape that slipped, and each fails against the old extractor.
 
-const uncovered = (text) => checkSkill({ skillText: `${SKILL}\n${text}\n`, matrixText: MATRIX })
+const uncovered = (text) => check({ skillText: `${SKILL}\n${text}\n`, matrixText: MATRIX })
   .filter((f) => f.code === 'uncovered-statement').map((f) => f.message).join(' ');
 
 test('a numbered item is a statement', () => {
@@ -166,17 +571,17 @@ test('guidance containing a pipe can be quoted in a cell', () => {
   // parseMatrix split on every pipe with no escape, so a paragraph about a
   // shell pipeline could not be reproduced by any row and stayed red forever.
   const skill = `${SKILL}\nUse a | b carefully.\n`;
-  const matrix = `${MATRIX}| E-01 | Use a \\| b carefully. | Rules |  | Ours |\n`;
-  assert.deepEqual(checkSkill({ skillText: skill, matrixText: matrix }), []);
+  const matrix = `${MATRIX}| E-01 | Use a \\| b carefully. | Rules |  | Ours |  |\n`;
+  assert.deepEqual(errors(check({ skillText: skill, matrixText: matrix })), []);
 });
 
 test('a setext heading is a heading', () => {
   // `Rules` over `=====` was read as prose, so every directive below it was
   // anchored to the PREVIOUS section and a matrix naming that anchor passed.
-  const units = checkSkill({
+  const units = check({
     skillText: SKILL.replace('## Rules', 'Rules\n=====\n'), matrixText: MATRIX,
   });
-  assert.deepEqual(units, []);
+  assert.deepEqual(errors(units), []);
 });
 
 test('a setext title is not also preamble prose', () => {
@@ -186,24 +591,24 @@ test('a setext title is not also preamble prose', () => {
   const skillText = SKILL.replace('# S', 'S\n=');
   const units = contentUnits(skillText);
   assert.equal(units.filter((u) => u.text === 'S').length, 1);
-  assert.deepEqual(checkSkill({ skillText, matrixText: MATRIX }), []);
+  assert.deepEqual(errors(check({ skillText, matrixText: MATRIX })), []);
 });
 
 test('prose cannot impersonate a block designator', () => {
-  const found = checkSkill({ skillText: `${SKILL}\n[table 0123abcd]\n`, matrixText: MATRIX });
+  const found = check({ skillText: `${SKILL}\n[table 0123abcd]\n`, matrixText: MATRIX });
   assert.ok(found.some((f) => f.code === 'reserved-designator'));
 });
 
 test('a heading is a unit, and so is anything before the first heading', () => {
   // `## Always preserve safety` with an empty matrix used to pass, and so did
   // an instruction written above the title.
-  const withHead = checkSkill({
+  const withHead = check({
     skillText: `${SKILL}\n## Always preserve safety\n`, matrixText: MATRIX,
   });
   assert.ok(withHead.some((f) => f.code === 'uncovered-statement'
     && /Always preserve safety/.test(f.message)));
 
-  const before = checkSkill({
+  const before = check({
     skillText: SKILL.replace('# S', 'Always preserve safety.\n\n# S'), matrixText: MATRIX,
   });
   assert.ok(before.some((f) => f.code === 'uncovered-statement'
@@ -213,7 +618,7 @@ test('a heading is a unit, and so is anything before the first heading', () => {
 test('a section named Source grades like any other', () => {
   // Five heading names were exempt, so an instruction under any of them was
   // never disposed of by a row.
-  const hidden = checkSkill({ skillText: `${SKILL}\n## Source\n\nAlways preserve safety.\n`,
+  const hidden = check({ skillText: `${SKILL}\n## Source\n\nAlways preserve safety.\n`,
     matrixText: MATRIX });
   assert.ok(hidden.some((f) => f.code === 'uncovered-statement'
     && /Always preserve safety/.test(f.message)));
@@ -223,15 +628,15 @@ test('pairing does not depend on the order of the rows', () => {
   // A row naming the wrong anchor could consume the occurrence a later correct
   // row needed, so the same two rows in the other order gave different findings.
   const rows = (a, b) => `${MATRIX}${a}${b}`;
-  const wrong = '| G-03 | Do not use semicolons. | Nowhere | Rule 8.1 | s |\n';
-  const right = '| G-04 | Do not use semicolons. | Rules | Rule 8.1 | s |\n';
+  const wrong = '| G-03 | Do not use semicolons. | Nowhere | Rule 8.1 | s | unaudited |\n';
+  const right = '| G-04 | Do not use semicolons. | Rules | Rule 8.1 | s | unaudited |\n';
   const twice = `${SKILL}- Do not use semicolons.\n`;
-  const codes = (m) => checkSkill({ skillText: twice, matrixText: m })
+  const codes = (m) => check({ skillText: twice, matrixText: m })
     .map((f) => f.code).sort();
   assert.deepEqual(codes(rows(wrong, right)), codes(rows(right, wrong)));
   // Three rows claim two occurrences. The row refused is the one whose anchor
   // is wrong, in either order, because every exact match is reserved first.
-  const refused = (m) => checkSkill({ skillText: twice, matrixText: m })
+  const refused = (m) => errors(check({ skillText: twice, matrixText: m }))
     .map((f) => `${f.code} ${f.message.split(':')[0]}`);
   assert.deepEqual(refused(rows(wrong, right)), ['duplicate-row G-03']);
   assert.deepEqual(refused(rows(right, wrong)), ['duplicate-row G-03']);
@@ -247,27 +652,27 @@ test('a heading inside a fence does not open a section', () => {
 
 test('one row covers one occurrence, not every copy of a sentence', () => {
   const twice = `${SKILL}- Do not use semicolons.\n`;
-  const found = checkSkill({ skillText: twice, matrixText: MATRIX });
+  const found = check({ skillText: twice, matrixText: MATRIX });
   assert.ok(found.some((f) => f.code === 'uncovered-statement'
     && /Do not use semicolons/.test(f.message)));
 
-  const spare = `${MATRIX}| G-03 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 |\n`;
-  assert.deepEqual(checkSkill({ skillText: twice, matrixText: spare }), []);
-  assert.ok(checkSkill({ skillText: SKILL, matrixText: spare })
+  const spare = `${MATRIX}| G-03 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 | unaudited |\n`;
+  assert.deepEqual(errors(check({ skillText: twice, matrixText: spare })), []);
+  assert.ok(check({ skillText: SKILL, matrixText: spare })
     .some((f) => f.code === 'duplicate-row'));
 });
 
 test('an N row carries no rule, and an unknown prefix is refused', () => {
   const narrative = `${SKILL}\nThis guide does not replace the standard.\n`;
-  const withN = `${MATRIX}| N-01 | This guide does not replace the standard. | Rules |  | Framing |\n`;
-  assert.deepEqual(checkSkill({ skillText: narrative, matrixText: withN }), []);
+  const withN = `${MATRIX}| N-01 | This guide does not replace the standard. | Rules |  | Framing |  |\n`;
+  assert.deepEqual(errors(check({ skillText: narrative, matrixText: withN })), []);
 
   const nWithRule = withN.replace('| Rules |  | Framing |', '| Rules | Rule 1.1 | Framing |');
-  assert.ok(checkSkill({ skillText: narrative, matrixText: nWithRule })
+  assert.ok(check({ skillText: narrative, matrixText: nWithRule })
     .some((f) => f.code === 'e-row-has-rule'));
 
   const bogus = withN.replace('| N-01 |', '| X-01 |');
-  assert.ok(checkSkill({ skillText: narrative, matrixText: bogus })
+  assert.ok(check({ skillText: narrative, matrixText: bogus })
     .some((f) => f.code === 'unknown-row-kind'));
 });
 
@@ -283,7 +688,7 @@ test('an N row carries no rule, and an unknown prefix is refused', () => {
 // refuses everything else, so the test below for an unenumerated shape is the
 // one that says the class is closed.
 
-const refused = (text) => checkSkill({
+const refused = (text) => check({
   skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
 }).filter((f) => f.code === 'unmodelled-construct').map((f) => f.message).join(' ');
 
@@ -408,7 +813,7 @@ test('a shape nobody enumerated is refused, because the grammar states what it r
 test('a table may not begin on a list-marker line', () => {
   // `- A | B` over `--- | ---` became one table designator, so the item's own
   // words went into a digest and no row had to quote them.
-  const found = checkSkill({
+  const found = check({
     skillText: `${SKILL}\n## Later\n\n- A | B\n--- | ---\n`, matrixText: MATRIX,
   });
   assert.ok(found.some((f) => f.code === 'unmodelled-construct'
@@ -451,7 +856,7 @@ test('a table that does not begin at column 0 is refused at any width', () => {
 test('an empty construct is refused for being empty, at any indent', () => {
   // Indented, these were refused for the indent alone, and the remedy told the
   // author to write at column 0 the very line the check refuses there.
-  const message = (text) => checkSkill({
+  const message = (text) => check({
     skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
   }).find((f) => f.code === 'unmodelled-construct').message;
   assert.match(message('  #'), /a heading with no text/);
@@ -523,7 +928,7 @@ test('a refusal carries a remedy the author can follow', () => {
   // Every refusal ended with "write it at column 0", which a blockquote, an
   // empty marker and an empty heading already do. A remedy that cannot be
   // followed reads as a check that misread the line.
-  const message = (text) => checkSkill({
+  const message = (text) => check({
     skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
   }).find((f) => f.code === 'unmodelled-construct').message;
 
@@ -554,14 +959,14 @@ test('a refusal names the line in the file, front matter counted', () => {
   const skillText = `${SKILL}\n> Quoted.\n`;
   const line = skillText.split('\n').indexOf('> Quoted.') + 1;
   assert.deepEqual(unmodelled(skillText), [{ line, shape: 'a blockquote' }]);
-  assert.ok(checkSkill({ skillText, matrixText: MATRIX })
+  assert.ok(check({ skillText, matrixText: MATRIX })
     .some((f) => f.code === 'unmodelled-construct' && f.message.startsWith(`line ${line}:`)));
 });
 
 test('every shipped skill stays inside the Markdown the extractor models', async () => {
   // The guard costs the author a subset to write in. This is the check that
   // the subset is one the shipped skills already sit inside.
-  const all = await checkAll(path.join(import.meta.dirname, '..'));
+  const all = await checkAll(path.join(import.meta.dirname, '..'), { now: NOW });
   const refusals = Object.entries(all)
     .flatMap(([name, fs]) => fs.filter((f) => f.code === 'unmodelled-construct')
       .map((f) => `${name}: ${f.message}`));
@@ -569,8 +974,8 @@ test('every shipped skill stays inside the Markdown the extractor models', async
 });
 
 test('checkAll covers every skill in the repository', async () => {
-  const all = await checkAll(REPO);
+  const all = await checkAll(REPO, { now: NOW });
   assert.ok('demo-standard' in all);
-  assert.deepEqual(all['demo-standard'], []);
+  assert.deepEqual(errors(all['demo-standard']), []);
   assert.ok(all['demo-craft'].some((f) => f.code === 'no-matrix'));
 });

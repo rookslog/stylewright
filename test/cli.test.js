@@ -142,6 +142,21 @@ test('ground --check --all fails on the craft fixture', async () => {
   assert.match(out.text(), /demo-craft/);
 });
 
+test('ground --check prints the audit coverage and still passes', async () => {
+  // The coverage line is the one finding no run of this program can act on, so
+  // it prints at a level that decides nothing. Counting it with the errors
+  // would have failed CI on the day the column landed, and dropping it would
+  // leave "Grounding clean." saying more than the check knows.
+  const out = capture();
+  const code = await run(['ground', '--check', '--skill', 'demo-standard'], {
+    home: '/h', cwd: '/c', repoRoot: REPO, stdout: out, now: NOW,
+  });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /0 of 2 G rows record a person reading them/);
+  assert.match(out.text(), /Grounding clean/);
+  assert.doesNotMatch(out.text(), /finding\(s\)/);
+});
+
 test('unknown command returns 2', async () => {
   const out = capture();
   const code = await run(['frobnicate'], {

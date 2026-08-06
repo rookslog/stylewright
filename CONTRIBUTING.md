@@ -116,10 +116,36 @@ This limit is what lets the repository be public.
 ## Write the grounding matrix
 
 Each row has an ID, the guidance quoted from your `SKILL.md`, the heading it sits
-under, the source rule, and where that rule lives.
+under, the source rule, where that rule lives, and the state of its audit.
 
 - Use `G-nn` when the row traces to the source. Name the rule, such as `Rule 5.1`.
 - Use `E-nn` when the guidance is ours. Leave the rule cell empty.
+
+Write `unaudited` in the `Audited` cell of every `G` row. That is true on the
+day you write the row, and no run of the checker changes it. Leave the cell
+empty on every other row, because only a `G` row cites a source.
+
+A person raises a row out of `unaudited`. Open the source, read the rule
+against the row, and then record what you did. Clear the cell and run
+`check:ground`. The finding names the digest of that row. Write the date of
+your reading and that digest in the cell.
+
+Write the date in UTC, which `date -u +%F` gives you. The check refuses a date
+after the UTC day it runs on, because nobody read a row on a day that has not
+arrived.
+
+Every row carries the sixth cell, including the rows that leave it empty. A row
+written with five cells is refused, so a matrix without a `G` row cannot drop
+the column. A seventh cell is refused too, because the render drops it.
+
+The header and the delimiter carry six columns as well, and the sixth heading
+reads `Audited`. Write every row at column 0. A row indented or quoted is not
+read, and the check names it rather than passing over it. Put an example row
+inside a fenced block, which the check skips.
+
+Editing any other cell in the row changes the digest. The check then reports
+the audit as stale, because the words you read are no longer the words in the
+row. Read the row against the source again, or write `unaudited`.
 
 Quote your own `SKILL.md` exactly. `check:ground` compares the strings, so a
 reworded rule fails the check until you update its row. That is the point.
