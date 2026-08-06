@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
 import {
-  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO,
+  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO, rowDigest,
 } from '../src/ground.js';
 import { sections } from '../src/markdown.js';
 
@@ -24,13 +24,20 @@ description: d
 
 const MATRIX = `# Grounding: s
 
-| ID | Our guidance | Our anchor | Source rule | Source location |
-|---|---|---|---|---|
-| N-01 | S | S |  | Section title |
-| N-02 | Rules | Rules |  | Section title |
-| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | Part 1, Section 5 |
-| G-02 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 |
+| ID | Our guidance | Our anchor | Source rule | Source location | Audited |
+|---|---|---|---|---|---|
+| N-01 | S | S |  | Section title |  |
+| N-02 | Rules | Rules |  | Section title |  |
+| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | Part 1, Section 5 | unaudited |
+| G-02 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 | unaudited |
 `;
+
+/**
+ * The findings that decide the exit code. `audit-coverage` is a note, and it
+ * appears beside every matrix that carries a G row, so a test asserting "no
+ * findings" would now be asserting that the coverage line is absent.
+ */
+const errors = (findings) => findings.filter((f) => f.level !== 'note');
 
 test('parses rows and skips the separator', () => {
   const rows = parseMatrix(MATRIX);
@@ -40,8 +47,8 @@ test('parses rows and skips the separator', () => {
   assert.equal(rows[3].rule, 'Rule 8.1');
 });
 
-test('a matching skill and matrix produce no findings', () => {
-  assert.deepEqual(checkSkill({ skillText: SKILL, matrixText: MATRIX }), []);
+test('a matching skill and matrix produce no errors', () => {
+  assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: MATRIX })), []);
 });
 
 test('detects a quote that no longer appears in the skill', () => {
@@ -70,6 +77,101 @@ test('a G row must carry a rule and an E row must not', () => {
   const eWithRule = MATRIX.replace('| G-01 |', '| E-01 |');
   assert.ok(checkSkill({ skillText: SKILL, matrixText: eWithRule })
     .some((f) => f.code === 'e-row-has-rule'));
+});
+
+// The audit column. No program here opens ASD-STE100 or the plain language
+// guidelines, so no program can say whether a `G` row reads its rule
+// correctly. `ground --check` confirmed that a rule was cited and printed
+// "Grounding clean.", and a reader had nothing to tell that apart from an
+// audited matrix. These tests hold the record that closes the difference.
+
+const audited = (row) => MATRIX.replace(
+  '| Part 1, Section 5 | unaudited |',
+  `| Part 1, Section 5 | ${row} |`,
+);
+
+const CURRENT = rowDigest(parseMatrix(MATRIX).find((r) => r.id === 'G-01'));
+
+test('a G row records its audit and a row of another kind does not', () => {
+  const silent = MATRIX.replace('| Part 1, Section 5 | unaudited |', '| Part 1, Section 5 |  |');
+  const found = checkSkill({ skillText: SKILL, matrixText: silent });
+  assert.ok(found.some((f) => f.code === 'g-row-no-audit' && f.message.startsWith('G-01:')));
+  // The remedy names the digest to write, because a contributor cannot compute
+  // one by hand and would otherwise guess or write `unaudited` to be rid of it.
+  assert.ok(found.some((f) => f.code === 'g-row-no-audit' && f.message.includes(CURRENT)));
+
+  const narrated = MATRIX.replace('| Section title |  |', '| Section title | unaudited |');
+  assert.ok(checkSkill({ skillText: SKILL, matrixText: narrated })
+    .some((f) => f.code === 'e-row-has-audit'));
+});
+
+test('an audit is a real date and a digest, or it is nothing', () => {
+  const refused = (cell) => checkSkill({ skillText: SKILL, matrixText: audited(cell) })
+    .filter((f) => f.code === 'audit-malformed').length;
+  assert.equal(refused('checked'), 1);
+  assert.equal(refused('2026-08-06'), 1, 'a date with no digest names no words');
+  assert.equal(refused(`2026-8-6 ${CURRENT}`), 1, 'a date the pattern cannot sort is refused');
+  // A day that never happened is not a record of anybody reading anything.
+  assert.equal(refused(`2026-02-31 ${CURRENT}`), 1);
+  assert.equal(refused(`2027-02-29 ${CURRENT}`), 1);
+  assert.equal(refused(`2028-02-29 ${CURRENT}`), 0, '2028 is a leap year');
+  assert.equal(refused(`2026-08-06 ${CURRENT}`), 0);
+});
+
+test('an audit describes the row it sits in, so editing the row voids it', () => {
+  // This is the whole reason the cell carries a digest. A bare date beside a
+  // row id survives a rewrite of every other cell, so an audit of words nobody
+  // audited goes on reading as current — the defect an ordinal designator had.
+  const fresh = audited(`2026-08-06 ${CURRENT}`);
+  assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: fresh })), []);
+
+  for (const [was, now] of [
+    ['| Rule 5.1 |', '| Rule 5.2 |'],
+    ['| Part 1, Section 5 |', '| Part 1, Section 6 |'],
+    ['| Rules | Rule 5.1', '| Elsewhere | Rule 5.1'],
+  ]) {
+    const changed = fresh.replace(was, now);
+    assert.notEqual(changed, fresh, `${was} appears once`);
+    assert.ok(checkSkill({ skillText: SKILL, matrixText: changed })
+      .some((f) => f.code === 'audit-stale'), `${now} left the audit standing`);
+  }
+
+  // The guidance moves with `SKILL.md`, so both files change together and the
+  // audit still goes stale. An edited sentence was never audited.
+  const reworded = 'Use no more than 25 words in a sentence.';
+  const both = checkSkill({
+    skillText: SKILL.replace('20 words', '25 words'),
+    matrixText: fresh.replace('Use no more than 20 words in a sentence.', reworded),
+  });
+  assert.ok(both.some((f) => f.code === 'audit-stale'));
+  assert.deepEqual(both.filter((f) => f.code === 'missing-quote'), []);
+});
+
+test('the run says how much of the matrix a person has read, and fails nothing', () => {
+  // "Grounding clean." over a matrix nobody has audited is what issue 40
+  // reports. The count prints beside the verdict so the two cannot be confused.
+  const none = checkSkill({ skillText: SKILL, matrixText: MATRIX });
+  assert.deepEqual(none.filter((f) => f.level !== 'note'), []);
+  assert.deepEqual(none.filter((f) => f.code === 'audit-coverage').map((f) => f.message),
+    ['0 of 2 G rows record a person reading them against the source.']);
+
+  const one = checkSkill({ skillText: SKILL, matrixText: audited(`2026-08-06 ${CURRENT}`) });
+  assert.ok(one.some((f) => f.code === 'audit-coverage' && f.message.startsWith('1 of 2')));
+});
+
+test('a matrix that cites no source reports no audit coverage', () => {
+  // navigable-references has no G row and cannot have one. "0 of 0 audited"
+  // would read as a gap where there is nothing to audit.
+  const ours = SKILL.replace(/- Use no more.*\n- Do not use semicolons\.\n/, '- Ours alone.\n');
+  const matrix = `# Grounding: s
+
+| ID | Our guidance | Our anchor | Source rule | Source location | Audited |
+|---|---|---|---|---|---|
+| N-01 | S | S |  | Section title |  |
+| N-02 | Rules | Rules |  | Section title |  |
+| E-01 | Ours alone. | Rules |  | Ours |  |
+`;
+  assert.deepEqual(checkSkill({ skillText: ours, matrixText: matrix }), []);
 });
 
 // The checker used to see one shape: a `-` bullet on a single line. Everything
@@ -166,8 +268,8 @@ test('guidance containing a pipe can be quoted in a cell', () => {
   // parseMatrix split on every pipe with no escape, so a paragraph about a
   // shell pipeline could not be reproduced by any row and stayed red forever.
   const skill = `${SKILL}\nUse a | b carefully.\n`;
-  const matrix = `${MATRIX}| E-01 | Use a \\| b carefully. | Rules |  | Ours |\n`;
-  assert.deepEqual(checkSkill({ skillText: skill, matrixText: matrix }), []);
+  const matrix = `${MATRIX}| E-01 | Use a \\| b carefully. | Rules |  | Ours |  |\n`;
+  assert.deepEqual(errors(checkSkill({ skillText: skill, matrixText: matrix })), []);
 });
 
 test('a setext heading is a heading', () => {
@@ -176,7 +278,7 @@ test('a setext heading is a heading', () => {
   const units = checkSkill({
     skillText: SKILL.replace('## Rules', 'Rules\n=====\n'), matrixText: MATRIX,
   });
-  assert.deepEqual(units, []);
+  assert.deepEqual(errors(units), []);
 });
 
 test('a setext title is not also preamble prose', () => {
@@ -186,7 +288,7 @@ test('a setext title is not also preamble prose', () => {
   const skillText = SKILL.replace('# S', 'S\n=');
   const units = contentUnits(skillText);
   assert.equal(units.filter((u) => u.text === 'S').length, 1);
-  assert.deepEqual(checkSkill({ skillText, matrixText: MATRIX }), []);
+  assert.deepEqual(errors(checkSkill({ skillText, matrixText: MATRIX })), []);
 });
 
 test('prose cannot impersonate a block designator', () => {
@@ -223,15 +325,15 @@ test('pairing does not depend on the order of the rows', () => {
   // A row naming the wrong anchor could consume the occurrence a later correct
   // row needed, so the same two rows in the other order gave different findings.
   const rows = (a, b) => `${MATRIX}${a}${b}`;
-  const wrong = '| G-03 | Do not use semicolons. | Nowhere | Rule 8.1 | s |\n';
-  const right = '| G-04 | Do not use semicolons. | Rules | Rule 8.1 | s |\n';
+  const wrong = '| G-03 | Do not use semicolons. | Nowhere | Rule 8.1 | s | unaudited |\n';
+  const right = '| G-04 | Do not use semicolons. | Rules | Rule 8.1 | s | unaudited |\n';
   const twice = `${SKILL}- Do not use semicolons.\n`;
   const codes = (m) => checkSkill({ skillText: twice, matrixText: m })
     .map((f) => f.code).sort();
   assert.deepEqual(codes(rows(wrong, right)), codes(rows(right, wrong)));
   // Three rows claim two occurrences. The row refused is the one whose anchor
   // is wrong, in either order, because every exact match is reserved first.
-  const refused = (m) => checkSkill({ skillText: twice, matrixText: m })
+  const refused = (m) => errors(checkSkill({ skillText: twice, matrixText: m }))
     .map((f) => `${f.code} ${f.message.split(':')[0]}`);
   assert.deepEqual(refused(rows(wrong, right)), ['duplicate-row G-03']);
   assert.deepEqual(refused(rows(right, wrong)), ['duplicate-row G-03']);
@@ -251,16 +353,16 @@ test('one row covers one occurrence, not every copy of a sentence', () => {
   assert.ok(found.some((f) => f.code === 'uncovered-statement'
     && /Do not use semicolons/.test(f.message)));
 
-  const spare = `${MATRIX}| G-03 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 |\n`;
-  assert.deepEqual(checkSkill({ skillText: twice, matrixText: spare }), []);
+  const spare = `${MATRIX}| G-03 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 | unaudited |\n`;
+  assert.deepEqual(errors(checkSkill({ skillText: twice, matrixText: spare })), []);
   assert.ok(checkSkill({ skillText: SKILL, matrixText: spare })
     .some((f) => f.code === 'duplicate-row'));
 });
 
 test('an N row carries no rule, and an unknown prefix is refused', () => {
   const narrative = `${SKILL}\nThis guide does not replace the standard.\n`;
-  const withN = `${MATRIX}| N-01 | This guide does not replace the standard. | Rules |  | Framing |\n`;
-  assert.deepEqual(checkSkill({ skillText: narrative, matrixText: withN }), []);
+  const withN = `${MATRIX}| N-01 | This guide does not replace the standard. | Rules |  | Framing |  |\n`;
+  assert.deepEqual(errors(checkSkill({ skillText: narrative, matrixText: withN })), []);
 
   const nWithRule = withN.replace('| Rules |  | Framing |', '| Rules | Rule 1.1 | Framing |');
   assert.ok(checkSkill({ skillText: narrative, matrixText: nWithRule })
@@ -571,6 +673,6 @@ test('every shipped skill stays inside the Markdown the extractor models', async
 test('checkAll covers every skill in the repository', async () => {
   const all = await checkAll(REPO);
   assert.ok('demo-standard' in all);
-  assert.deepEqual(all['demo-standard'], []);
+  assert.deepEqual(errors(all['demo-standard']), []);
   assert.ok(all['demo-craft'].some((f) => f.code === 'no-matrix'));
 });

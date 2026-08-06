@@ -23,6 +23,10 @@ export function parseMatrix(text) {
       anchor: cells[2],
       rule: cells[3],
       location: cells[4],
+      // A row written before the audit column existed has no sixth cell, and
+      // `undefined` there would read as an audit nobody can parse. An absent
+      // cell and an empty one are the same claim, which is none.
+      audit: cells[5] ?? '',
     });
   }
   return rows;
@@ -71,6 +75,62 @@ const digest = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(
  * which is what every other row already does.
  */
 const DESIGNATOR = /^\[(?:table|code) [0-9a-f]{8}\]$/;
+
+/**
+ * What a `G` row records about its own audit.
+ *
+ * A `G` row claims the authority of a source. No program here can open that
+ * source, so no program can confirm the row reads it correctly. The check
+ * confirms that a rule is cited and stops there, and a clean run therefore
+ * said nothing at all about whether the citation is true. Reading a green
+ * check as an audited matrix is the gap issue 40 names.
+ *
+ * So the row carries the audit itself. `unaudited` is the honest default and
+ * the state every row starts in. The other spelling is a date and a digest,
+ * which together say that a person compared this row against the source on
+ * that day.
+ *
+ * The digest names the row's CONTENTS, for the reason `[table 8f3a2b1c]`
+ * does. A bare date beside a row id would survive a rewrite of every other
+ * cell in that row, so an audit of words nobody audited would keep reading as
+ * current. Edit the guidance, the anchor, the rule or the location and the
+ * audit goes stale, which is what every other row in this file already does
+ * when the thing it describes moves underneath it.
+ *
+ * The cell names no auditor. The commit that wrote it does, and one record of
+ * who is enough.
+ */
+const UNAUDITED = 'unaudited';
+const AUDIT = /^(\d{4})-(\d{2})-(\d{2}) ([0-9a-f]{8})$/;
+
+const LEAP = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+
+/**
+ * Whether the three numbers name a day that exists. `2026-02-31` parses under
+ * the pattern above and names nothing, and an audit dated on a day that never
+ * happened is not a record of anything.
+ *
+ * This counts days rather than building a date, because no module under `src/`
+ * may reach the clock and a constructed date is one argument away from it.
+ */
+function isRealDate(year, month, day) {
+  if (month < 1 || month > 12 || day < 1) return false;
+  const lengths = [31, LEAP(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= lengths[month - 1];
+}
+
+/**
+ * The digest an audit of this row would carry. Every cell the audit is a
+ * claim about goes in: our guidance, where it sits, the rule it cites and
+ * where that rule lives. The id stays out, because renumbering a matrix
+ * rewrites no claim.
+ */
+export function rowDigest(row) {
+  return digest([row.guidance, row.anchor, row.rule, row.location].join('\n'));
+}
+
+/** Whether this row records a person's reading, rather than the absence of one. */
+const isAudited = (row) => AUDIT.test(row.audit ?? '');
 
 const PREAMBLE = '(before the first heading)';
 
@@ -439,6 +499,53 @@ export function checkSkill({ skillText, matrixText }) {
         message: `${row.id}: only a G row cites a source rule.`,
       });
     }
+
+    // The audit is checked on its own, not as another branch of the chain
+    // above. A G row can both omit its rule and carry a stale audit, and both
+    // are true findings. Folding them into one chain reported whichever came
+    // first and hid the rest until it was fixed.
+    if (!kind) return;
+    const audit = row.audit ?? '';
+    if (kind !== 'G') {
+      if (audit) {
+        findings.push({
+          level: 'error',
+          code: 'e-row-has-audit',
+          message: `${row.id}: only a G row records an audit, because only a G row cites a source.`,
+        });
+      }
+      return;
+    }
+    if (!audit) {
+      findings.push({
+        level: 'error',
+        code: 'g-row-no-audit',
+        message: `${row.id}: a G row records its audit. Write \`${UNAUDITED}\`, `
+          + `or a date and \`${rowDigest(row)}\`.`,
+      });
+      return;
+    }
+    if (audit === UNAUDITED) return;
+    const stamp = AUDIT.exec(audit);
+    if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
+      findings.push({
+        level: 'error',
+        code: 'audit-malformed',
+        message: `${row.id}: "${audit}" is not an audit. Write \`${UNAUDITED}\`, `
+          + `or a date as YYYY-MM-DD and \`${rowDigest(row)}\`.`,
+      });
+      return;
+    }
+    const current = rowDigest(row);
+    if (stamp[4] !== current) {
+      findings.push({
+        level: 'error',
+        code: 'audit-stale',
+        message: `${row.id}: the row changed since ${stamp[1]}-${stamp[2]}-${stamp[3]}, `
+          + `so its audit describes other words. Read it against the source again and write `
+          + `\`${current}\`, or write \`${UNAUDITED}\`.`,
+      });
+    }
   });
 
   stmts.forEach((s, i) => {
@@ -459,6 +566,22 @@ export function checkSkill({ skillText, matrixText }) {
       });
     }
   });
+
+  // Last, and at a level that fails nothing. `Grounding clean.` printed over a
+  // matrix where nobody has read a single row against its source is the whole
+  // of what issue 40 reports, and a check that failed on it would be red for
+  // every matrix from the day it landed. So the run says the number out loud
+  // instead, beside the verdict, where a reader cannot mistake one for the
+  // other. A matrix with no G row claims no source, so it gets no line.
+  const sourced = rows.filter((r) => /^G-/i.test(r.id));
+  if (sourced.length) {
+    findings.push({
+      level: 'note',
+      code: 'audit-coverage',
+      message: `${sourced.filter(isAudited).length} of ${sourced.length} G rows `
+        + 'record a person reading them against the source.',
+    });
+  }
 
   return findings;
 }

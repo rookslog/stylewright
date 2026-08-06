@@ -63,6 +63,23 @@ thing outside the check, because it is metadata for the harness.
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
 
+No check here opens a source, so no check can say whether a `G` row reads its
+rule correctly. Each `G` row therefore records its own audit, in a sixth cell.
+The cell says `unaudited`, or it carries the date a person read that row
+against the source and a digest of the four cells they read. Every other kind
+of row leaves the cell empty, for the same reason its rule cell is empty.
+
+Three things are defects. A date written for a reading nobody did is the worst
+of them, and it is the `G` row defect in its newest form. A digest that no
+longer matches its row is the second, and the check catches that one. A change
+that makes the checker fill the cell is the third, because the cell records a
+person and nothing else can. ADR-0018 records the decision.
+
+`ground --check` prints the audited count for each matrix beside its verdict.
+That line is a note, so it fails nothing. Do not promote it to an error, and do
+not remove it to quiet the output. A green run over a matrix nobody has read
+is what issue 40 reports, and the count is the answer to it.
+
 The checker reads Markdown a line at a time, and it models no container. So it
 states the forms it reads and refuses every line outside them. Those forms are
 a blank line, any construct at column 0, a line that continues the paragraph

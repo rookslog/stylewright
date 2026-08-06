@@ -94,11 +94,12 @@ Each row records:
 
 | Column | Content |
 |---|---|
-| ID | `G-nn` for a grounded row. `E-nn` for an editorial row. |
+| ID | `G-nn` for a grounded row. `E-nn` for an editorial row. `N-nn` for narrative. |
 | Our guidance | The statement, quoted from our own `SKILL.md`. |
 | Our anchor | The `SKILL.md` section that contains the statement. |
 | Source rule | The rule identifier in the standard, such as `Rule 5.1`. |
 | Source location | The part and section in the standard. |
+| Audited | `unaudited`, or the date a person read the row against the source and a digest of the row. ADR-0018. |
 
 A `G` row traces to the standard. An **`E` row does not**. An `E` row marks
 guidance that we added ourselves. The distinction is the point of the file. It

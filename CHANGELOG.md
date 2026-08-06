@@ -7,6 +7,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Every grounding matrix carries an `Audited` column. A `G` row holds
+  `unaudited`, or the date a person read that row against the source and a
+  digest of the row they read. No run of the checker raises a row out of
+  `unaudited`, and editing any other cell in the row reports the audit as
+  stale. `ground --check` prints the audited count for each matrix beside its
+  verdict, at a level that fails nothing. A clean check has never meant that a
+  person confirmed a citation, and the count is what says so. ADR-0018 records
+  the decision, and every row ships unaudited.
+
 - The `navigable-references` skill, in the craft tier. It asks a writer to give
   every named thing a form the reader can follow, in the form the medium
   renders, and to find a line at the moment of citing it rather than from

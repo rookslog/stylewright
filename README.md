@@ -223,6 +223,16 @@ The check confirms that a `G` row names a rule. It cannot confirm that the rule
 says what the row says. A person read the source and wrote the row, and no
 program has checked that reading.
 
+So each `G` row records its own audit. The `Audited` cell says `unaudited`, or
+it carries the date a person read that row against the source and a digest of
+the row they read. No run of the checker raises a row out of `unaudited`, and
+editing any other cell in the row voids the audit. `stylewright ground --check`
+prints how many `G` rows in each matrix carry a date, beside its verdict.
+
+A clean check means the matrix matches the skill. It has never meant that a
+person confirmed a citation. Read the printed count rather than the verdict,
+because the count is the only line that reports the second thing.
+
 Matrices ship at the root of the npm package, so the published `ground` command
 has them to read. No install pathway copies them with a skill. A matrix is an
 audit record for a reader, and an agent does not need it while it writes.
