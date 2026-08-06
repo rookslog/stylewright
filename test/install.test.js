@@ -812,6 +812,53 @@ test('a source that changes under the run stops it before anything lands', async
   assert.ok(!(await exists(path.join(target, 'demo-craft'))), 'and the staging file went');
 });
 
+test('undo clears the destinations this run wrote, not every one it stated', async () => {
+  // The statement names every path the run intended to write. Only the run
+  // itself knows which of them it reached, and it was throwing that away: a
+  // file edited after the collision checks, at a path the copy loop had not got
+  // to, holds the user's work — and an edit that happens to produce exactly the
+  // bytes this release ships satisfies the content proof that recovery must
+  // rely on. Recovery has no choice, because it reads a statement its own run
+  // did not live to explain. A live undo does.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  // The next release rewrites the guide and nothing else.
+  const guideSource = path.join(repo, 'skills', 'craft', 'demo-craft', 'references', 'guide.md');
+  const shipped = 'A guide, rewritten for the next release.\n';
+  await fs.writeFile(guideSource, shipped);
+  const guide = path.join(target, 'demo-craft', 'references', 'guide.md');
+  const skillSource = path.join(repo, 'skills', 'craft', 'demo-craft', 'SKILL.md');
+
+  const original = fs.copyFile;
+  let swapped = false;
+  fs.copyFile = async (...args) => {
+    if (!swapped && String(args[0]) === skillSource) {
+      swapped = true;
+      // The user's edit, after the checks that would have refused it and
+      // before the copy loop reaches that path.
+      await fs.writeFile(guide, shipped);
+      await fs.writeFile(skillSource, '---\nname: demo-craft\n---\n\nA later edit.\n');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed in .* while this command was running/);
+  } finally {
+    fs.copyFile = original;
+  }
+
+  assert.equal(await fs.readFile(guide, 'utf8'), shipped,
+    'a path this run never reached is not this run\'s to delete');
+  assert.ok(
+    Object.hasOwn((await readManifest(target)).skills['demo-craft'].files, 'references/guide.md'),
+    'and the record still names a file that is still there');
+});
+
 test('a skill that ships a name this tool stages under is refused', async () => {
   // The staging name is the destination plus a suffix, so a skill shipping both
   // `A` and `A.stylewright-part` would have the copy of `A` clear the second as

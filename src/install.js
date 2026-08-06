@@ -118,7 +118,12 @@ function retiredFiles(recorded, sourceRels) {
  */
 async function undo(targetDir, name, stated, written, retired) {
   const { manifest, identity } = await readManifestWithIdentity(targetDir);
-  await discardStated(targetDir, name, stated, manifest);
+  // `written` and not `stated`, because this run knows which of those paths it
+  // reached. A file at a path it never got to holds somebody else's work, and a
+  // user who edited it to exactly the bytes this release ships satisfies the
+  // content proof that recovery has to rely on. Recovery has no choice — it
+  // reads a statement its own run did not live to explain. This one does.
+  await discardStated(targetDir, name, stated, manifest, written);
 
   // Retirement is a deletion this run made before it copied anything, and a
   // commit that never lands leaves the surviving record naming those paths

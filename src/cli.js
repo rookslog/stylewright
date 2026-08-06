@@ -504,11 +504,13 @@ export async function run(argv, ctx) {
         selections.push([dir, fromCatalog]);
         continue;
       }
-      const names = [];
-      for (const [n, entry] of Object.entries((await readManifest(dir)).skills)) {
-        if (flags.all || entry.tier === flags.tier) names.push(n);
-      }
-      selections.push([dir, names]);
+      // No list, because this one is not ours to choose. A removal selected by
+      // tier reads the manifest, and reading it here means reading it before
+      // anything is held: an install that moved a skill between tiers in that
+      // window had the stale name removed from the tier it had just joined.
+      // `uninstall` derives the names from the manifest it reads under its own
+      // lock, so the decision and the act cannot be separated by another run.
+      selections.push([dir, null]);
     }
 
     const known = new Set(catalog.map((s) => s.name));
@@ -527,7 +529,11 @@ export async function run(argv, ctx) {
         }
       }
     }
-    const selected = [...new Set([...flags.skill, ...selections.flatMap(([, n]) => n)])];
+    // A tier selection contributes no name here. Every name it can produce
+    // comes from a manifest this loop has already read into `known`, so it
+    // could never be the unknown one, and it is no longer decided at this
+    // point in the command.
+    const selected = [...new Set([...flags.skill, ...selections.flatMap(([, n]) => n ?? [])])];
     // A held directory proves nothing about a name. `install` reads its names
     // from the catalog, which no lock hides, but `uninstall` reads them from
     // the manifests — and it refused to read the one that could carry this one.
@@ -566,9 +572,9 @@ export async function run(argv, ctx) {
         changed += res.installed.length + res.cleared.length;
         refused += res.skipped.length;
       } else {
-        const res = await uninstallSkills({
-          targetDir, names: selected, force: Boolean(flags.force),
-        });
+        const res = await uninstallSkills(selected
+          ? { targetDir, names: selected, force: Boolean(flags.force) }
+          : { targetDir, tier: flags.all ? null : flags.tier, force: Boolean(flags.force) });
         sayCleared(res, targetDir);
         for (const n of res.removed) say(`removed ${n} from ${targetDir}`);
         for (const n of res.missing) say(`not installed: ${n} in ${targetDir}`);

@@ -540,3 +540,53 @@ test('a skill named constructor that was never installed is missing, not an entr
   assert.deepEqual(res.missing, ['constructor']);
   assert.deepEqual(res.removed, []);
 });
+
+test('a tier selection is made from the manifest this command holds', async () => {
+  // The race codex reproduced. `uninstall --tier craft` used to choose its
+  // names from a manifest the command line read while holding nothing, and an
+  // install that finished in the window between that read and this lock could
+  // move a skill to another tier. The stale name went into the locked removal,
+  // and the standards skill that had just arrived was deleted.
+  //
+  // The window is exactly the moment the lock is taken, so the concurrent
+  // install is staged there: a run that committed a heartbeat before this one
+  // acquired the directory leaves precisely this manifest behind.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const before = await readManifest(target);
+  const real = fs.writeFile;
+  fs.writeFile = async (file, ...rest) => {
+    if (String(file).endsWith('.stylewright-lock')) {
+      await real(path.join(target, MANIFEST_NAME), JSON.stringify({
+        ...before,
+        skills: { 'demo-craft': { ...before.skills['demo-craft'], tier: 'standards' } },
+      }));
+    }
+    return real(file, ...rest);
+  };
+
+  let res;
+  try {
+    res = await uninstallSkills({ targetDir: target, tier: 'craft' });
+  } finally {
+    fs.writeFile = real;
+  }
+
+  assert.deepEqual(res.removed, [], 'the skill is standards by the time the lock is held');
+  assert.ok(await exists(path.join(target, 'demo-craft', 'SKILL.md')),
+    'and a removal decided before the lock would have deleted it');
+  assert.deepEqual(Object.keys((await readManifest(target)).skills), ['demo-craft']);
+});
+
+test('a tier selection with no tier removes every skill the manifest records', async () => {
+  // What `--all` asks for, and the null tier is how it says so.
+  const target = await tmp();
+  await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-craft', 'demo-standard'], now: NOW,
+  });
+
+  const res = await uninstallSkills({ targetDir: target, tier: null });
+
+  assert.deepEqual(res.removed, ['demo-craft', 'demo-standard']);
+  assert.ok(!(await exists(target)));
+});

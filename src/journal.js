@@ -124,8 +124,20 @@ export function clearPending(manifest, name) {
  * The paths are walked through `reachability` for the same reason every other
  * consumer is: a deletion must not travel through a symbolic link that appeared
  * in the middle of a recorded path.
+ *
+ * `wrote` is the paths this run actually copied, and only a caller still alive
+ * to know them can pass it. Recovery cannot: it reads a statement some dead run
+ * left, so it passes null and the content match is the whole of its proof. A
+ * live undo does know, and knowledge beats proof — a file holding the stated
+ * bytes at a path the run never reached is somebody else's work that happens to
+ * match, and deleting it was a live run destroying a file it had not written.
+ *
+ * It narrows the destinations only. The staging name belongs to this tool at
+ * every stated path, whether or not the copy got far enough to be counted, and
+ * a fragment left by the copy that failed is exactly the one that was never
+ * counted.
  */
-export async function discardStated(targetDir, name, stated, manifest) {
+export async function discardStated(targetDir, name, stated, manifest, wrote = null) {
   const destDir = path.join(targetDir, name);
   // `hasOwn`, because `constructor` is a legal skill name and a bare lookup
   // finds the prototype's member for it — an entry that does not exist reads
@@ -169,7 +181,8 @@ export async function discardStated(targetDir, name, stated, manifest) {
     // resolver is what executes the deletion, so the record that can keep the
     // file is the one at whichever spelling reaches it.
     const owner = await recordedAs(destDir, rel, recorded);
-    if (await destinationState(abs) === 'file'
+    if ((wrote === null || Object.hasOwn(wrote, rel))
+      && await destinationState(abs) === 'file'
       && await hashFile(abs) === stated[rel]
       // Content decides, not identity. A record naming these bytes is one this
       // deletion would leave pointing at nothing. A record naming other bytes

@@ -74,13 +74,41 @@ export async function uninstallSkills(options) {
   return result;
 }
 
-async function remove({ targetDir, names, force = false }, { absent = false } = {}) {
+/**
+ * Which skills a run that named none removes: every one the manifest places in
+ * `tier`, or every one it records when `tier` is null, which is what `--all`
+ * asks for.
+ *
+ * Derived HERE, from the manifest this command reads under its own lock, and
+ * not by the caller beforehand. The command line used to choose the names from
+ * a manifest it read while holding nothing, and an install that moved a skill
+ * to another tier in the window between that read and this lock had the stale
+ * name removed from the tier it had just joined. It is the shape three earlier
+ * rounds found elsewhere — a reading acted on after something else could
+ * invalidate it — and it closes the way `update` closed its own discovery: the
+ * decision and the act share one held lock.
+ */
+function byTier(manifest, tier) {
+  return Object.entries(manifest.skills)
+    .filter(([, entry]) => tier === null || entry.tier === tier)
+    .map(([name]) => name);
+}
+
+async function remove(options, { absent = false } = {}) {
+  const { targetDir, force = false } = options;
   // The lock, not a look, said the directory was not there. Answering from
   // the tree instead would read whatever a concurrent command has created
-  // since, while holding nothing.
+  // since, while holding nothing. A run that named no skill has nothing to
+  // report missing, because the manifest that would have named them is the
+  // one thing this case establishes is not there.
   if (absent) {
     return {
-      removed: [], missing: [...names], skipped: [], recovered: [], cleared: [], emptied: false,
+      removed: [],
+      missing: [...(options.names ?? [])],
+      skipped: [],
+      recovered: [],
+      cleared: [],
+      emptied: false,
     };
   }
   // Before anything is deleted, because this command cannot refuse afterwards.
@@ -108,6 +136,10 @@ async function remove({ targetDir, names, force = false }, { absent = false } = 
   }
 
   const skills = { ...manifest.skills };
+  // After the read that the lock protects, and after the recovery that can
+  // change what the manifest says. A caller that named its skills is obeyed —
+  // those names are the user's, not a reading of anything.
+  const names = options.names ?? byTier(manifest, options.tier ?? null);
 
   for (const name of names) {
     // `hasOwn`, because `constructor` is a legal skill name and the bare

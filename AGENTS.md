@@ -262,8 +262,14 @@ Two consequences for a change you propose here:
   Comparing the identity BEFORE taking it left a window where two runs both saw
   the file they had read and the second rename destroyed the first's record. A
   random name reopens that window. Creating and replacing go through it alike,
-  so the manifest is never half written — and a command that holds the directory
-  clears one a killed run left, because only a killed run could have left it.
+  so the manifest is never half written.
+- **A file standing at that name is refused, and never cleared.**
+  `refuseStaleWrite` names it and stops. Holding the directory proves no command
+  is running now. It does not prove who wrote the file, and a killed run left
+  its lock behind too, so the person who removed that lock is already clearing
+  by hand and takes this file with it. An earlier rule here said a lock holder
+  clears what only a killed run could have left. That was a guess, and acting on
+  it deleted a file the user had put there. Removing it is a person's job.
 - **A command that has already deleted reconciles rather than refuses.**
   `uninstall` removes files and then takes its entries out of a fresh read, and
   retries on a stale one. Refusing there would leave the manifest claiming files
