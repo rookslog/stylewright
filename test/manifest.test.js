@@ -170,7 +170,10 @@ test('a legacy key that rewrites onto an existing key is refused', async () => {
       },
     },
   }));
-  await assert.rejects(() => readManifest(dir), /outside|twice/);
+  // `/twice/` alone, because without the migration the backslash gate refuses
+  // this manifest with "outside", and an alternation accepting that message
+  // passes whether or not the collision branch exists.
+  await assert.rejects(() => readManifest(dir), /twice/);
 });
 
 test('refuses a component that contains a colon', async () => {
@@ -336,4 +339,30 @@ test('a write leaves no temporary file behind, and replaces in one step', async 
   // carries a write out of its directory.
   const st = await fs.lstat(path.join(dir, MANIFEST_NAME));
   assert.ok(st.isFile());
+});
+
+test('a file named __proto__ is a recorded key, not a prototype', async () => {
+  const dir = await tmp();
+  // Written raw, because JSON.parse produces `__proto__` as an own property
+  // and the migration loop must keep it one. Assigned into an object literal
+  // it would set the prototype instead — a silent no-op — and uninstall could
+  // never reach the file it named.
+  // The JSON is spelled as a string, because a quoted '__proto__' in a JS
+  // object literal still sets the prototype — the fixture itself would lose
+  // the key it exists to test.
+  await fs.writeFile(path.join(dir, MANIFEST_NAME),
+    '{"schema":1,"skills":{"demo-craft":{"tier":"craft","pathway":"engine",'
+    + `"files":{"SKILL.md":"${'a'.repeat(64)}","__proto__":"${'b'.repeat(64)}"}}}}`);
+  const mf = await readManifest(dir);
+  const keys = Object.keys(mf.skills['demo-craft'].files);
+  assert.deepEqual(keys.sort(), ['SKILL.md', '__proto__']);
+});
+
+test('a skill named __proto__ is a recorded entry, not a prototype', async () => {
+  const dir = await tmp();
+  await fs.writeFile(path.join(dir, MANIFEST_NAME),
+    '{"schema":1,"skills":{"__proto__":{"tier":"craft","pathway":"engine",'
+    + `"files":{"SKILL.md":"${'a'.repeat(64)}"}}}}`);
+  const mf = await readManifest(dir);
+  assert.ok(Object.keys(mf.skills).includes('__proto__'));
 });

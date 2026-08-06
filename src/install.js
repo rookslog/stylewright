@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadCatalog } from './catalog.js';
-import { hashFile, readManifest, writeManifest, recordSkill } from './manifest.js';
+import { contained, hashFile, readManifest, writeManifest, recordSkill } from './manifest.js';
 import {
   walk, pruneEmpty, destinationState, removeAt, ensureDir, reachability,
   ancestorsOf,
@@ -107,6 +107,18 @@ export async function installSkills({
     const recorded = manifest.skills[name]?.files;
     const rels = await walk(skill.dir);
 
+    // The read side refuses these spellings, so the write side must never
+    // record one. A colon is a legal POSIX filename character: without this
+    // check, install writes a manifest that the very next read refuses, and
+    // the only exit is deleting the manifest by hand, orphaning every file
+    // it recorded. Refusing here names the skill and the file instead.
+    for (const rel of rels) {
+      if (!contained(rel)) {
+        throw new Error(
+          `Skill "${name}" ships a file whose name cannot be recorded portably: ${rel}`);
+      }
+    }
+
     // The skill's own directory is the outermost ancestor of every path it
     // ships, and it is the one `ancestorsOf` cannot name, because the paths it
     // walks are relative to it. Leaving it out put the same collision one
@@ -200,7 +212,10 @@ export async function installSkills({
       await pruneEmpty(path.dirname(abs), destDir);
     }
 
-    const files = {};
+    // Collected as pairs for the same reason migrateLegacyKeys avoids
+    // assignment: a file named `__proto__` must become a recorded key, not a
+    // prototype, and Object.fromEntries defines where a literal would assign.
+    const filePairs = [];
     for (const rel of rels) {
       const from = path.join(skill.dir, rel);
       const to = path.join(destDir, rel);
@@ -213,10 +228,12 @@ export async function installSkills({
       if (state !== 'absent' && state !== 'file') await removeAt(to);
       await ensureDir(path.dirname(to), destDir);
       await fs.copyFile(from, to);
-      files[rel] = await hashFile(to);
+      filePairs.push([rel, await hashFile(to)]);
     }
 
-    manifest = recordSkill(manifest, { name, tier: skill.tier, pathway, files, now });
+    manifest = recordSkill(manifest, {
+      name, tier: skill.tier, pathway, files: Object.fromEntries(filePairs), now,
+    });
     installed.push(name);
   }
 

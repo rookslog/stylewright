@@ -24,7 +24,7 @@ export function emptyManifest() {
  * was cause a skip. Retirement made it a delete instruction, executed
  * verbatim, and a recorded `..` took the whole skills directory.
  */
-function contained(rel) {
+export function contained(rel) {
   if (typeof rel !== 'string' || rel === '') return false;
   // A manifest travels between machines, so a key carries one separator: `/`.
   // `walk` records it, and every check here reads it. Where `path.sep` is `\`,
@@ -157,20 +157,27 @@ function checkContained(manifest, targetDir) {
  */
 function migrateLegacyKeys(manifest, targetDir) {
   if (!manifest?.skills) return manifest;
-  const skills = {};
-  for (const [name, entry] of Object.entries(manifest.skills)) {
-    const files = {};
+  // Built through Object.fromEntries, never by assignment, because
+  // `__proto__` is a legal filename and a legal directory name. Assignment
+  // into an object literal sets the prototype instead of creating a property,
+  // and setting a prototype to a string is a silent no-op — the key vanishes,
+  // and uninstall can never reach the file. fromEntries defines the property,
+  // so the key survives.
+  const skills = Object.entries(manifest.skills).map(([name, entry]) => {
+    const pairs = [];
+    const seen = new Set();
     for (const [rel, hash] of Object.entries(entry?.files ?? {})) {
       const key = rel.replaceAll('\\', '/');
-      if (Object.hasOwn(files, key)) {
+      if (seen.has(key)) {
         throw new Error(
           `Manifest in ${targetDir} records "${key}" twice, once per separator.`);
       }
-      files[key] = hash;
+      seen.add(key);
+      pairs.push([key, hash]);
     }
-    skills[name] = { ...entry, files };
-  }
-  return { ...manifest, skills };
+    return [name, { ...entry, files: Object.fromEntries(pairs) }];
+  });
+  return { ...manifest, skills: Object.fromEntries(skills) };
 }
 
 export async function readManifest(targetDir) {

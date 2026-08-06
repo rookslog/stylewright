@@ -583,3 +583,21 @@ test('a name in both tiers stops the install rather than picking one', async () 
   // for.
   assert.deepEqual(await fs.readdir(target), []);
 });
+
+test('refuses at the source a skill shipping a file no manifest can record', async () => {
+  // A colon is a legal POSIX filename character, and the read side refuses it.
+  // Without the write-side partner, install succeeds and every later command
+  // throws on the manifest install itself wrote.
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'demo-craft');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'SKILL.md'),
+    '---\nname: demo-craft\ndescription: Ships a colon.\n---\n\n# demo-craft\n');
+  await fs.writeFile(path.join(dir, 'notes:draft.md'), 'draft\n');
+  const target = await tmp();
+  await assert.rejects(
+    () => installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+    /Skill "demo-craft" ships a file whose name cannot be recorded portably: notes:draft\.md/);
+  assert.ok(!(await exists(path.join(target, MANIFEST_NAME))));
+});
