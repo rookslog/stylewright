@@ -584,7 +584,14 @@ test('a name in both tiers stops the install rather than picking one', async () 
   assert.deepEqual(await fs.readdir(target), []);
 });
 
-test('refuses at the source a skill shipping a file no manifest can record', async () => {
+test('refuses at the source a skill shipping a file no manifest can record', {
+  // The fixture's hazard is a POSIX-only creation. On NTFS, writing
+  // notes:draft.md does not create a file of that name — it silently writes
+  // an alternate data stream named draft.md onto a file named notes, so walk
+  // sees notes and install has nothing to refuse. The conformance sweep over
+  // the real catalog covers every platform.
+  skip: process.platform === 'win32',
+}, async () => {
   // A colon is a legal POSIX filename character, and the read side refuses it.
   // Without the write-side partner, install succeeds and every later command
   // throws on the manifest install itself wrote.
