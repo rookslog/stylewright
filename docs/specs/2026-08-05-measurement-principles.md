@@ -52,11 +52,16 @@ ledger entry that precedes any treatment arm names the rubric, the
 scenario frame and its selection, the primary metric, the primary
 scenario, the repetition count, the predicted direction, and the stopping
 rule — and every arm attempt enters the ledger before it starts,
-exploratory included, so a clean result cannot be picked from attempts
-nobody can see. Every arm is promoted including the failures, and a
+exploratory included. The ledger binds only what enters it: an
+unregistered attempt leaves no trace any check can find, so the ledger
+makes selective reporting a deliberate breach of a stated rule, never an
+impossibility, and the design says so. Every arm is promoted including the failures, and a
 promoted study is tamper-evident under its digests. Ordering is not
-self-attested: the public push time is the clock, verified while the
-server still attests it.
+self-attested: the public push time is the clock on both ends — a
+registration counts only when pushed before the evidence it governs was
+first pushed — verified while the server still attests it. Execution time
+stays the author's own fact, and the design says so instead of claiming
+more.
 
 ## Results survive their own multiplicity
 
@@ -94,11 +99,27 @@ cannot survive, because anyone can re-read them.
 ## A claim binds to its conditions
 
 No result generalises past its harness, build, served model, platform,
-pathway, and environment class. The probe records its scope and its
+pathway, and environment class — down to the committed stack digest
+where the class is a representative stack. The probe records its scope and its
 cadence is calendar-driven. Status lines are derived, digest-bound, and
 computed stale when the skill or the harness moves. An old figure is
 superseded per claim by a person, and retired from tables into prose when
 the first retained study lands — the record kept, the credential expired.
+
+## The mechanisms bind an honest author
+
+Every chain in the design bottoms out in the operator, who holds every
+key — the workflows, the rulesets, the account. The mechanisms exist for
+the honest author's failure modes, drift and memory and the flattering
+reading, and they make dishonesty premeditated, visible, or expensive —
+never impossible, and not always even auditable, because a private arm
+nobody registers leaves no trace. Four review rounds proved the alternative does not terminate:
+each attestation link, once checked, exposed the next, because no
+single-owner repository can constrain its owner. ADR-0015 records the
+threat model and its flip — a bench meant to be trusted by strangers who
+distrust the author needs infrastructure outside the repository. Until
+then, what defends the claims is retention: a stranger re-judges the
+evidence, not the author.
 
 ## Observation and experiment are different instruments
 
@@ -115,3 +136,14 @@ confirmatory one. The bench tests.
   construct-validity commitments written.
 - Draft 3 carried the codex-round corrections: ledger coverage of every
   arm before it starts, and the scenario frame fixed before the skill.
+- Draft 4 moved the ordering boundary to push-against-push, after a
+  retroactive review showed a runner-written arm-start timestamp is the
+  author's fact and can be post-dated past any push.
+- Draft 5 narrowed the ledger claim to registered attempts: the ledger
+  makes selective reporting a deliberate breach, never an impossibility.
+- Draft 6 added the honest-author commitment, when four review rounds
+  showed the attestation chain has no floor inside a single-owner
+  repository, and ADR-0015 recorded the threat model.
+- Draft 7 matched the commitment's wording to the ADR it cites, after a
+  review caught it promising auditability the private-arm residue
+  denies.

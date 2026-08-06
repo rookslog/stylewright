@@ -27,4 +27,8 @@ neither bound is secrecy. Late disclosure remains the ceiling of what a
 public repository can do, and the design says so instead of claiming
 more.
 
-Decided 2026-08-05. The mechanism is the measurement design, section 5.
+Decided 2026-08-05. Amended 2026-08-06: "before the skill is written" is
+attestable only as push order, so the check compares the frame's push
+against the first push carrying the skill's content, and a treatment
+drafted locally before the frame was pushed is a named residue. The
+mechanism is the measurement design, section 5.
