@@ -363,6 +363,25 @@ The engine writes `<target>/.stylewright-manifest.json`. For each installed skil
 it records the name, the tier, the `stylewright` release version, a content hash
 of each installed file, and the pathway that installed it.
 
+It also records what a run is **about to** write, under `pending`, and clears
+that record in the same write that records the files. **Added 2026-08-05 (issue
+#49).** One atomic manifest write stops a torn record. It does not stop a valid
+record from disagreeing with the tree, because the copies happened before it.
+A run states its paths first, so every file it can create is named by a record
+that reached disk before the file did, and the next command clears what an
+interrupted run left. The statement records the content as well as the path, and
+the cleanup removes a file only when it holds exactly what the interrupted run
+was going to write there, so a file the user wrote at one of those paths stays. The write that commits the record refuses a manifest
+that appeared or changed since the read, and it compares while a temporary file
+with a fixed name holds off every other writer.
+
+**One command at a time holds a target directory.** Everything above reads the
+tree and then acts on what it read, and a second run inside the directory
+invalidates the reading in between. A run killed while holding the directory
+leaves the lock behind, and every later command refuses and names the file. That
+cost is deliberate: telling a live run from a dead one needs a facility Node does
+not expose, and a guess deletes a live run's files.
+
 The manifest makes three operations possible:
 
 - `update` compares the hash and detects a local edit before it overwrites.

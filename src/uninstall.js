@@ -1,6 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { hashFile, readManifest, writeManifest, MANIFEST_NAME } from './manifest.js';
+import {
+  hashFile, readManifestWithIdentity, writeManifest, removeManifest, isStale,
+  refuseStaleWrite,
+} from './manifest.js';
+import { hasPending, recoverPending } from './journal.js';
+import { withTargetLock } from './lock.js';
 import { pruneEmpty, removeAt, destinationState, reachability } from './tree.js';
 
 /**
@@ -56,17 +61,96 @@ async function altered(destDir, files) {
   return bad.sort();
 }
 
-export async function uninstallSkills({ targetDir, names, force = false }) {
-  const manifest = await readManifest(targetDir);
+export async function uninstallSkills(options) {
+  // Held for the whole command, like install. This one deletes before it
+  // records, so a second run inside the directory is worse here than there.
+  const { emptied, ...result } = await withTargetLock(
+    options.targetDir, (state) => remove(options, state), { create: false });
+  // After the lock is released, because the lock file lives in this directory
+  // and an empty directory is one that holds nothing at all. `rmdir` refuses a
+  // directory that is not empty, which is the whole of the check: a hand
+  // written skill, or a run that arrived since, keeps it alive.
+  if (emptied) await fs.rmdir(options.targetDir).catch(() => {});
+  return result;
+}
+
+/**
+ * Which skills a run that named none removes: every one the manifest places in
+ * `tier`, or every one it records when `tier` is null, which is what `--all`
+ * asks for.
+ *
+ * Derived HERE, from the manifest this command reads under its own lock, and
+ * not by the caller beforehand. The command line used to choose the names from
+ * a manifest it read while holding nothing, and an install that moved a skill
+ * to another tier in the window between that read and this lock had the stale
+ * name removed from the tier it had just joined. It is the shape three earlier
+ * rounds found elsewhere — a reading acted on after something else could
+ * invalidate it — and it closes the way `update` closed its own discovery: the
+ * decision and the act share one held lock.
+ */
+function byTier(manifest, tier) {
+  return Object.entries(manifest.skills)
+    .filter(([, entry]) => tier === null || entry.tier === tier)
+    .map(([name]) => name);
+}
+
+async function remove(options, { absent = false } = {}) {
+  const { targetDir, force = false } = options;
+  // The lock, not a look, said the directory was not there. Answering from
+  // the tree instead would read whatever a concurrent command has created
+  // since, while holding nothing. A run that named no skill has nothing to
+  // report missing, because the manifest that would have named them is the
+  // one thing this case establishes is not there.
+  if (absent) {
+    return {
+      removed: [],
+      missing: [...(options.names ?? [])],
+      skipped: [],
+      recovered: [],
+      cleared: [],
+      emptied: false,
+    };
+  }
+  // Before anything is deleted, because this command cannot refuse afterwards.
+  // A half-finished manifest write left in the way is refused by name, not
+  // cleared: the lock proves no command is active now, and it cannot prove
+  // who wrote an existing file.
+  await refuseStaleWrite(targetDir);
+  let { manifest, identity } = await readManifestWithIdentity(targetDir);
   const removed = [];
   const missing = [];
   const skipped = [];
+  const recovered = [];
+  const cleared = [];
+
+  // An install that did not come back left files it had stated it would write.
+  // This command's promise is that it removes what the installer wrote, so the
+  // leavings of a half-finished install are its to clear — and clearing them is
+  // the only way anything can, because they belong to no skill entry.
+  if (hasPending(manifest)) {
+    const done = await recoverPending(targetDir, manifest);
+    recovered.push(...done.removed);
+    cleared.push(...done.cleared);
+    manifest = done.manifest;
+    identity = await writeManifest(targetDir, manifest, identity);
+  }
+
   const skills = { ...manifest.skills };
+  // After the read that the lock protects, and after the recovery that can
+  // change what the manifest says. A caller that named its skills is obeyed —
+  // those names are the user's, not a reading of anything.
+  const names = options.names ?? byTier(manifest, options.tier ?? null);
 
   for (const name of names) {
-    const entry = skills[name];
+    // `hasOwn`, because `constructor` is a legal skill name and the bare
+    // lookup would hand this loop the prototype's member — an uninstall of a
+    // skill that was never installed, proceeding on a function as its entry.
+    const entry = Object.hasOwn(skills, name) ? skills[name] : undefined;
     if (!entry) {
-      missing.push(name);
+      // Unless this command has just cleared what an interrupted run left under
+      // that name. It was there, and this command dealt with it, so reporting
+      // it as never installed contradicts the line above it.
+      if (!cleared.includes(name)) missing.push(name);
       continue;
     }
     const destDir = path.join(targetDir, name);
@@ -125,18 +209,80 @@ export async function uninstallSkills({ targetDir, names, force = false }) {
   // Removing nothing writes nothing. `writeManifest` creates the directory it
   // writes into, so uninstalling a skill from a machine that never had one
   // used to leave behind a skills directory and an empty manifest.
-  if (!removed.length) return { removed, missing, skipped };
-
-  // The manifest is a file the installer wrote, so a full uninstall must take
-  // it too. Leaving it behind with an empty skills map contradicts the promise
-  // that uninstall removes only, and all of, what the installer wrote.
-  if (Object.keys(skills).length === 0) {
-    await fs.rm(path.join(targetDir, MANIFEST_NAME), { force: true });
-    // Only when nothing else is there. A hand-written skill in the same
-    // directory keeps it alive, and that is correct.
-    await fs.rmdir(targetDir).catch(() => {});
-  } else {
-    await writeManifest(targetDir, { ...manifest, skills });
+  if (!removed.length) {
+    // Unless clearing up after an interrupted run was the work. What is left
+    // then is a record of nothing, which is a file this engine wrote and
+    // nothing needs — the interrupted run's last trace.
+    const spent = cleared.length && !Object.keys(manifest.skills).length
+      && !hasPending(manifest) && identity !== null;
+    if (spent) await removeManifest(targetDir, identity);
+    return { removed, missing, skipped, recovered, cleared, emptied: Boolean(spent) };
   }
-  return { removed, missing, skipped };
+
+  // The files are gone by now, so the record has to catch up rather than
+  // refuse. A refusal here is not the harmless one install gets: install
+  // refuses BEFORE it copies, and this command has already deleted. It leaves
+  // the manifest claiming files that are not there, and it exits non-zero on a
+  // removal that happened.
+  //
+  // So the record is reapplied to whatever the manifest now holds, rather than
+  // written from what this command read. What it reapplies is exactly what this
+  // command did: the entries for the skills it removed, and nothing else. A
+  // skill another run installed meanwhile keeps its record.
+  const emptied = await reapply(targetDir, removed);
+  return { removed, missing, skipped, recovered, cleared, emptied };
+}
+
+/** Does any file this entry records still stand where it says? */
+async function anyFilePresent(targetDir, name, entry) {
+  const destDir = path.join(targetDir, name);
+  const rels = Object.keys(entry?.files ?? {});
+  const { baseBlocked, reachable } = await reachability(destDir, rels);
+  if (baseBlocked) return true; // Not ours to judge, so not ours to unrecord.
+  for (const rel of reachable) {
+    if (await destinationState(path.join(destDir, rel)) !== 'absent') return true;
+  }
+  return false;
+}
+
+/**
+ * Take `names` out of the manifest, reading it again for each attempt.
+ *
+ * Retrying is only correct after the tree has changed. The decisions above are
+ * taken from a reading of the tree, so a run that loses a race there must stop
+ * and be run again. This one is not a decision. It is the record of a deletion
+ * that already happened, and the only wrong answer is to leave it unrecorded.
+ */
+async function reapply(targetDir, names, attempts = 3) {
+  for (let attempt = 1; ; attempt++) {
+    const { manifest, identity } = await readManifestWithIdentity(targetDir);
+    const skills = { ...manifest.skills };
+    for (const name of names) {
+      // Only where the record still names nothing. Another run can reinstall a
+      // skill between the deletion above and this write, and its files are on
+      // disk under its record — so taking the entry out would strand every one
+      // of them, which is the defect this whole change exists to close,
+      // arriving from the other direction. The tree decides, not the name.
+      if (await anyFilePresent(targetDir, name, skills[name])) continue;
+      delete skills[name];
+    }
+    try {
+      // The manifest is a file the installer wrote, so a full uninstall must
+      // take it too. Leaving it behind with an empty skills map contradicts the
+      // promise that uninstall removes only, and all of, what the installer
+      // wrote.
+      if (Object.keys(skills).length === 0 && !hasPending(manifest)) {
+        await removeManifest(targetDir, identity);
+        // The directory goes too, and the caller does it once this command has
+        // let go of the directory. Only when nothing else is there: a hand
+        // written skill in the same directory keeps it alive, and that is
+        // correct.
+        return true;
+      }
+      await writeManifest(targetDir, { ...manifest, skills }, identity);
+      return false;
+    } catch (err) {
+      if (!isStale(err) || attempt >= attempts) throw err;
+    }
+  }
 }

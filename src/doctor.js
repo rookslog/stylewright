@@ -1,5 +1,8 @@
+import path from 'node:path';
 import { CONSUMERS, SCOPES, resolveTarget, describeTarget } from './targets.js';
 import { readManifest } from './manifest.js';
+import { LOCK_NAME } from './lock.js';
+import { destinationState } from './tree.js';
 
 // A duplicate is a problem only when ONE agent would load two copies of the
 // same skill name at once. Grouping by directory instead of by agent reports
@@ -39,11 +42,45 @@ function targetsByAgent({ home, cwd }) {
 
 export async function doctor({ home, cwd }) {
   const findings = [];
+  const reported = new Set();
 
   for (const [platform, byPath] of targetsByAgent({ home, cwd })) {
     const seen = new Map();
     for (const [dir, labels] of byPath) {
+      // BEFORE the manifest is read. A run killed while it held the directory
+      // leaves this behind, and it may have been killed mid-write, so reading
+      // the manifest first reported a parse error where the answer the user
+      // needs is the name of the file to remove. Telling a live run from a dead
+      // one is the one judgement this tool cannot make, so it reports and
+      // leaves the decision where it belongs.
+      if (await destinationState(path.join(dir, LOCK_NAME)) !== 'absent') {
+        if (reported.has(dir)) continue;
+        reported.add(dir);
+        findings.push({
+          level: 'warn',
+          code: 'locked-directory',
+          message: `A stylewright command is working in ${dir}, or one was killed there. `
+            + `Every command refuses until ${path.join(dir, LOCK_NAME)} goes. `
+            + 'Remove it when no other run is active.',
+        });
+        continue;
+      }
       const manifest = await readManifest(dir);
+      // An install that did not come back states what it was about to write.
+      // The files it left are reachable, and the next `install` or `uninstall`
+      // clears them, but nothing said they were there.
+      for (const name of Object.keys(manifest.pending ?? {})) {
+        const key = `${dir} :: ${name}`;
+        if (reported.has(key)) continue;
+        reported.add(key);
+        findings.push({
+          level: 'warn',
+          code: 'interrupted-install',
+          message: `An install of "${name}" in ${dir} did not finish. `
+            + 'Run `stylewright install` or `stylewright uninstall` against that '
+            + 'directory to clear what it left.',
+        });
+      }
       for (const name of Object.keys(manifest.skills)) {
         if (!seen.has(name)) seen.set(name, new Map());
         seen.get(name).set(dir, labels);

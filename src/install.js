@@ -1,7 +1,16 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadCatalog } from './catalog.js';
-import { contained, hashFile, readManifest, writeManifest, recordSkill } from './manifest.js';
+import {
+  contained, hashFile, readManifestWithIdentity, writeManifest, recordSkill,
+  refuseStaleWrite,
+  removeManifest,
+} from './manifest.js';
+import {
+  hasPending, addPending, clearPending, recoverPending, discardStated, stagingPath,
+  stagingKey, STAGING_SUFFIX,
+} from './journal.js';
+import { withTargetLock } from './lock.js';
 import {
   walk, pruneEmpty, destinationState, removeAt, ensureDir, reachability,
   ancestorsOf,
@@ -58,6 +67,14 @@ async function untrackedCollisions(destDir, sourceRels, recorded) {
   const known = new Set(Object.keys(recorded ?? {}));
   const hits = new Set();
   for (const rel of sourceRels) {
+    // The staging path is a destination too. The copy clears whatever stands
+    // there, so a file the user happened to put at that name was deleted by a
+    // write no check had inspected — the same defect as the shipped paths, one
+    // suffix along. A stale one of ours never reaches here, because recovery
+    // clears it before this runs.
+    if (await destinationState(stagingPath(path.join(destDir, rel))) !== 'absent') {
+      hits.add(stagingKey(rel));
+    }
     if (known.has(rel)) continue; // A recorded path is `alteredFiles`'s to judge.
     const abs = path.join(destDir, rel);
     const state = await destinationState(abs);
@@ -88,18 +105,117 @@ function retiredFiles(recorded, sourceRels) {
   return Object.keys(recorded ?? {}).filter((rel) => !shipping.has(rel)).sort();
 }
 
-export async function installSkills({
-  repoRoot, targetDir, names, pathway = 'engine', now, force = false,
-}) {
-  const catalog = await loadCatalog(repoRoot);
-  const byName = new Map(catalog.map((s) => [s.name, s]));
-  for (const name of names) {
-    if (!byName.has(name)) throw new Error(`Unknown skill "${name}".`);
+/**
+ * What a live run does when its own commit is refused.
+ *
+ * The pending record covers the run that is killed, because a killed run
+ * executes nothing. It does not cover this case: another run that committed in
+ * between has already cleared our statement, so nothing on disk names the files
+ * we copied. The process is still alive and still knows them, so it says so.
+ *
+ * It reads the manifest fresh, because the run that overtook us wrote it, and
+ * its record is what decides which of these paths are now somebody's.
+ */
+async function undo(targetDir, name, stated, written, retired) {
+  const { manifest, identity } = await readManifestWithIdentity(targetDir);
+  // `written` and not `stated`, because this run knows which of those paths it
+  // reached. A file at a path it never got to holds somebody else's work, and a
+  // user who edited it to exactly the bytes this release ships satisfies the
+  // content proof that recovery has to rely on. Recovery has no choice — it
+  // reads a statement its own run did not live to explain. This one does.
+  await discardStated(targetDir, name, stated, manifest, written);
+
+  // Retirement is a deletion this run made before it copied anything, and a
+  // commit that never lands leaves the surviving record naming those paths
+  // while they are gone. The record catches up, exactly as uninstall's does
+  // after it deletes: only paths this run removed, and only where the tree
+  // still agrees they are absent.
+  const entry = manifest.skills?.[name];
+  const files = { ...entry?.files };
+  let dropped = false;
+  for (const rel of retired) {
+    if (!Object.hasOwn(files, rel)) continue;
+    if (await destinationState(path.join(targetDir, name, rel)) !== 'absent') continue;
+    delete files[rel];
+    dropped = true;
   }
 
-  let manifest = await readManifest(targetDir);
+  // The statement is ours to withdraw only while it is still ours. A run that
+  // replaced it owns what it names now, and clearing it by name would leave
+  // that run's files with nothing to reach them — this defect, from the other
+  // side.
+  const mine = JSON.stringify(manifest.pending?.[name]) === JSON.stringify(stated);
+  if (!mine && !dropped) return;
+  const next = mine ? clearPending(manifest, name) : manifest;
+  await writeManifest(
+    targetDir,
+    dropped ? { ...next, skills: { ...next.skills, [name]: { ...entry, files } } } : next,
+    identity);
+}
+
+export async function installSkills(options) {
+  const catalog = await loadCatalog(options.repoRoot);
+  const byName = new Map(catalog.map((s) => [s.name, s]));
+  for (const name of options.names) {
+    if (!byName.has(name)) throw new Error(`Unknown skill "${name}".`);
+  }
+  // Held for the whole command. Everything below reads the tree and then acts
+  // on what it read, and another run inside the same directory invalidates the
+  // reading between the two.
+  const { emptied, ...result } = await withTargetLock(
+    options.targetDir, () => installUnderLock(byName, options));
+  // After the lock is released, because the lock file lives in this directory.
+  // `rmdir` refuses a directory that is not empty, which is the whole of the
+  // check: anything else there keeps it alive.
+  if (emptied) await fs.rmdir(options.targetDir).catch(() => {});
+  return result;
+}
+
+/**
+ * The same install, for a caller that already holds the target lock.
+ *
+ * `update` must decide what to refresh and refresh it under one held lock,
+ * because a work list read outside the lock can name a skill that an
+ * uninstall removes before the lock is taken — and acting on that list
+ * reinstalls what the user just removed. Taking the lock here would deadlock
+ * that caller, so this returns `emptied` for the caller to act on after its
+ * own lock is released.
+ */
+export async function installHeld(options) {
+  const catalog = await loadCatalog(options.repoRoot);
+  const byName = new Map(catalog.map((s) => [s.name, s]));
+  for (const name of options.names) {
+    if (!byName.has(name)) throw new Error(`Unknown skill "${name}".`);
+  }
+  return installUnderLock(byName, options);
+}
+
+async function installUnderLock(byName, {
+  targetDir, names, pathway = 'engine', now, force = false,
+}) {
+  // A half-finished manifest write left in the way would refuse every write
+  // below, and the lock cannot prove whose file it is — so it is refused by
+  // name here, before anything is copied or deleted.
+  await refuseStaleWrite(targetDir);
+  // The identity travels from the read to every write this run makes. It is
+  // what makes each write a statement about the file this command read, rather
+  // than about whatever stands at the path by then.
+  let { manifest, identity } = await readManifestWithIdentity(targetDir);
   const installed = [];
   const skipped = [];
+  const recovered = [];
+  const cleared = [];
+
+  // An earlier run stated what it was about to write and did not come back.
+  // Clearing its leavings before this run inspects the tree is what stops them
+  // from reading as the user's own files.
+  if (hasPending(manifest)) {
+    const done = await recoverPending(targetDir, manifest);
+    recovered.push(...done.removed);
+    cleared.push(...done.cleared);
+    manifest = done.manifest;
+    identity = await writeManifest(targetDir, manifest, identity);
+  }
 
   // The read side refuses these spellings, so the write side must never
   // record one. A colon is a legal POSIX filename character: without this
@@ -126,6 +242,27 @@ export async function installSkills({
     const destDir = path.join(targetDir, name);
     const recorded = manifest.skills[name]?.files;
     const rels = relsByName.get(name);
+    // The staging name is the destination plus a suffix, so a skill that
+    // shipped both `A` and `A.stylewright-part` would have the copy of `A` use
+    // the second one as scratch space and clear it. That is a shipped file
+    // treated as this engine's leavings, and no message could make it right, so
+    // the shape is refused where it enters rather than handled where it bites.
+    // Every segment, not the whole path. `A.stylewright-part/B` puts the
+    // reserved name on a DIRECTORY, and the copy of a sibling `A` clears that
+    // directory as its own scratch space — the same collision, one level up.
+    // Case-insensitively, because a manifest travels and Windows and macOS
+    // fold case: a shipped `A.STYLEWRIGHT-PART` aliases the staging name of a
+    // sibling `A` on those targets, and recovery would clear a recorded
+    // installed file as scratch space. Refused on every platform, like every
+    // other spelling that means something different to one resolver.
+    const suffix = STAGING_SUFFIX.toLowerCase();
+    const reserved = rels.filter(
+      (rel) => rel.split(/[\\/]/).some((part) => part.toLowerCase().endsWith(suffix)));
+    if (reserved.length) {
+      throw new Error(
+        `Skill "${name}" ships ${reserved.join(', ')}, and "${STAGING_SUFFIX}" is the suffix `
+        + 'this tool stages a copy under. Rename the file.');
+    }
 
     // The skill's own directory is the outermost ancestor of every path it
     // ships, and it is the one `ancestorsOf` cannot name, because the paths it
@@ -181,70 +318,144 @@ export async function installSkills({
       }
     }
 
-    // Retire BEFORE copying, not after. A release can replace a directory of
-    // files with a single file of the same name, and `copyFile` cannot write
-    // over a directory. Retiring afterwards made that transition impossible to
-    // complete, with or without --force.
+    // Everything below this line changes the tree, and the record of what it
+    // may change goes on disk first. Copying and then recording leaves a window
+    // in which files exist that no record names, and `uninstall` removes only
+    // what the manifest records — so a run interrupted inside that window left
+    // files nothing could reach. The window is now empty of writes.
     //
-    // The checks above already proved each retired path is either gone or the
-    // unmodified file we wrote, so removing it discards nothing the user made.
-    //
-    // Under --force those checks did not run, and --force does not reach this
-    // far. The line it draws: force may destroy what stands in the way of
-    // something it must WRITE, and may not destroy what merely stands where
-    // nothing is going. Nothing is going to a retired path. So a directory the
-    // user built over one keeps its contents, which the manifest never recorded
-    // and this engine never wrote. The same rule uninstall applies, in the
-    // other consumer of removeAt.
-    for (const rel of retired) {
-      // Whose ancestors force did not clear, because it had no reason to. A
-      // deletion through a symbolic link is the defect this whole pull request
-      // opened on, and the retired half is the last place it could still reach.
-      if (ancestorsOf(rel).some((dir) => blockedRetire.has(dir))) continue;
-      const abs = path.join(destDir, rel);
-      const state = await destinationState(abs);
-      // Nothing is written here, so the boundary decides the whole question: a
-      // retired leaf goes only if it is still the thing we wrote. Without
-      // --force `alteredFiles` refused the skill outright, and WITH --force
-      // that check was skipped, so an edit at a retired path was deleted while
-      // the user was forcing an overwrite of some other, still-shipping file.
-      // An empty directory still goes, because removing it destroys nothing.
-      if (state === 'directory') {
-        if ((await fs.readdir(abs)).length) continue;
-      } else if (state === 'file') {
-        if (await hashFile(abs) !== recorded?.[rel]) continue;
-      } else if (state !== 'absent') {
-        continue; // A link. Nothing is written through it either.
+    // The statement carries the content, not just the path. What proves a file
+    // at one of these paths belongs to this run is that it holds these bytes,
+    // and nothing weaker survived review: the path alone claims a file the user
+    // wrote there afterwards, and "no recorded path is mine" abandons a file
+    // this run wrote at a path another run had recorded.
+    // fromEntries, not assignment, so a file named `__proto__` is stated
+    // like any other — the same discipline as the record it precedes.
+    const statedPairs = [];
+    for (const rel of rels) statedPairs.push([rel, await hashFile(path.join(skill.dir, rel))]);
+    const stated = Object.fromEntries(statedPairs);
+    manifest = addPending(manifest, name, stated);
+    identity = await writeManifest(targetDir, manifest, identity);
+
+    // Named out here so the undo below knows what this run actually wrote and
+    // what it removed. A Map, not an object literal, for the reason
+    // migrateLegacyKeys builds through fromEntries: a file named `__proto__`
+    // must become a recorded key, and assignment would set a prototype.
+    const files = new Map();
+    const retiredHere = [];
+    try {
+      // Retire BEFORE copying, not after. A release can replace a directory of
+      // files with a single file of the same name, and `copyFile` cannot write
+      // over a directory. Retiring afterwards made that transition impossible to
+      // complete, with or without --force.
+      //
+      // The checks above already proved each retired path is either gone or the
+      // unmodified file we wrote, so removing it discards nothing the user made.
+      //
+      // Under --force those checks did not run, and --force does not reach this
+      // far. The line it draws: force may destroy what stands in the way of
+      // something it must WRITE, and may not destroy what merely stands where
+      // nothing is going. Nothing is going to a retired path. So a directory the
+      // user built over one keeps its contents, which the manifest never recorded
+      // and this engine never wrote. The same rule uninstall applies, in the
+      // other consumer of removeAt.
+      for (const rel of retired) {
+        // Whose ancestors force did not clear, because it had no reason to. A
+        // deletion through a symbolic link is the defect this whole pull request
+        // opened on, and the retired half is the last place it could still reach.
+        if (ancestorsOf(rel).some((dir) => blockedRetire.has(dir))) continue;
+        const abs = path.join(destDir, rel);
+        const state = await destinationState(abs);
+        // Nothing is written here, so the boundary decides the whole question: a
+        // retired leaf goes only if it is still the thing we wrote. Without
+        // --force `alteredFiles` refused the skill outright, and WITH --force
+        // that check was skipped, so an edit at a retired path was deleted while
+        // the user was forcing an overwrite of some other, still-shipping file.
+        // An empty directory still goes, because removing it destroys nothing.
+        if (state === 'directory') {
+          if ((await fs.readdir(abs)).length) continue;
+        } else if (state === 'file') {
+          if (await hashFile(abs) !== recorded?.[rel]) continue;
+        } else if (state !== 'absent') {
+          continue; // A link. Nothing is written through it either.
+        }
+        await removeAt(abs);
+        retiredHere.push(rel);
+        await pruneEmpty(path.dirname(abs), destDir);
       }
-      await removeAt(abs);
-      await pruneEmpty(path.dirname(abs), destDir);
-    }
 
-    // Collected as pairs for the same reason migrateLegacyKeys avoids
-    // assignment: a file named `__proto__` must become a recorded key, not a
-    // prototype, and Object.fromEntries defines where a literal would assign.
-    const filePairs = [];
-    for (const rel of rels) {
-      const from = path.join(skill.dir, rel);
-      const to = path.join(destDir, rel);
-      // Clear anything `copyFile` cannot write over or would write THROUGH. A
-      // plain file it overwrites in place; a link it follows, out of the tree.
-      // Without --force the checks above refused every one of these, so only
-      // the emptied leftovers of retirement reach here. With --force the user
-      // asked to overwrite whatever sits in the way.
-      const state = await destinationState(to);
-      if (state !== 'absent' && state !== 'file') await removeAt(to);
-      await ensureDir(path.dirname(to), destDir);
-      await fs.copyFile(from, to);
-      filePairs.push([rel, await hashFile(to)]);
-    }
+      for (const rel of rels) {
+        const from = path.join(skill.dir, rel);
+        const to = path.join(destDir, rel);
+        // Clear anything the write cannot replace or would write THROUGH. A
+        // plain file the rename below replaces; a link it also replaces, rather
+        // than following it out of the tree, and a directory it cannot touch.
+        // Without --force the checks above refused every one of these, so only
+        // the emptied leftovers of retirement reach here. With --force the user
+        // asked to overwrite whatever sits in the way.
+        const state = await destinationState(to);
+        if (state !== 'absent' && state !== 'file') await removeAt(to);
+        await ensureDir(path.dirname(to), destDir);
+        // Staged and renamed, never copied into place. `copyFile` writes into
+        // the destination and can stop half way, and a fragment at a
+        // destination is a file nothing can identify afterwards — not the
+        // user's, not this run's, and not safe to delete on either reading. A
+        // rename means the destination holds a whole file or none.
+        //
+        // Whatever stands at the staging path is cleared, because that name
+        // belongs to this tool: it is the destination plus a suffix nothing
+        // else writes. A leftover there is this engine's own, from a run that
+        // stopped between the copy and the rename.
+        const staged = stagingPath(to);
+        await removeAt(staged);
+        await fs.copyFile(from, staged, fs.constants.COPYFILE_EXCL);
+        files.set(rel, await hashFile(staged));
+        // The statement was made from the source before the copy, and it is
+        // what lets a later command prove this file is ours. A source that
+        // changed in between would put bytes at the destination that no
+        // statement names, so the run stops while the only thing on disk is a
+        // staging file that recovery removes by name.
+        if (files.get(rel) !== stated[rel]) {
+          throw new Error(
+            `"${name}" changed in ${skill.dir} while this command was running. Run again.`);
+        }
+        await fs.rename(staged, to);
+      }
 
-    manifest = recordSkill(manifest, {
-      name, tier: skill.tier, pathway, files: Object.fromEntries(filePairs), now,
-    });
-    installed.push(name);
+      // The commit. It records the files and withdraws the statement about them
+      // in one write, so no reader ever sees both, and a run that dies before
+      // it leaves the statement standing for the next one.
+      manifest = clearPending(
+        recordSkill(manifest, {
+          name, tier: skill.tier, pathway, files: Object.fromEntries(files), now,
+        }), name);
+      identity = await writeManifest(targetDir, manifest, identity);
+      installed.push(name);
+    } catch (err) {
+      // The original failure is the one the caller needs. A failure inside the
+      // undo leaves the pending statement on disk, which is exactly the state
+      // the next command recovers from, so it is not worth reporting over the
+      // error that caused it.
+      await undo(targetDir, name, stated, Object.fromEntries(files), retiredHere).catch(() => {});
+      throw err;
+    }
   }
 
-  await writeManifest(targetDir, manifest);
-  return { installed, skipped };
+  // A run that committed each skill has already written this manifest. A run
+  // that installed nothing has not.
+  let emptied = false;
+  if (!installed.length) {
+    // And a manifest recording nothing is a file this engine wrote and nothing
+    // needs, so a run whose only work was clearing up after an interrupted one
+    // leaves the directory as it found it. Writing the empty record back kept
+    // the interrupted run's last trace, and every later scan read the directory
+    // as one this tool owns.
+    if (!Object.keys(manifest.skills).length && !hasPending(manifest) && identity !== null) {
+      await removeManifest(targetDir, identity);
+      emptied = true;
+    } else {
+      await writeManifest(targetDir, manifest, identity);
+    }
+  }
+  return { installed, skipped, recovered, cleared, emptied };
 }

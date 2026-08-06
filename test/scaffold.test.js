@@ -185,10 +185,10 @@ test('a manifest keeps the permissions you gave it', {
   skip: process.platform === 'win32',
 }, async () => {
   const dir = await tmp();
-  await writeManifest(dir, emptyManifest());
+  const identity = await writeManifest(dir, emptyManifest(), null);
   const abs = path.join(dir, MANIFEST_NAME);
   await fs.chmod(abs, 0o600);
-  await writeManifest(dir, emptyManifest());
+  await writeManifest(dir, emptyManifest(), identity);
   assert.equal((await fs.stat(abs)).mode & 0o777, 0o600);
 });
 
@@ -383,22 +383,22 @@ test('a failed scaffold leaves no directory behind, so a retry works', async () 
 test('a first write refuses a manifest that appeared meanwhile', async () => {
   const dir = await tmp();
   const abs = path.join(dir, MANIFEST_NAME);
-  const original = fs.writeFile;
+  const original = fs.open;
   let raced = false;
-  fs.writeFile = async (...args) => {
+  fs.open = async (...args) => {
     // Another first-time install wins the race between the check and the
-    // create. Exclusive creation must refuse rather than replace, because a
-    // replacement orphans the other install's files.
-    if (!raced && String(args[0]) === abs) {
+    // create. A write that found no manifest must refuse one that appeared
+    // since, because replacing it orphans that install's files.
+    if (!raced && String(args[0]) === `${abs}.tmp`) {
       raced = true;
-      await original.call(fs, abs, '{"schema":1,"skills":{"theirs":{"files":{}}}}\n');
+      await fs.writeFile(abs, '{"schema":1,"skills":{"theirs":{"files":{}}}}\n');
     }
     return original.apply(fs, args);
   };
   try {
-    await assert.rejects(writeManifest(dir, emptyManifest()), /appeared while/);
+    await assert.rejects(writeManifest(dir, emptyManifest(), null), /appeared while/);
   } finally {
-    fs.writeFile = original;
+    fs.open = original;
   }
   assert.match(await fs.readFile(abs, 'utf8'), /theirs/);
   assert.deepEqual(await fs.readdir(dir), [MANIFEST_NAME]);

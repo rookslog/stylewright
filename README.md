@@ -172,6 +172,39 @@ A file that an earlier version installed, and that this version no longer
 ships, is removed. Otherwise it stays on disk with no owner, and `uninstall`
 cannot reach it.
 
+An interrupted run leaves no file without an owner either. The installer records
+the paths it is about to write, and what it will write there, before it writes
+them. The next `install`, `update`, or `uninstall` clears what the interrupted
+run left, and names each file it clears.
+
+The cleanup removes a file only when it holds exactly what the interrupted run
+was going to write there. A file you wrote at one of those paths does not match,
+so it stays. Each copy also lands whole or not at all, which is why the content
+is something the tool can check.
+
+### One command at a time in a directory
+
+A command holds the directory it works in, and a second command in the same
+directory refuses rather than working from a picture the first has already
+changed.
+
+A command that is killed leaves the directory held. Every later command then
+refuses and names the file to remove:
+
+```
+Another stylewright command is working in ~/.claude/skills. Run again when it
+has finished, or remove ~/.claude/skills/.stylewright-lock if no other run is
+active.
+```
+
+Remove that file when you are sure no other run is going, and the next command
+clears up after the killed one. A command that finds a held directory while it
+works out what to do names it and moves on, rather than reading a record that
+another run may be changing. Whether a run is still alive is the one thing
+this tool cannot check for you, and guessing it wrong deletes files that a live
+run is still writing. `doctor` reports a held directory, so you can find one
+without hunting.
+
 Narrow it with `--skill`, `--platform`, or `--scope`. A skill that this
 repository no longer ships is reported and left alone. Uninstall it by name
 when you want it gone.

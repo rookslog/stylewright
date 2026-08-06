@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { installSkills } from '../src/install.js';
 import { doctor } from '../src/doctor.js';
+import { readManifestWithIdentity, writeManifest } from '../src/manifest.js';
+import { installedSkills } from '../src/detect.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -80,6 +82,60 @@ test('a single claude install is not a duplicate, despite the cowork alias', asy
     now: NOW,
   });
   assert.deepEqual(await doctor({ repoRoot: REPO, home, cwd }), []);
+});
+
+test('reports an install that did not finish, once per directory', async () => {
+  // The files an interrupted install left are reachable and the next install or
+  // uninstall clears them. Until one runs, nothing said they were there — and
+  // `doctor` is the command whose whole job is to say what is on disk.
+  const home = await tmp();
+  const target = path.join(home, '.claude/skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  await writeManifest(target, {
+    ...manifest, pending: { 'demo-craft': { 'SKILL.md': 'a'.repeat(64) } },
+  }, identity);
+
+  const findings = await doctor({ repoRoot: REPO, home, cwd: await tmp() });
+
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.equal(findings[0].code, 'interrupted-install');
+  assert.equal(findings[0].level, 'warn');
+  assert.match(findings[0].message, /demo-craft/);
+});
+
+test('reports a directory a killed run left locked', async () => {
+  // The next command refuses until the file goes, and the one judgement this
+  // tool cannot make is whether the run that left it is still alive. So it says
+  // what it sees and leaves the decision where it belongs.
+  const home = await tmp();
+  const target = path.join(home, '.claude/skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+  // Killed mid-write, so the manifest is not parseable either. Reading it first
+  // reported that, where the answer the user needs is the name of the file to
+  // remove.
+  await fs.writeFile(path.join(target, '.stylewright-manifest.json'), '');
+
+  const findings = await doctor({ repoRoot: REPO, home, cwd: await tmp() });
+
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.equal(findings[0].code, 'locked-directory');
+  assert.match(findings[0].message, /stylewright-lock/);
+});
+
+test('the guided dialogue passes over a held directory rather than parsing it', async () => {
+  // The dialogue marks what is already installed, and it read every target
+  // manifest to do so — including one a killed run left mid-write, which
+  // reached the user as a JSON parse error rather than the lock message.
+  const home = await tmp();
+  const target = path.join(home, '.claude/skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+  await fs.writeFile(path.join(target, '.stylewright-manifest.json'), '');
+
+  const found = await installedSkills({ home, cwd: await tmp(), scope: 'user' });
+  assert.deepEqual([...found.keys()], []);
 });
 
 test('does not report a duplicate when cwd equals home', async () => {

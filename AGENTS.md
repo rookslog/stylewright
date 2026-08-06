@@ -225,6 +225,77 @@ Two consequences for a change you propose here:
 - A file this tool creates is written with the `wx` flag. It refuses an existing
   path rather than truncating it, and it does not follow a link. A file this
   tool replaces is written beside its destination and renamed over it.
+- **The record goes on disk before the file does.** `installSkills` states the
+  paths it is about to write in the manifest, under `pending`, and copies after.
+  Every file the engine can create is therefore named by a record that reached
+  disk first, whatever kills the run, and the next command clears what an
+  interrupted one left. A change that moves a write ahead of its record reopens
+  issue #49: an orphan no command can reach. `pending` is read as an instruction
+  to delete, so it is validated exactly as the `skills` map is.
+- **The statement carries the content, and the content is what proves the file
+  is ours to delete.** Two review rounds went into the ownership question and
+  each weaker answer was a guess: "every stated path is mine" deletes a file the
+  user created at one of those paths after the interrupted run, and "no recorded
+  path is mine" abandons a file this engine wrote at a path another run had
+  recorded. A file goes when it holds exactly what the statement said would be
+  written there AND the manifest does not record that same content — the second
+  half is what keeps a file another run committed.
+- **A copy is staged and renamed, never written into place.** `copyFile` can
+  stop half way, and a fragment at a destination is a file nothing can identify
+  afterwards. The staging name is derived from the destination, so recovery
+  finds it from the statement alone. A skill may not ship a path ending in that
+  suffix, and install refuses one that does: the copy of `A` would otherwise
+  clear a shipped `A.stylewright-part` as its own scratch space.
+- **One command at a time holds a target directory**, through
+  `src/lock.js`. Three review rounds found three ways for two runs to spoil each
+  other's reading of the tree, and each patch produced the next one: a recovery
+  cleared a statement its writer was still working under, an undo withdrew a
+  statement another run had replaced, a deletion was decided from a snapshot a
+  commit had overtaken. A tree cannot be read and changed in one step, so the
+  answer is that only one run reads it. A run killed while holding it leaves the
+  file behind and every later command refuses, which is the deliberate cost:
+  telling a live run from a dead one needs an advisory lock Node does not expose,
+  or a staleness timeout, and a timeout that is wrong deletes a live run's files.
+- **Every command asks about the lock before it parses a manifest.** Install and
+  uninstall take it themselves, and the discovery and selection ABOVE them read
+  manifests to work out what to do — which is a read of a picture that a run may
+  be changing, and reached the user as a JSON parse error. `isLocked` is the
+  question, and `doctor`, `update`'s discovery and the uninstall selection all
+  ask it first, and so does the guided dialogue. A held directory is named and
+  passed over — never a reason to do nothing anywhere else — and nothing it
+  might have held counts as missing: a command that would not read a manifest
+  cannot say what is not in it.
+- **A write to the manifest answers to the read that preceded it.**
+  `writeManifest` takes the identity that `readManifestWithIdentity` returned,
+  and there is no default for it. Classifying the path afresh is a different
+  question, and it is the one that let two first-time installs each record half
+  the tree. A run that loses that comparison refuses, and the ordering above is
+  what makes the refusal harmless: it has copied nothing yet.
+- **The temporary file beside the manifest is the exclusion, and its name is
+  fixed.** `wx` is the only test and set the filesystem offers, so creating it
+  admits one writer, and the rename that commits the manifest also releases it.
+  Comparing the identity BEFORE taking it left a window where two runs both saw
+  the file they had read and the second rename destroyed the first's record. A
+  random name reopens that window. Creating and replacing go through it alike,
+  so the manifest is never half written.
+- **A file standing at that name is refused, and never cleared.**
+  `refuseStaleWrite` names it and stops. Holding the directory proves no command
+  is running now. It does not prove who wrote the file, and a killed run left
+  its lock behind too, so the person who removed that lock is already clearing
+  by hand and takes this file with it. An earlier rule here said a lock holder
+  clears what only a killed run could have left. That was a guess, and acting on
+  it deleted a file the user had put there. Removing it is a person's job.
+- **A command that has already deleted reconciles rather than refuses.**
+  `uninstall` removes files and then takes its entries out of a fresh read, and
+  retries on a stale one. Refusing there would leave the manifest claiming files
+  that are gone. Install refuses instead, because it refuses before it copies.
+  The reconcile withdraws an entry only where the tree agrees it is gone: a
+  skill another run reinstalled meanwhile keeps its record, or its files would
+  be the next orphan.
+- **An identity comes from the handle that wrote the file, never from a second
+  look at the path.** Reading the path again after a write returns whatever
+  stands there by then, and a caller carrying another run's identity overwrites
+  that run's record on its next write.
 - A check and the call it guards are two steps, so the file is identified by the
   open handle and not by the path. The scaffold records what it created from the
   handle, and the manifest read compares the handle against the path before it

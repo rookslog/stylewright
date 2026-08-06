@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { PLATFORMS, resolveTarget } from './targets.js';
 import { readManifest } from './manifest.js';
+import { isLocked } from './lock.js';
 
 const PARENT = {
   claude: '.claude',
@@ -48,6 +49,12 @@ export async function installedSkills({ home, cwd, scope }) {
     } catch {
       continue;
     }
+    // A held directory is one a run may be changing, and one a killed run held
+    // may carry a manifest an older release never finished writing. This
+    // dialogue only marks what is already installed, so it passes over such a
+    // directory rather than parsing it. The command that follows refuses at the
+    // lock, and says which file to remove.
+    if (await isLocked(dir)) continue;
     const manifest = await readManifest(dir);
     for (const name of Object.keys(manifest.skills)) {
       if (!out.has(name)) out.set(name, []);

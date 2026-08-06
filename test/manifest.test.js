@@ -4,7 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  MANIFEST_NAME, hashFile, readManifest, writeManifest, emptyManifest, recordSkill,
+  MANIFEST_NAME, hashFile, readManifest, readManifestWithIdentity, writeManifest,
+  removeManifest, emptyManifest, recordSkill,
 } from '../src/manifest.js';
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-mf-'));
@@ -36,7 +37,7 @@ test('round-trips through disk', async () => {
     files: { 'SKILL.md': 'a'.repeat(64) },
     now: '2026-01-01T00:00:00.000Z',
   });
-  await writeManifest(dir, mf);
+  await writeManifest(dir, mf, null);
   assert.deepEqual(await readManifest(dir), mf);
   const raw = await fs.readFile(path.join(dir, MANIFEST_NAME), 'utf8');
   assert.ok(raw.endsWith('\n'));
@@ -243,7 +244,7 @@ test('a symlinked manifest is refused on write, and its target survives', async 
   await fs.writeFile(outside, 'mine\n');
   await fs.symlink(outside, path.join(dir, MANIFEST_NAME));
 
-  await assert.rejects(writeManifest(dir, emptyManifest()), /is a symlink/);
+  await assert.rejects(writeManifest(dir, emptyManifest(), null), /is a symlink/);
   assert.equal(await fs.readFile(outside, 'utf8'), 'mine\n');
 });
 
@@ -281,7 +282,7 @@ test('the replacement carries the manifest permissions from the moment it exists
   skip: process.platform === 'win32',
 }, async () => {
   const dir = await tmp();
-  await writeManifest(dir, emptyManifest());
+  const identity = await writeManifest(dir, emptyManifest(), null);
   const abs = path.join(dir, MANIFEST_NAME);
   await fs.chmod(abs, 0o600);
 
@@ -298,7 +299,7 @@ test('the replacement carries the manifest permissions from the moment it exists
     return original.apply(fs, args);
   };
   try {
-    await writeManifest(dir, emptyManifest());
+    await writeManifest(dir, emptyManifest(), identity);
   } finally {
     fs.chmod = original;
   }
@@ -336,14 +337,255 @@ test('a manifest linked away after the check is not read through', async () => {
 
 test('a write leaves no temporary file behind, and replaces in one step', async () => {
   const dir = await tmp();
-  await writeManifest(dir, emptyManifest());
-  await writeManifest(dir, emptyManifest());
+  const identity = await writeManifest(dir, emptyManifest(), null);
+  await writeManifest(dir, emptyManifest(), identity);
   assert.deepEqual(await fs.readdir(dir), [MANIFEST_NAME]);
 
   // A rename does not follow a link, so the manifest cannot be the path that
   // carries a write out of its directory.
   const st = await fs.lstat(path.join(dir, MANIFEST_NAME));
   assert.ok(st.isFile());
+});
+
+// --- The write answers to the read, not to a fresh look ------------------
+
+test('a write with no identity is refused, rather than guessing one', async () => {
+  // The defect this argument exists to prevent: the decision between creating
+  // and replacing was taken from a fresh classification of the path, which is
+  // a different question from "is this still the file I read". A caller that
+  // does not say now finds out here rather than at the next race.
+  const dir = await tmp();
+  await assert.rejects(
+    writeManifest(dir, emptyManifest()), /needs the manifest identity its caller read/);
+  assert.deepEqual(await fs.readdir(dir), []);
+});
+
+test('a replacement refuses a manifest that another run wrote after the read', async () => {
+  // The reported case. Two first-time installs: this one read absence, the
+  // other created the manifest and copied its files. Replacing that record
+  // strands every one of them, because uninstall reaches only what it records.
+  const dir = await tmp();
+  const { manifest, identity } = await readManifestWithIdentity(dir);
+  assert.equal(identity, null);
+
+  const theirs = recordSkill(emptyManifest(), {
+    name: 'theirs', tier: 'craft', pathway: 'engine', files: {}, now: '2026-01-01T00:00:00.000Z',
+  });
+  await writeManifest(dir, theirs, null);
+
+  await assert.rejects(writeManifest(dir, manifest, identity), /appeared while/);
+  assert.deepEqual(Object.keys((await readManifest(dir)).skills), ['theirs']);
+});
+
+test('a replacement refuses a manifest that was replaced after the read', async () => {
+  // The same rule where a manifest already existed. An update that read one
+  // file must not write over a different one, however alike they look: the
+  // record that arrived in between names files this command never saw.
+  const dir = await tmp();
+  await writeManifest(dir, emptyManifest(), null);
+  const { manifest, identity } = await readManifestWithIdentity(dir);
+
+  const { identity: current } = await readManifestWithIdentity(dir);
+  const theirs = recordSkill(emptyManifest(), {
+    name: 'theirs', tier: 'craft', pathway: 'engine', files: {}, now: '2026-01-01T00:00:00.000Z',
+  });
+  await writeManifest(dir, theirs, current);
+
+  await assert.rejects(
+    writeManifest(dir, manifest, identity), /changed while this command was running/);
+  assert.deepEqual(Object.keys((await readManifest(dir)).skills), ['theirs']);
+});
+
+test('a manifest that arrives between the comparison and the rename is not overwritten', async () => {
+  // The comparison and the act on it are one step or they are nothing. A
+  // reviewer reproduced the window: both runs compared against the file they
+  // had read, both renamed, and the second overwrote a record the first had
+  // just committed — which strands every file that record named. The temporary
+  // file is the exclusion, so the second writer never reaches its comparison.
+  const dir = await tmp();
+  const first = await writeManifest(dir, emptyManifest(), null);
+  const { manifest, identity } = await readManifestWithIdentity(dir);
+  assert.deepEqual(identity, first);
+
+  const theirs = recordSkill(emptyManifest(), {
+    name: 'theirs', tier: 'craft', pathway: 'engine', files: {}, now: '2026-01-01T00:00:00.000Z',
+  });
+  const original = fs.rename;
+  let raced = false;
+  let theirFailure = null;
+  fs.rename = async (...args) => {
+    // Another run tries to commit after this one compared and before it acts.
+    // Under a temporary file with a random name it succeeded, and the rename
+    // below then took its record with it. It must not get in at all.
+    if (!raced) {
+      raced = true;
+      const { identity: theirIdentity } = await readManifestWithIdentity(dir);
+      await writeManifest(dir, theirs, theirIdentity)
+        .catch((err) => { theirFailure = err; });
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await writeManifest(dir, manifest, identity);
+  } finally {
+    fs.rename = original;
+  }
+
+  assert.ok(theirFailure, 'the second writer must not get between the two steps');
+  assert.match(theirFailure.message, /Another run is writing the manifest/);
+  assert.deepEqual(Object.keys((await readManifest(dir)).skills), []);
+  assert.deepEqual(await fs.readdir(dir), [MANIFEST_NAME], 'and it leaves no temporary file');
+});
+
+test('the identity a write returns names the file that write created', async () => {
+  // Reading the path again after the write returns whatever stands there by
+  // then. A reviewer reproduced the consequence: another run committed in that
+  // gap, this caller carried away ITS identity, and the next write therefore
+  // passed the comparison and overwrote that run's record. The identity comes
+  // from the handle, and the rename carries that file into place.
+  const dir = await tmp();
+  const theirs = recordSkill(emptyManifest(), {
+    name: 'theirs', tier: 'craft', pathway: 'engine', files: {}, now: '2026-01-01T00:00:00.000Z',
+  });
+
+  const original = fs.rename;
+  let raced = false;
+  fs.rename = async (...args) => {
+    const result = await original.apply(fs, args);
+    // Another run replaces the manifest the moment this one has committed it,
+    // and before it looks at the path again.
+    if (!raced) {
+      raced = true;
+      const { identity: theirIdentity } = await readManifestWithIdentity(dir);
+      await writeManifest(dir, theirs, theirIdentity);
+    }
+    return result;
+  };
+  let mine;
+  try {
+    mine = await writeManifest(dir, emptyManifest(), null);
+  } finally {
+    fs.rename = original;
+  }
+
+  assert.ok(raced, 'the race must have been injected');
+  const now = await readManifestWithIdentity(dir);
+  assert.deepEqual(Object.keys(now.manifest.skills), ['theirs']);
+  assert.notDeepEqual(mine, now.identity, 'the write must not report their file as its own');
+  await assert.rejects(
+    writeManifest(dir, emptyManifest(), mine), /changed while this command was running/);
+  assert.deepEqual(Object.keys((await readManifest(dir)).skills), ['theirs']);
+});
+
+test('the identity a replacement returns names the file it renamed into place', async () => {
+  // The same defect on the other branch. The rename releases the exclusion, so
+  // another run can commit before this one looks at the path again — and it
+  // would then carry away that run's identity and overwrite its record on the
+  // next write. The identity comes from the handle instead, taken before the
+  // rename that carries the file into place.
+  const dir = await tmp();
+  const first = await writeManifest(dir, emptyManifest(), null);
+  const theirs = recordSkill(emptyManifest(), {
+    name: 'theirs', tier: 'craft', pathway: 'engine', files: {}, now: '2026-01-01T00:00:00.000Z',
+  });
+
+  const original = fs.rename;
+  let raced = false;
+  fs.rename = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced) {
+      raced = true;
+      const { identity: theirIdentity } = await readManifestWithIdentity(dir);
+      await writeManifest(dir, theirs, theirIdentity);
+    }
+    return result;
+  };
+  let mine;
+  try {
+    mine = await writeManifest(dir, emptyManifest(), first);
+  } finally {
+    fs.rename = original;
+  }
+
+  assert.ok(raced, 'the race must have been injected');
+  const now = await readManifestWithIdentity(dir);
+  assert.deepEqual(Object.keys(now.manifest.skills), ['theirs']);
+  assert.notDeepEqual(mine, now.identity, 'the write must not report their file as its own');
+  await assert.rejects(
+    writeManifest(dir, emptyManifest(), mine), /changed while this command was running/);
+  assert.deepEqual(Object.keys((await readManifest(dir)).skills), ['theirs']);
+});
+
+test('a second writer is refused while the first holds the temporary file', async () => {
+  const dir = await tmp();
+  const identity = await writeManifest(dir, emptyManifest(), null);
+  await fs.writeFile(`${path.join(dir, MANIFEST_NAME)}.tmp`, '');
+
+  await assert.rejects(
+    writeManifest(dir, emptyManifest(), identity), /Another run is writing the manifest/);
+  await assert.rejects(
+    removeManifest(dir, identity), /Another run is writing the manifest/);
+  assert.ok(await fs.stat(path.join(dir, MANIFEST_NAME)), 'and it changes nothing');
+});
+
+test('a write refuses a manifest that was removed after the read', async () => {
+  // Absence is not a licence to create. A directory whose manifest went is a
+  // directory some other command emptied, and this one's record of it is stale.
+  const dir = await tmp();
+  const identity = await writeManifest(dir, emptyManifest(), null);
+  await fs.rm(path.join(dir, MANIFEST_NAME));
+
+  await assert.rejects(
+    writeManifest(dir, emptyManifest(), identity), /changed while this command was running/);
+});
+
+test('removing the manifest takes only the file the command read', async () => {
+  // `uninstall` deletes the manifest when the last skill goes, and it deleted
+  // whatever stood at the path. A manifest another run created since names that
+  // run's files, so removing it orphans them.
+  const dir = await tmp();
+  const mine = await writeManifest(dir, emptyManifest(), null);
+  const theirs = await writeManifest(dir, emptyManifest(), mine);
+
+  await assert.rejects(removeManifest(dir, mine), /changed while this command was running/);
+  assert.ok(await fs.stat(path.join(dir, MANIFEST_NAME)));
+
+  await removeManifest(dir, theirs);
+  assert.deepEqual(await fs.readdir(dir), []);
+  await removeManifest(dir, theirs); // Already gone. Nothing to remove, nothing to refuse.
+});
+
+// --- The statement a run writes before it copies --------------------------
+
+test('a pending statement is held to the shape and the containment rules', async () => {
+  // `pending` is read as a list of files to delete, so it is the same kind of
+  // thing the skills map is. Trusting it for being ours is how a recorded `..`
+  // took a whole skills directory once already.
+  const dir = await tmp();
+  const write = async (body) => fs.writeFile(path.join(dir, MANIFEST_NAME), body);
+
+  await write('{"schema":1,"skills":{},"pending":[]}\n');
+  await assert.rejects(readManifest(dir), /"pending" is not an object/);
+
+  await write('{"schema":1,"skills":{},"pending":{"a":["SKILL.md"]}}\n');
+  await assert.rejects(readManifest(dir), /"pending" lists no paths for "a"/);
+
+  // The hash is what proves a file at that path belongs to the interrupted run,
+  // so a statement without one is a statement recovery cannot act on.
+  await write('{"schema":1,"skills":{},"pending":{"a":{"SKILL.md":null}}}\n');
+  await assert.rejects(readManifest(dir), /"pending" states no hash for "a\/SKILL.md"/);
+
+  await write('{"schema":1,"skills":{},"pending":{"a":{"../../victim":"ab"}}}\n');
+  await assert.rejects(readManifest(dir), /awaits a path outside "a"/);
+
+  await write('{"schema":1,"skills":{},"pending":{"..":{"SKILL.md":"ab"}}}\n');
+  await assert.rejects(readManifest(dir), /awaits a skill name that is not a directory name/);
+});
+
+test('an empty statement is never written', async () => {
+  const dir = await tmp();
+  await writeManifest(dir, { ...emptyManifest(), pending: {} }, null);
+  assert.doesNotMatch(await fs.readFile(path.join(dir, MANIFEST_NAME), 'utf8'), /pending/);
 });
 
 test('a file named __proto__ is a recorded key, not a prototype', async () => {

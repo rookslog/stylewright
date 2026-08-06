@@ -109,6 +109,21 @@ function checkShape(manifest, targetDir) {
       if (typeof hash !== 'string') refuse(`"${name}" records no hash for "${rel}"`);
     }
   }
+  // `pending` is the record a run writes BEFORE it copies, and recovery reads
+  // it as a list of files to delete. That makes it the same kind of thing the
+  // `skills` map is — a delete instruction executed verbatim — so it is held to
+  // the same shape rule rather than trusted for being ours.
+  if (manifest.pending !== undefined) {
+    if (!isObject(manifest.pending)) refuse('"pending" is not an object');
+    for (const [name, stated] of Object.entries(manifest.pending)) {
+      if (!isObject(stated)) refuse(`"pending" lists no paths for "${name}"`);
+      for (const [rel, hash] of Object.entries(stated)) {
+        // The hash is what proves a file at that path is ours to delete, so a
+        // statement without one is a statement recovery cannot act on.
+        if (typeof hash !== 'string') refuse(`"pending" states no hash for "${name}/${rel}"`);
+      }
+    }
+  }
   return manifest;
 }
 
@@ -139,6 +154,18 @@ function checkContained(manifest, targetDir) {
       if (!contained(rel)) {
         throw new Error(
           `Manifest in ${targetDir} records a path outside "${name}": "${rel}".`);
+      }
+    }
+  }
+  for (const [name, stated] of Object.entries(manifest.pending ?? {})) {
+    if (!nameContained(name)) {
+      throw new Error(
+        `Manifest in ${targetDir} awaits a skill name that is not a directory name: "${name}".`);
+    }
+    for (const rel of Object.keys(stated)) {
+      if (!contained(rel)) {
+        throw new Error(
+          `Manifest in ${targetDir} awaits a path outside "${name}": "${rel}".`);
       }
     }
   }
@@ -189,17 +216,33 @@ function migrateLegacyKeys(manifest, targetDir) {
   return { ...manifest, skills: Object.fromEntries(skills) };
 }
 
-export async function readManifest(targetDir) {
-  const abs = path.join(targetDir, MANIFEST_NAME);
-  if (await regularOrAbsent(abs, targetDir) === 'absent') return emptyManifest();
+/**
+ * The manifest, and the identity of the file it came out of.
+ *
+ * A command that writes has to know which file it read, because the decision
+ * between creating and replacing belongs to that reading and not to a fresh
+ * look. Taking a fresh look is what let two first-time installs into one
+ * directory both succeed: the second read absence, the first created the
+ * manifest, and the second then classified the file as existing and replaced
+ * it, recording only its own skills while the first install's files stayed on
+ * disk with nothing naming them.
+ *
+ * `null` means the read found no manifest. Otherwise it is the device and
+ * inode of the file whose bytes were parsed — taken from the open handle, so
+ * it names what was read and not what stands at the path now.
+ */
+export async function readManifestWithIdentity(targetDir) {  const abs = path.join(targetDir, MANIFEST_NAME);
+  const absent = { manifest: emptyManifest(), identity: null };
+  if (await regularOrAbsent(abs, targetDir) === 'absent') return absent;
   let raw;
+  let identity;
   let fh;
   try {
     fh = await fs.open(abs, 'r');
   } catch (err) {
     // The file was there a moment ago and is gone now. Treat it as absent
     // rather than as a crash, which is what a caller would see otherwise.
-    if (err.code === 'ENOENT') return emptyManifest();
+    if (err.code === 'ENOENT') return absent;
     throw err;
   }
   try {
@@ -214,11 +257,83 @@ export async function readManifest(targetDir) {
         `Manifest in ${targetDir} changed while this command was reading it. Run again.`);
     }
     raw = await fh.readFile('utf8');
+    identity = identityOf(byHandle);
   } finally {
     await fh.close();
   }
-  return checkContained(
-    migrateLegacyKeys(checkShape(JSON.parse(raw), targetDir), targetDir), targetDir);
+  return {
+    manifest: checkContained(
+      migrateLegacyKeys(checkShape(JSON.parse(raw), targetDir), targetDir), targetDir),
+    identity,
+  };
+}
+
+export async function readManifest(targetDir) {
+  return (await readManifestWithIdentity(targetDir)).manifest;
+}
+
+/** Two readings of the manifest path that name the same file. */
+function sameFile(a, b) {
+  return a !== null && b !== null && a.dev === b.dev && a.ino === b.ino;
+}
+
+/**
+ * A refusal caused by another run rather than by anything wrong with the
+ * request. A caller that has already changed the tree can act on it — by
+ * reading again and reapplying — where a caller that has not must simply stop.
+ * The distinction is carried by a code rather than by matching on the message,
+ * which drifts.
+ */
+const STALE = 'ESTYLEWRIGHTSTALE';
+
+function stale(message) {
+  const err = new Error(message);
+  err.code = STALE;
+  return err;
+}
+
+export function isStale(err) {
+  return err?.code === STALE;
+}
+
+/**
+ * The one path this module writes beside the manifest, and the exclusion that
+ * admits a single writer.
+ *
+ * Its name is fixed rather than random. `wx` is the only test and set POSIX
+ * offers, so a fixed name turns the temporary file into the lock: a second
+ * writer's creation fails, and the rename that commits the manifest is also
+ * what releases it, in one step with nothing in between.
+ */
+function tmpPath(abs) {
+  return `${abs}.tmp`;
+}
+
+function identityOf(st) {
+  return { dev: st.dev, ino: st.ino };
+}
+
+async function identityAt(abs, targetDir) {
+  if (await regularOrAbsent(abs, targetDir) === 'absent') return null;
+  const st = await fs.lstat(abs).catch((err) => {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  });
+  return st?.isFile() ? identityOf(st) : null;
+}
+
+/**
+ * What goes on disk: the release stamp, and no empty pending record.
+ *
+ * `pending` names files a run may have created and not yet recorded, so an
+ * empty one names nothing. Dropping the key here rather than at each writer
+ * keeps a finished run's manifest identical to the one the release before this
+ * wrote, which is what the conformance suite compares.
+ */
+function stamped(manifest) {
+  const out = { ...manifest, stylewrightVersion: VERSION };
+  if (!out.pending || Object.keys(out.pending).length === 0) delete out.pending;
+  return out;
 }
 
 /**
@@ -227,44 +342,86 @@ export async function readManifest(targetDir) {
  * can forget: install stamped the manifest and uninstall did not, so a partial
  * uninstall left the file claiming a release that had not touched it.
  */
-export async function writeManifest(targetDir, manifest) {
+export async function writeManifest(targetDir, manifest, expected) {
+  // The third argument is what the command read, and there is no default for
+  // it. A default would be the defect: `writeManifest` classified the path
+  // afresh, which is a different question from "is this still the file I read",
+  // and every caller inherited the wrong answer. A new caller now has to say.
+  if (expected === undefined) {
+    throw new TypeError(
+      'writeManifest needs the manifest identity its caller read. Pass null when the read found none.');
+  }
   await fs.mkdir(targetDir, { recursive: true });
   const abs = path.join(targetDir, MANIFEST_NAME);
-  const existed = await regularOrAbsent(abs, targetDir) === 'file';
-  const body = `${JSON.stringify({ ...manifest, stylewrightVersion: VERSION }, null, 2)}\n`;
+  const body = `${JSON.stringify(stamped(manifest), null, 2)}\n`;
+  const tmp = tmpPath(abs);
+  // Before either branch, and on both of them: a manifest that is a link or a
+  // directory is refused whatever the caller read. Classifying only on the way
+  // to a replacement would have left the creating branch writing at a path
+  // nothing had inspected. The answer is not kept, because a classification is
+  // stale the moment it is taken — the comparison that matters happens below,
+  // inside the exclusion.
+  await regularOrAbsent(abs, targetDir);
 
-  // Creating and replacing are different operations, and one mechanism cannot
-  // be both. `wx` creates and refuses an existing destination. A rename
-  // replaces and refuses nothing, so using it to create let two first-time
-  // installs into one directory each copy their files while the second
-  // manifest recorded only its own, orphaning the first install's.
+  // Creating and replacing are one write, and the difference between them is a
+  // comparison rather than a mechanism. Both go through the same temporary file
+  // and the same rename, so the manifest at its own path is never half written:
+  // a run killed between the open and the write used to leave a truncated file
+  // that every later command failed to parse.
   //
-  // An earlier version of this fix created through a hard link. That refuses
-  // correctly and does not exist on every filesystem, and the skill files are
-  // already copied by the time this runs, so a target that rejects links would
-  // have left every first install on disk with no manifest able to remove it.
-  if (!existed) {
-    await fs.writeFile(abs, body, { flag: 'wx' }).catch((err) => {
-      if (err.code !== 'EEXIST') throw err;
-      throw new Error(
-        `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
-    });
-    return;
-  }
-
-  // Replacing. Write beside it and rename over it, so no reader sees half a
-  // manifest and no write passes through a link that appears after the check.
-  const tmp = `${abs}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  // The temporary file is also the exclusion. Its name is fixed, so `wx` — the
+  // one test and set the filesystem offers — admits a single writer, the
+  // comparison happens while it is held, and the rename that commits the
+  // manifest is what releases it.
+  //
   // A rename replaces the file AND its mode. Somebody who set 0600 on their
-  // manifest had it widened to whatever the umask gives on the next update.
-  //
-  // The mode is read BEFORE the temporary file is created and passed to the
+  // manifest had it widened to whatever the umask gives on the next update. The
+  // mode is read BEFORE the temporary file is created and passed to the
   // creation, so the manifest body never sits on disk under a wider mode than
-  // the file it replaces. Creating first and narrowing afterwards left that
-  // window open, and a crash inside it left the widened file behind.
+  // the file it replaces.
   const mode = await fs.stat(abs).then((st) => st.mode & 0o7777, () => null);
+  let identity;
+  let fh;
   try {
-    await fs.writeFile(tmp, body, mode === null ? { flag: 'wx' } : { flag: 'wx', mode });
+    fh = await fs.open(tmp, 'wx', mode ?? undefined);
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+    throw stale(
+      `Another run is writing the manifest in ${targetDir}. Run again, `
+      + `or remove ${tmp} if no other run is active.`);
+  }
+  try {
+    await fh.writeFile(body);
+    // Taken from the handle before the rename, and a rename carries the file
+    // rather than copying it, so this is the identity of the manifest this call
+    // commits. Reading the path afterwards would return whatever another run
+    // put there in the meantime.
+    identity = identityOf(await fh.stat());
+  } catch (err) {
+    // This run created the file with `wx` a moment ago, so removing it on
+    // failure is not the guess refuseStaleWrite refuses to make — it is
+    // provably ours. Leaving it would turn one failed write, a full disk
+    // say, into a refusal on every later command until a person deletes it.
+    await fs.rm(tmp, { force: true });
+    throw err;
+  } finally {
+    await fh.close();
+  }
+  try {
+    // Compared while the exclusion is held, and released by the rename that
+    // acts on the comparison. Comparing before taking it was the defect a
+    // reviewer reproduced: two runs both saw the file they had read, and the
+    // second rename overwrote a record the first had just committed, stranding
+    // the files that record named. The order here is what makes the answer
+    // still true when it is acted on.
+    const observed = await identityAt(abs, targetDir);
+    if (expected === null && observed !== null) {
+      throw stale(
+        `Manifest in ${targetDir} appeared while this command was writing it. Run again.`);
+    }
+    if (expected !== null && !sameFile(observed, expected)) {
+      throw stale(`Manifest in ${targetDir} changed while this command was running. Run again.`);
+    }
     // The umask trims the creation mode and never widens it, so this restores
     // a bit the umask took and cannot be the first thing to grant one.
     if (mode !== null) await fs.chmod(tmp, mode);
@@ -272,6 +429,75 @@ export async function writeManifest(targetDir, manifest) {
   } catch (err) {
     await fs.rm(tmp, { force: true });
     throw err;
+  }
+  return identity;
+}
+
+/**
+ * Refuse a manifest write that something left half done.
+ *
+ * This function used to delete the file, on the argument that the caller
+ * holds the directory, so the file could only be a killed run's debris. A
+ * review broke the inference: the lock proves no command is active NOW, and
+ * it proves nothing about who wrote an existing file — the user can put one
+ * at this name too, and deleting on the guess took theirs silently. Called
+ * before anything else is deleted, so a command that will need the exclusion
+ * at its end refuses up front, while the tree is still whole.
+ */
+export async function refuseStaleWrite(targetDir) {
+  const tmp = tmpPath(path.join(targetDir, MANIFEST_NAME));
+  // Refused, never deleted. Holding the lock proves no command is active NOW.
+  // It does not prove an existing file at this name is a killed run's
+  // leavings rather than the user's own — and a genuine killed run also left
+  // its lock behind, so the person who removed that lock is already cleaning
+  // by hand and can take this named file with it. Deleting on the guess took
+  // a user-created file silently, which is the one thing this tool must
+  // never do.
+  const state = await destinationState(tmp)
+    // A path whose PARENT is a file rather than a directory is a target the
+    // user has something else at — nothing of ours is under it, so there is
+    // nothing in the way, and `uninstall` reports the skill as not installed
+    // as it should.
+    .catch((err) => {
+      if (err.code !== 'ENOTDIR') throw err;
+      return 'absent';
+    });
+  if (state === 'absent') return;
+  throw new Error(
+    `${tmp} is in the way. A killed run can leave it, and so can you, and this `
+    + 'tool cannot tell which. Remove it and run again.');
+}
+
+/**
+ * Remove the manifest, and only the file the command read.
+ *
+ * `uninstall` deletes it when the last skill goes, and it deleted whatever
+ * stood at the path. A manifest another run created after this one read the
+ * directory names that run's files, so removing it orphans them — the same
+ * defect as replacing it, through the other door.
+ */
+export async function removeManifest(targetDir, expected) {
+  const abs = path.join(targetDir, MANIFEST_NAME);
+  const tmp = tmpPath(abs);
+  // The same exclusion a replacement takes, for the same reason: the comparison
+  // and the act on it must not have another run's write between them.
+  try {
+    await fs.writeFile(tmp, '', { flag: 'wx' });
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+    throw stale(
+      `Another run is writing the manifest in ${targetDir}. Run again, `
+      + `or remove ${tmp} if no other run is active.`);
+  }
+  try {
+    const observed = await identityAt(abs, targetDir);
+    if (observed === null) return; // Already gone. Nothing to remove and nothing to refuse.
+    if (!sameFile(observed, expected)) {
+      throw stale(`Manifest in ${targetDir} changed while this command was running. Run again.`);
+    }
+    await fs.rm(abs, { force: true });
+  } finally {
+    await fs.rm(tmp, { force: true });
   }
 }
 

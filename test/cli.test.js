@@ -4,9 +4,11 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { run } from '../src/cli.js';
+import crypto from 'node:crypto';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
+const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-cli-'));
 
 function capture() {
@@ -209,6 +211,101 @@ test('update needs no flags, and finds its targets from the manifests', async ()
   assert.match(out.text(), /\.codex/);
 });
 
+test('update clears what an interrupted first install left, and says it changed', async () => {
+  // A first install killed after a copy leaves a manifest with a statement and
+  // no installed skill. `findInstalls` dropped that target on the skill count,
+  // so update reported that nothing was installed and left the files — while
+  // the README named update as one of the three commands that clear them.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+
+  // Zero, because the command changed the tree. Counting only the skills it
+  // wrote told a script that a cleanup which deleted files had failed.
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of demo-craft/);
+  assert.match(out.text(), /removed demo-craft\/SKILL\.md/);
+  await assert.rejects(fs.access(path.join(target, 'demo-craft')));
+});
+
+test('a cleanup that removed no file is still a change', async () => {
+  // A run killed between its statement and its first copy leaves nothing on
+  // disk. Withdrawing the statement is still a change, and a command that
+  // reported otherwise told a script the cleanup had failed.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('never written\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of demo-craft/);
+  assert.equal((await (await import('../src/manifest.js')).readManifest(target)).pending, undefined);
+});
+
+test('install reports a cleanup that wrote no skill as a change', async () => {
+  // The skill is refused for a file the user wrote, so nothing is installed.
+  // The cleanup still deleted files, and a command that deleted files must not
+  // tell a script that nothing happened.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const mine = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(mine), { recursive: true });
+  await fs.writeFile(mine, 'my own notes\n');
+  const orphan = path.join(target, 'demo-standard', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of demo-standard/);
+  assert.match(out.text(), /removed demo-standard\/SKILL\.md/);
+  assert.match(out.text(), /skipped demo-craft/);
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
+});
+
+test('uninstall reports a cleanup that removed no skill as a change', async () => {
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['uninstall', '--all', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of demo-craft/);
+  assert.match(out.text(), /removed demo-craft\/SKILL\.md/);
+  await assert.rejects(fs.access(path.join(target, 'demo-craft')));
+});
+
 test('update refuses to overwrite an edited file without --force', async () => {
   const home = await tmp();
   const target = path.join(home, '.claude', 'skills');
@@ -278,11 +375,11 @@ test('uninstall accepts a skill this repository no longer ships', async () => {
     { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
 
   // Rename the recorded entry to a skill the catalog does not know.
-  const { readManifest, writeManifest } = await import('../src/manifest.js');
-  const m = await readManifest(target);
+  const { readManifestWithIdentity, writeManifest } = await import('../src/manifest.js');
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills.withdrawn = m.skills['demo-craft'];
   delete m.skills['demo-craft'];
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
   await fs.rename(path.join(target, 'demo-craft'), path.join(target, 'withdrawn'));
 
   const out = capture();
@@ -330,6 +427,212 @@ test('a collision still stops an install', async () => {
     () => run(['install', '--skill', 'twinned', '--platform', 'claude'],
       { home, cwd: '/c', repoRoot: repo, stdout: capture(), now: NOW }),
     /twinned/);
+});
+
+test('install says what it cleared from an interrupted run', async () => {
+  // A command that deletes files says which ones. Clearing them silently is the
+  // same defect as leaving them: the user cannot audit what the tool did.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const { readManifestWithIdentity, writeManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'demo-standard', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  await writeManifest(target, {
+    ...manifest, pending: { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } },
+  }, identity);
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of demo-standard/);
+  assert.match(out.text(), /removed demo-standard\/SKILL\.md/);
+});
+
+test('a command that reads manifests to plan its work refuses a held directory', async () => {
+  // `installSkills` and `uninstallSkills` take the lock themselves, but the
+  // discovery and selection above them parse manifests first — and a held
+  // directory is one whose manifest may be changing under that read, or one a
+  // killed run left mid-write. Both reached the user as a JSON parse error.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+  await fs.writeFile(path.join(target, '.stylewright-manifest.json'), '');
+
+  const updated = capture();
+  assert.equal(
+    await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: updated, now: NOW }), 1);
+  assert.match(updated.text(), /held: .*skills\./);
+  assert.match(updated.text(), /Remove .*\.stylewright-lock/);
+
+  const removed = capture();
+  assert.equal(
+    await run(['uninstall', '--all', '--platform', 'claude'],
+      { home, cwd: '/c', repoRoot: REPO, stdout: removed, now: NOW }), 1);
+  assert.match(removed.text(), /held: .*skills\./);
+});
+
+test('install names a typo even when every target is held', async () => {
+  // Install reads its names from the catalogue, which no lock hides. Reporting
+  // only the held directory kept the typo hidden until the user had cleared the
+  // lock and run the same wrong command again.
+  const home = await tmp();
+  const claude = path.join(home, '.claude', 'skills');
+  await fs.mkdir(claude, { recursive: true });
+  await fs.writeFile(path.join(claude, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'nonesuch', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 2, out.text());
+  assert.match(out.text(), /Unknown skill: nonesuch/);
+});
+
+test('uninstall does not call a name unknown while a selected target is held', async () => {
+  // The one manifest that could carry a withdrawn name is the one this command
+  // refused to read. `install` reads its names from the catalog, which no lock
+  // hides, so only the removal needs this.
+  const home = await tmp();
+  const claude = path.join(home, '.claude', 'skills');
+  await fs.mkdir(claude, { recursive: true });
+  await fs.writeFile(path.join(claude, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'withdrawn', '--platform', 'claude,codex'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.notEqual(code, 2, out.text());
+  assert.match(out.text(), /held: /);
+  assert.doesNotMatch(out.text(), /Unknown skill/);
+});
+
+test('uninstall accepts a withdrawn name that only a statement carries', async () => {
+  // An interrupted install of a skill this repository has since withdrawn is
+  // known from nothing but its statement, and that is exactly what a targeted
+  // cleanup names.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'withdrawn', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { withdrawn: { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['uninstall', '--skill', 'withdrawn', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of withdrawn/);
+  await assert.rejects(fs.access(target), 'and nothing of this tool is left');
+});
+
+test('a held directory does not stop the targets that are free', async () => {
+  // `--platform claude,codex` names two directories on purpose, and one being
+  // held says nothing about the other.
+  const home = await tmp();
+  const claude = path.join(home, '.claude', 'skills');
+  await fs.mkdir(claude, { recursive: true });
+  await fs.writeFile(path.join(claude, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['install', '--skill', 'demo-craft', '--platform', 'claude,codex'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /held: .*\.claude/);
+  await fs.access(path.join(home, '.codex', 'skills', 'demo-craft', 'SKILL.md'));
+  await assert.rejects(fs.access(path.join(claude, 'demo-craft')), 'and the held one is untouched');
+});
+
+test('a held directory is not reported as a skill that is not installed', async () => {
+  // This command refused to read that manifest, so it cannot say the skill is
+  // missing there — and a withdrawn skill installed only in the held directory
+  // was reported as unknown.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['update', '--platform', 'claude', '--scope', 'user', '--skill', 'demo-craft'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 1, out.text());
+  assert.match(out.text(), /held: /);
+  assert.doesNotMatch(out.text(), /Not installed anywhere/);
+  assert.doesNotMatch(out.text(), /Unknown skill/);
+});
+
+test('a name only a statement carries is not unknown', async () => {
+  // The catalog does not ship it and no record holds it, so the name is known
+  // only from the statement an interrupted run left. Refusing it as unknown
+  // made the cleanup impossible to ask for.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'withdrawn', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { withdrawn: { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'withdrawn'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.doesNotMatch(out.text(), /Unknown skill/);
+  assert.match(out.text(), /cleared the unfinished install of withdrawn/);
+});
+
+test('a name this command would not look for is not unknown either', async () => {
+  // The one directory that could hold it is held, and this command refused to
+  // read that manifest. Calling the name unknown asserts something it did not
+  // check.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  await fs.writeFile(path.join(target, '.stylewright-lock'), '');
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'withdrawn'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 1, out.text());
+  assert.doesNotMatch(out.text(), /Unknown skill/);
+  assert.match(out.text(), /held: /);
+});
+
+test('a targeted update clears a skill that exists only as a statement', async () => {
+  // `--skill X` where X is what an interrupted run left. The name is carried by
+  // a statement rather than a record, and reporting it as installed nowhere
+  // told the user their cleanup had matched nothing.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const { writeManifest, emptyManifest } = await import('../src/manifest.js');
+  const orphan = path.join(target, 'demo-craft', 'SKILL.md');
+  await fs.mkdir(path.dirname(orphan), { recursive: true });
+  await fs.writeFile(orphan, 'half a copy\n');
+  await writeManifest(
+    target,
+    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    null);
+
+  const out = capture();
+  const code = await run(['update', '--skill', 'demo-craft'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+  assert.equal(code, 0, out.text());
+  assert.match(out.text(), /cleared the unfinished install of demo-craft/);
+  await assert.rejects(fs.access(target), 'and nothing of this tool is left');
 });
 
 test('an unknown skill is still rejected on install', async () => {
@@ -383,11 +686,11 @@ test('update accepts a withdrawn skill name that a manifest records', async () =
   const target = path.join(home, '.claude', 'skills');
   await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
     { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
-  const { readManifest, writeManifest } = await import('../src/manifest.js');
-  const m = await readManifest(target);
+  const { readManifestWithIdentity, writeManifest } = await import('../src/manifest.js');
+  const { manifest: m, identity } = await readManifestWithIdentity(target);
   m.skills.withdrawn = m.skills['demo-craft'];
   delete m.skills['demo-craft'];
-  await writeManifest(target, m);
+  await writeManifest(target, m, identity);
 
   const out = capture();
   const code = await run(['update', '--skill', 'withdrawn'], {
@@ -827,4 +1130,39 @@ test('a command rejects a flag it does not read', async () => {
   assert.equal(await run(['update', '--all'],
     { home: '/h', cwd: '/c', repoRoot: REPO, stdout: said, now: NOW }), 2);
   assert.match(said.text(), /update does not take --all/);
+});
+
+test('an update that finds the directory emptied under it does not put it back', async () => {
+  // Discovery saw an installed skill. An uninstall then removed the last skill
+  // AND the directory before this run took the lock — and `withTargetLock`
+  // creates the directory to place its lock in, so the update recreated what
+  // the uninstall had just removed. The locked reread found nothing to do and
+  // reported nothing emptied, so the caller's `rmdir` never ran and an empty
+  // skills directory outlived the uninstall that removed it.
+  //
+  // The window is the moment the lock is taken, so the uninstall is staged
+  // there: a run that committed a heartbeat before this one acquired the
+  // directory leaves exactly this behind.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const real = fs.writeFile;
+  fs.writeFile = async (file, ...rest) => {
+    if (String(file).endsWith('.stylewright-lock')) {
+      for (const entry of await fs.readdir(target)) {
+        await fs.rm(path.join(target, entry), { recursive: true, force: true });
+      }
+    }
+    return real(file, ...rest);
+  };
+  try {
+    await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  } finally {
+    fs.writeFile = real;
+  }
+
+  assert.equal(await fs.access(target).then(() => true, () => false), false,
+    'the directory the uninstall removed must not survive the update that found it gone');
 });

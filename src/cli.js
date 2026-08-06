@@ -10,6 +10,7 @@ import { readManifest } from './manifest.js';
 import { lintText } from './lint.js';
 import { checkAll } from './ground.js';
 import { scaffoldSkill } from './scaffold.js';
+import { isLocked, isHeldError } from './lock.js';
 import { VERSION } from './version.js';
 
 const USAGE = `stylewright ${VERSION}
@@ -123,6 +124,21 @@ export async function run(argv, ctx) {
   const { home, cwd, repoRoot, stdout, now, interactive = false } = ctx;
   const [command, ...rest] = argv;
   const say = (s) => stdout.write(`${s}\n`);
+  // A command that deletes says what it deleted. These are the files an earlier
+  // run stated it would write and never recorded, and clearing them without a
+  // word is how a tool loses the right to be trusted with a delete. Said once
+  // here, because install, update and uninstall all clear them.
+  // A directory a run holds is not this command's to read. The message names
+  // the file, because removing it is the one judgement only a person can make.
+  const sayLocked = (dir) => say(
+    `held: ${dir}. A stylewright command is working there, or one was killed. `
+    + `Remove ${path.join(dir, '.stylewright-lock')} if no other run is active.`);
+  const sayCleared = ({ recovered, cleared }, dir) => {
+    for (const name of cleared ?? []) {
+      say(`cleared the unfinished install of ${name} in ${dir}`);
+    }
+    for (const rel of recovered ?? []) say(`  removed ${rel}`);
+  };
   let flags;
   try {
     flags = parseFlags(rest);
@@ -269,7 +285,8 @@ export async function run(argv, ctx) {
       say(err.message);
       return 2;
     }
-    if (!update.results.length && !update.unmatched.length) {
+    for (const dir of update.locked ?? []) sayLocked(dir);
+    if (!update.results.length && !update.unmatched.length && !update.locked?.length) {
       say('Nothing to update. No installed skills were found.');
       say('Run `stylewright install` first, or pass --platform to look elsewhere.');
       return 0;
@@ -279,6 +296,7 @@ export async function run(argv, ctx) {
     // uninstalled one rewrote files and then said only that the second was
     // missing. The exit code covered three outcomes and distinguished none.
     for (const r of update.results) {
+      sayCleared(r, r.targetDir);
       for (const n of r.installed) say(`updated ${n} -> ${r.targetDir}`);
       for (const s of r.skipped) {
         say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
@@ -296,7 +314,12 @@ export async function run(argv, ctx) {
     // changed nothing must not report success. `update` was the third consumer
     // and did not have it, so a scripted update that refused every skill for a
     // local edit exited zero and said the refresh had happened.
-    if (!update.results.some((r) => r.installed.length)) {
+    //
+    // Clearing what an interrupted run left IS a change. Counting only the
+    // skills written told a script that a cleanup which deleted files had
+    // failed.
+    if (!update.results.some((r) => r.installed.length || r.cleared?.length)) {
+      if (update.locked?.length) return 1;
       say('Nothing was updated.');
       return 1;
     }
@@ -429,6 +452,20 @@ export async function run(argv, ctx) {
       return 2;
     }
 
+    // A name install cannot use is a typing mistake, and install reads its
+    // names from the catalogue, which no lock hides. Checked before the held
+    // directories are passed over, or a typo stayed hidden behind a lock the
+    // user had to clear first to be told about it.
+    if (command === 'install') {
+      const shipped = new Set(catalog.map((s) => s.name));
+      const wrong = [...new Set([...flags.skill, ...fromCatalog])].filter((n) => !shipped.has(n));
+      if (wrong.length) {
+        say(`Unknown skill: ${wrong.join(', ')}.`);
+        say(`Available: ${[...shipped].sort().join(', ')}.`);
+        return 2;
+      }
+    }
+
     // Install and uninstall answer two different questions, and one catalogue
     // lookup answered both. The catalogue says what this repository ships NOW
     // and which tier it ships it in. A removal asks what is installed HERE and
@@ -437,8 +474,28 @@ export async function run(argv, ctx) {
     // it missed a withdrawn skill the manifest still placed in the tier, and it
     // removed a skill from a target whose manifest placed it outside the tier,
     // because a skill that moved tiers is one name under two answers.
+    // Before any manifest is read. `installSkills` and `uninstallSkills` take
+    // the lock themselves, but the SELECTION above them parses manifests to
+    // work out what to remove, and a held directory is one whose manifest may
+    // be changing under that read.
+    //
+    // A held directory is reported and passed over, not treated as a reason to
+    // do nothing anywhere. `--platform claude,codex` names two directories on
+    // purpose, and one of them being held says nothing about the other.
+    const open = [];
+    let held = 0;
+    for (const entry of targetDirs) {
+      if (await isLocked(entry[1])) {
+        sayLocked(entry[1]);
+        held++;
+        continue;
+      }
+      open.push(entry);
+    }
+    if (!open.length) return 1;
+
     const selections = [];
-    for (const [, dir] of targetDirs) {
+    for (const [, dir] of open) {
       if (flags.skill.length) {
         selections.push([dir, flags.skill]);
         continue;
@@ -447,11 +504,13 @@ export async function run(argv, ctx) {
         selections.push([dir, fromCatalog]);
         continue;
       }
-      const names = [];
-      for (const [n, entry] of Object.entries((await readManifest(dir)).skills)) {
-        if (flags.all || entry.tier === flags.tier) names.push(n);
-      }
-      selections.push([dir, names]);
+      // No list, because this one is not ours to choose. A removal selected by
+      // tier reads the manifest, and reading it here means reading it before
+      // anything is held: an install that moved a skill between tiers in that
+      // window had the stale name removed from the tier it had just joined.
+      // `uninstall` derives the names from the manifest it reads under its own
+      // lock, so the decision and the act cannot be separated by another run.
+      selections.push([dir, null]);
     }
 
     const known = new Set(catalog.map((s) => s.name));
@@ -460,12 +519,26 @@ export async function run(argv, ctx) {
     // against the catalog alone made that advice impossible to follow, so
     // uninstall also accepts any name a selected manifest records.
     if (command === 'uninstall') {
-      for (const [, dir] of targetDirs) {
-        for (const n of Object.keys((await readManifest(dir)).skills)) known.add(n);
+      for (const [, dir] of open) {
+        const mf = await readManifest(dir);
+        // A statement's name counts too. An interrupted install of a skill this
+        // repository has since withdrawn is known from nothing else, and it is
+        // exactly what a targeted cleanup names.
+        for (const n of [...Object.keys(mf.skills), ...Object.keys(mf.pending ?? {})]) {
+          known.add(n);
+        }
       }
     }
-    const selected = [...new Set([...flags.skill, ...selections.flatMap(([, n]) => n)])];
-    const unknown = selected.filter((n) => !known.has(n));
+    // A tier selection contributes no name here. Every name it can produce
+    // comes from a manifest this loop has already read into `known`, so it
+    // could never be the unknown one, and it is no longer decided at this
+    // point in the command.
+    const selected = [...new Set([...flags.skill, ...selections.flatMap(([, n]) => n ?? [])])];
+    // A held directory proves nothing about a name. `install` reads its names
+    // from the catalog, which no lock hides, but `uninstall` reads them from
+    // the manifests — and it refused to read the one that could carry this one.
+    const unknown = command === 'uninstall' && held
+      ? [] : selected.filter((n) => !known.has(n));
     if (unknown.length) {
       say(`Unknown skill: ${unknown.join(', ')}.`);
       say(`Available: ${[...known].sort().join(', ')}.`);
@@ -478,22 +551,31 @@ export async function run(argv, ctx) {
     // and an `install` that refused every skill was indistinguishable from one
     // that wrote them all.
     let changed = 0;
-    let refused = 0;
+    let refused = held;
     for (const [targetDir, selected] of selections) {
+      // The probe above answered for the moment it ran. A directory taken
+      // since gets the same treatment the probe would have given it — said,
+      // counted, and passed over — instead of failing the whole command with
+      // the remaining targets never processed.
+      try {
       if (command === 'install') {
         const res = await installSkills({
           repoRoot, targetDir, names: selected, now, force: Boolean(flags.force),
         });
+        sayCleared(res, targetDir);
         for (const n of res.installed) say(`installed ${n} -> ${targetDir}`);
         for (const s of res.skipped) {
           say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
         }
-        changed += res.installed.length;
+        // Clearing what an interrupted run left is a change, and a command
+        // that deleted files must not report that nothing happened.
+        changed += res.installed.length + res.cleared.length;
         refused += res.skipped.length;
       } else {
-        const res = await uninstallSkills({
-          targetDir, names: selected, force: Boolean(flags.force),
-        });
+        const res = await uninstallSkills(selected
+          ? { targetDir, names: selected, force: Boolean(flags.force) }
+          : { targetDir, tier: flags.all ? null : flags.tier, force: Boolean(flags.force) });
+        sayCleared(res, targetDir);
         for (const n of res.removed) say(`removed ${n} from ${targetDir}`);
         for (const n of res.missing) say(`not installed: ${n} in ${targetDir}`);
         for (const s of res.skipped) {
@@ -507,8 +589,13 @@ export async function run(argv, ctx) {
             ? ' Use --force to remove it anyway.' : '';
           say(`kept ${s.name}: ${s.reason} (${s.files.join(', ')}).${remedy}`);
         }
-        changed += res.removed.length;
+        changed += res.removed.length + res.cleared.length;
         refused += res.skipped.length;
+      }
+      } catch (err) {
+        if (!isHeldError(err)) throw err;
+        sayLocked(targetDir);
+        refused++;
       }
     }
     if (!changed) {
