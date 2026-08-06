@@ -67,7 +67,10 @@ No check here opens a source, so no check can say whether a `G` row reads its
 rule correctly. Each `G` row therefore records its own audit, in a sixth cell.
 The cell says `unaudited`, or it carries the date a person read that row
 against the source and a digest of the four cells they read. Every other kind
-of row leaves the cell empty, for the same reason its rule cell is empty.
+of row leaves the cell empty, for the same reason its rule cell is empty. The
+cell itself is never absent. A row without it is refused whatever kind it is,
+because coalescing an absent cell with an empty one let a matrix of `E` and
+`N` rows drop the column and stay clean.
 
 Three things are defects. A date written for a reading nobody did is the worst
 of them, and it is the `G` row defect in its newest form. A digest that no
@@ -81,7 +84,9 @@ this program needs comes from. `checkSkill` throws when the caller omits it,
 rather than defaulting, because a default turns the rule off for whoever
 forgot the argument. It throws on a day the calendar does not carry as well.
 A bound that is not a day bounds nothing, and `9999-99-99` sorted above every
-real date and let a future audit through.
+real date and let a future audit through. The moment must be written in UTC,
+because an offset names one day where it was written and another in UTC, and
+the check read the written one.
 
 `ground --check` prints the audited count for each matrix beside its verdict.
 That line is a note, so it fails nothing. Do not promote it to an error, and do

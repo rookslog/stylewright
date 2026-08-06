@@ -160,12 +160,28 @@ test('the day the check runs on must itself be a day', () => {
       `${now} was accepted as the day the check runs on`);
   }
 
-  // A bare day and a full timestamp are both moments, and both still refuse
-  // the audit dated after them.
-  for (const now of ['2026-08-06', '2026-08-06T12:00:00.000Z', '2026-08-06 12:00:00']) {
+  // A bare day and a UTC timestamp are both moments, and both still refuse the
+  // audit dated after them.
+  for (const now of ['2026-08-06', '2026-08-06T12:00:00.000Z', '2026-08-06T12:00Z']) {
     assert.ok(checkSkill({ skillText: SKILL, matrixText: ahead, now })
       .some((f) => f.code === 'audit-ahead-of-the-check'), `${now} was refused`);
   }
+});
+
+test('the day the check runs on is UTC, so an offset cannot move it', () => {
+  // `2026-08-07T00:30:00+05:00` is still 6 August in UTC. The pattern read the
+  // WRITTEN day, so an audit dated the 7th passed and was counted as read.
+  // Normalising an offset needs date arithmetic in a module that may not build
+  // a date, so the grammar refuses the form instead.
+  const seventh = audited(`2026-08-07 ${CURRENT}`);
+  for (const now of ['2026-08-07T00:30:00+05:00', '2026-08-06T19:30:00-05:00', '2026-08-06 12:00:00']) {
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: seventh, now }), TypeError,
+      `${now} was read as a UTC day`);
+  }
+
+  // The same instant written in UTC is the day the check compares against.
+  assert.ok(checkSkill({ skillText: SKILL, matrixText: seventh, now: '2026-08-06T19:30:00.000Z' })
+    .some((f) => f.code === 'audit-ahead-of-the-check'));
 });
 
 test('the coverage count and the findings read the audit cell the same way', () => {
@@ -219,6 +235,32 @@ test('the run says how much of the matrix a person has read, and fails nothing',
 
   const one = check({ skillText: SKILL, matrixText: audited(`2026-08-06 ${CURRENT}`) });
   assert.ok(one.some((f) => f.code === 'audit-coverage' && f.message.startsWith('1 of 2')));
+});
+
+test('every row carries the sixth cell, including a matrix that cites no source', () => {
+  // An absent cell used to coalesce to an empty one, so a matrix of E and N
+  // rows could drop the column from its header, its delimiter and every row
+  // and still pass. No G row was left to complain, and the format quietly
+  // became optional for exactly the matrices nobody would check by hand.
+  const ours = SKILL.replace(/- Use no more.*\n- Do not use semicolons\.\n/, '- Ours alone.\n');
+  const fiveColumns = `# Grounding: s
+
+| ID | Our guidance | Our anchor | Source rule | Source location |
+|---|---|---|---|---|
+| N-01 | S | S |  | Section title |
+| N-02 | Rules | Rules |  | Section title |
+| E-01 | Ours alone. | Rules |  | Ours |
+`;
+  const found = check({ skillText: ours, matrixText: fiveColumns });
+  assert.deepEqual(found.filter((f) => f.code === 'row-missing-audit-cell').length, 3,
+    'every row without the cell is named, not just the ones that cite a source');
+
+  // A G row missing the cell is refused for the missing cell, and not reported
+  // as though it had left an audit blank.
+  const short = MATRIX.replace('| Part 1, Section 5 | unaudited |', '| Part 1, Section 5 |');
+  const codes = check({ skillText: SKILL, matrixText: short }).map((f) => f.code);
+  assert.ok(codes.includes('row-missing-audit-cell'));
+  assert.ok(!codes.includes('g-row-no-audit'));
 });
 
 test('a matrix that cites no source reports no audit coverage', () => {

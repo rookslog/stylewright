@@ -78,11 +78,13 @@ verdict. The check enforces the record's shape and its freshness. It does
 not enforce that anybody audits anything, and it cannot, because the
 audit is a person opening a book.
 
-Every row ships at `unaudited`, which is the true state on the day this
-lands. The row-by-row audit is human work, and this decision buys the
-place to record it rather than the work itself. A reader who wants that
-number reads it from the printed count, not from this file, because a
-number written into prose goes stale on the next audit.
+Every `G` row ships at `unaudited`, which is the true state on the day
+this lands. A row of another kind ships with the cell empty, and writing
+`unaudited` there is the defect the check reports as `e-row-has-audit`.
+The row-by-row audit is human work, and this decision buys the place to
+record it rather than the work itself. A reader who wants that number
+reads it from the printed count, not from this file, because a number
+written into prose goes stale on the next audit.
 
 This rests on one belief. A per-row cell is cheap enough that an auditor
 fills it in as they read. If auditing instead happens in long sittings

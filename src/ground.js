@@ -23,10 +23,13 @@ export function parseMatrix(text) {
       anchor: cells[2],
       rule: cells[3],
       location: cells[4],
-      // A row written before the audit column existed has no sixth cell, and
-      // `undefined` there would read as an audit nobody can parse. An absent
-      // cell and an empty one are the same claim, which is none.
-      audit: cells[5] ?? '',
+      // An absent sixth cell is NOT an empty one. Coalescing the two here made
+      // the column optional for any matrix without a G row: delete the header,
+      // the delimiter and every cell from a matrix of E and N rows and the
+      // check stayed clean, because each missing cell read as an empty audit
+      // and no G row was left to complain. `undefined` reaches the check and
+      // the check names it.
+      audit: cells[5],
     });
   }
   return rows;
@@ -150,8 +153,16 @@ export function rowDigest(row) {
  * The tail after the day is the time, which nothing here reads. It may be
  * absent, and it may not be arbitrary text, because text that is not a
  * timestamp is a caller passing something other than a moment.
+ *
+ * The moment must be UTC. An offset timestamp names a day in one zone and a
+ * different day in UTC, and this read the written day: `2026-08-07T00:30:00
+ * +05:00` is still 6 August in UTC, so an audit dated the 7th passed and was
+ * counted as read. Normalising an offset needs date arithmetic in a module
+ * that may not build a date, and the one caller hands in `toISOString`, which
+ * is always UTC. So the grammar states the forms it reads and refuses the
+ * rest, which is how this file already treats Markdown.
  */
-const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:[T ][0-9:.,+\-Z]*)?$/;
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]+)?)?Z)?$/;
 function dayOf(now) {
   const stamp = typeof now === 'string' ? ISO_DAY.exec(now) : null;
   if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
@@ -171,7 +182,8 @@ function dayOf(now) {
  * `recorded` is the only state that counts as a person having read the row.
  */
 function auditState(row, today) {
-  const audit = row.audit ?? '';
+  const audit = row.audit;
+  if (audit === undefined) return { state: 'missing' };
   if (!audit) return { state: 'absent' };
   if (audit === UNAUDITED) return { state: 'unaudited' };
   const stamp = AUDIT.exec(audit);
@@ -560,6 +572,19 @@ export function checkSkill({ skillText, matrixText, now }) {
     // first and hid the rest until it was fixed.
     if (!kind) return;
     const { state, day } = auditState(row, today);
+    // The column is the format, not a courtesy a G row extends. A row that
+    // does not carry the cell is refused whatever kind it is, because the
+    // alternative is a matrix that quietly drops the column the moment it
+    // cites no source.
+    if (state === 'missing') {
+      findings.push({
+        level: 'error',
+        code: 'row-missing-audit-cell',
+        message: `${row.id}: the row has no Audited cell. Every row carries six columns, `
+          + 'and only a G row fills the sixth.',
+      });
+      return;
+    }
     if (kind !== 'G') {
       if (state !== 'absent') {
         findings.push({

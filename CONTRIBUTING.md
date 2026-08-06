@@ -134,6 +134,10 @@ Write the date in UTC, which `date -u +%F` gives you. The check refuses a date
 after the UTC day it runs on, because nobody read a row on a day that has not
 arrived.
 
+Every row carries the sixth cell, including the rows that leave it empty. A row
+written with five cells is refused, so a matrix without a `G` row cannot drop
+the column.
+
 Editing any other cell in the row changes the digest. The check then reports
 the audit as stale, because the words you read are no longer the words in the
 row. Read the row against the source again, or write `unaudited`.

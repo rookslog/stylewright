@@ -227,7 +227,9 @@ So each `G` row records its own audit. The `Audited` cell says `unaudited`, or
 it carries the date a person read that row against the source and a digest of
 the row they read. No run of the checker raises a row out of `unaudited`, and
 editing any other cell in the row voids the audit. `stylewright ground --check`
-prints how many `G` rows in each matrix carry a date, beside its verdict.
+prints how many `G` rows in each matrix carry a valid current audit, beside its
+verdict. A date that is stale, malformed, or later than the day of the check
+does not count toward it.
 
 A clean check means the matrix matches the skill. It has never meant that a
 person confirmed a citation. Read the printed count rather than the verdict,
