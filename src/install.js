@@ -370,6 +370,13 @@ async function installUnderLock(byName, {
       keep[rel] = held;
       setAside.push(rel);
     }
+    // Only the leaves the walk could reach, for the reason every other consumer
+    // takes this set: an `lstat` through a blocker throws ELOOP out of the
+    // command where a refusal was the whole point. Under --force a blocker
+    // cleared above is no longer in the way, and this set was taken before that
+    // — so such a path is copied without being kept. It is the same line
+    // --force already draws, one step along.
+    const open = new Set(write.reachable);
     for (const rel of rels) {
       // A shipping path holding a plain file is one the copy will replace, so
       // its bytes are stated and moved aside like a retired one's. Without
@@ -380,9 +387,8 @@ async function installUnderLock(byName, {
       //
       // Only a plain file. A directory or a link at a shipping path is cleared
       // by the copy below under --force, and neither can be moved aside as the
-      // bytes of a file. That is the one place --force still costs the user
-      // reversibility, and it is the same line --force already draws.
-      if (!write.reachable.includes(rel)) continue;
+      // bytes of a file.
+      if (!open.has(rel)) continue;
       const abs = path.join(destDir, rel);
       if (await destinationState(abs) !== 'file') continue;
       keep[rel] = await hashFile(abs);
