@@ -17,7 +17,9 @@ measurement design defines once, in section 4.1 — harness build, served
 model, platform, pathway, environment class, and the committed stack
 digest where the class is a representative stack — and runs on a calendar,
 once per tuple it is scheduled to cover, with a committed record naming
-every element, the outcome, and the date. A probe covers a study only
+every element and the date, and carrying the bytes from which every
+checker derives the outcome — the outcome is computed, never asserted
+beside the bytes. A probe covers a study only
 when every element of the tuple is identical between them and the probe
 passed — identity, not ordering, because a study on an older or merely
 different model is as unprobed as one on a newer, and nothing

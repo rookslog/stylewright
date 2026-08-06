@@ -236,9 +236,11 @@ digest, the served model build, and the CLI version — the three the
 scorer already refuses a mixed contrast over today, kept because a
 contrast that varies any of them measures that change and not the
 delivery — then the package revision, the platform, and the environment
-class. The last two also enter the study manifest, because section 7
-binds derived status to both and a status command cannot derive what no
-record retains.
+class, with the committed stack digest where the class is a
+representative stack. Platform, environment class, and stack digest also
+enter the study manifest, because section 7 binds derived status to them,
+section 4.1's identity tuple compares the digest, and a status command
+cannot derive what no record retains.
 
 Delivery-specific fields, validated by arm type: the delivery mode itself,
 and for an installed arm the pathway and the digest of the installed tree,
@@ -293,7 +295,10 @@ first entry after creation binds the name to the created content's
 digest. A later entry carries the digest of the revision its arm actually
 measures, because a revised skill is a new treatment with a new digest,
 and section 7 already computes staleness against exactly that binding. A
-confirmatory entry never carries a null digest.
+confirmatory treatment entry never carries a null digest. A confirmatory
+control for the no-skill claim carries a declared null, because the arm
+it registers has no treatment to digest, and the declaration is what
+separates it from an entry that merely omitted one.
 
 **The attestation floor.** Every ordering claim in this section reduces
 to two forge facts, and only two: that named content was pushed at a
@@ -589,3 +594,12 @@ decision, taken only with ADR-0007's test extended first.
   tuple carries the committed stack digest for representative stacks.
   And measurement scope binds to section 4.2's full provenance, with
   the probe tuple scoping discovery alone.
+- Draft 11 disposed of the confirmation round: four findings, all
+  consistency audits against the ratified threat model, none contesting
+  it. The principles page matched the ADR's wording instead of promising
+  auditability the private-arm residue denies. The stack digest entered
+  study provenance so a representative-stack study can be matched to a
+  probe at all. A confirmatory control for the no-skill claim carries a
+  declared null digest, because no treatment exists to digest. And
+  ADR-0013's record carries bytes, with the outcome computed, matching
+  the design it governs.

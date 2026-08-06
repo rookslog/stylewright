@@ -111,8 +111,9 @@ the first retained study lands — the record kept, the credential expired.
 Every chain in the design bottoms out in the operator, who holds every
 key — the workflows, the rulesets, the account. The mechanisms exist for
 the honest author's failure modes, drift and memory and the flattering
-reading, and they make dishonesty premeditated and auditable, never
-impossible. Four review rounds proved the alternative does not terminate:
+reading, and they make dishonesty premeditated, visible, or expensive —
+never impossible, and not always even auditable, because a private arm
+nobody registers leaves no trace. Four review rounds proved the alternative does not terminate:
 each attestation link, once checked, exposed the next, because no
 single-owner repository can constrain its owner. ADR-0015 records the
 threat model and its flip — a bench meant to be trusted by strangers who
@@ -143,3 +144,6 @@ confirmatory one. The bench tests.
 - Draft 6 added the honest-author commitment, when four review rounds
   showed the attestation chain has no floor inside a single-owner
   repository, and ADR-0015 recorded the threat model.
+- Draft 7 matched the commitment's wording to the ADR it cites, after a
+  review caught it promising auditability the private-arm residue
+  denies.
