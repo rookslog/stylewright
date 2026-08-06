@@ -353,6 +353,38 @@ test('an indented code block holds whatever it contains', () => {
   assert.equal(units.filter((u) => u.block).length, 1);
 });
 
+test('an empty list marker opens a list, so its child block is refused', () => {
+  // The item pattern wants content after the marker, so `-` on its own left
+  // the list shut and the child block under it was read at the top level. The
+  // ordered case hid a directive inside a code digest.
+  assert.match(refused('-\n\n  Always preserve safety.'),
+    /a paragraph indented under a list item/);
+  assert.match(refused('1.\n\n    Always preserve safety.'),
+    /a paragraph indented under a list item/);
+  assert.match(refused('- Do first.\n  -'), /a list item indented under another/);
+});
+
+test('a container prefix is refused before the line becomes a table', () => {
+  // `> A | B` over `--- | ---` reached the table branch first and became a
+  // designator, so a blockquote passed the guard with no refusal at all.
+  assert.match(refused('> A | B\n--- | ---\n> c | d'), /a blockquote/);
+  assert.match(refused('  ## A | B\n--- | ---'),
+    /a heading that does not begin at column 0/);
+  assert.equal(refused('| a | b |\n|---|---|\n| c | d |'), '');
+});
+
+test('indentation is measured in columns, so a tab is four of them', () => {
+  // A pattern over literal characters read ` \t` as one space. A code block
+  // written with a mixed indent closed at that line, the guard refused the
+  // block's own contents, and one block became two designators.
+  const text = 'Prose here.\n\n    const x = 1;\n \t> quoted';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`);
+  assert.equal(units.filter((u) => u.block).length, 1);
+  assert.match(refused('- Context.\n\n \tAlways preserve safety.'),
+    /a paragraph indented under a list item/);
+});
+
 test('an indented construct with no list above it is code, and stands', () => {
   // Refusing is not narrowing. An indented block that begins its own paragraph
   // is read here exactly as a reader reads it, so it needs no refusal, and a

@@ -75,13 +75,34 @@ const DESIGNATOR = /^\[(?:table|code) [0-9a-f]{8}\]$/;
 const PREAMBLE = '(before the first heading)';
 
 const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
-const INDENTED = /^(?: {4}|\t)/;
 const PIPE = /(?<!\\)\|/;
 const DELIMITER = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 const LEAD = /^[ \t]+/;
 const BLOCKQUOTE = /^[ \t]*>/;
 const HEADING = /^[ \t]+#{1,6}\s/;
-const MARKER = /^[ \t]+(?:[-*+]|\d+[.)])\s/;
+// A marker with nothing after it is an empty list item, and a child block under
+// it belongs to that item. Wanting content after the marker left the list shut,
+// so the child was read at the top level and no row noticed.
+const MARKER = /^[ \t]+(?:[-*+]|\d+[.)])(?:\s|$)/;
+const OPENS_LIST = /^(?:[-*+]|\d+[.)])(?:\s|$)/;
+
+/**
+ * The indent in columns, where a tab advances to the next stop of four. A
+ * pattern over literal characters counted ` \t` as one space, so a code block
+ * written with a mixed indent closed at that line and the guard then refused
+ * the block's own contents.
+ */
+const TAB = 4;
+function indentOf(line) {
+  let n = 0;
+  for (const ch of line) {
+    if (ch === ' ') n += 1;
+    else if (ch === '\t') n += TAB - (n % TAB);
+    else break;
+  }
+  return n;
+}
+const isIndented = (line) => indentOf(line) >= TAB;
 
 /**
  * The extractor reads one line at a time, and it holds no stack of open
@@ -121,6 +142,32 @@ function unitsIn(body, anchor, refuse = () => {}) {
     para = [];
     item = null;
   };
+  /**
+   * The guard, in one place, because a table row can carry a container prefix.
+   * `> A | B` over `--- | ---` reached the table branch first and became a
+   * designator, so a blockquote passed with no refusal at all.
+   *
+   * `nested` is any indent under an open list, at ANY width. What separates a
+   * child block from a wrapped line is the blank line above it, and not how far
+   * the author indented. An indented construct with no list above it is an
+   * ordinary code block, which the extractor reads as a reader does, so it
+   * stands.
+   */
+  const container = (i, line, startsBlock) => {
+    const nested = listOpen && LEAD.test(line);
+    if (BLOCKQUOTE.test(line) && (nested || !isIndented(line))) {
+      refuse(i, 'a blockquote');
+    } else if (MARKER.test(line) && (nested || !isIndented(line))) {
+      refuse(i, 'a list item indented under another');
+    } else if (HEADING.test(line) && (nested || !isIndented(line))) {
+      refuse(i, 'a heading that does not begin at column 0');
+    } else if (nested && startsBlock) {
+      refuse(i, 'a paragraph indented under a list item');
+    } else {
+      return false;
+    }
+    return true;
+  };
   const lines = body.split('\n');
   for (const [i, line] of lines.entries()) {
     // An indented block is code too. Reading it as prose reported each line as
@@ -129,7 +176,7 @@ function unitsIn(body, anchor, refuse = () => {}) {
     // at the line, because a fence marker or a table row indented INSIDE one is
     // part of the example. Testing for a fence first split one block in two.
     if (block?.kind === 'indented') {
-      if (!line.trim() || INDENTED.test(line)) { block.lines.push(line); continue; }
+      if (!line.trim() || isIndented(line)) { block.lines.push(line); continue; }
       closeBlock();
     }
     const fence = FENCE.exec(line);
@@ -161,7 +208,8 @@ function unitsIn(body, anchor, refuse = () => {}) {
     // designator and no way to be quoted in a cell.
     const inTable = block?.kind === 'table';
     if (PIPE.test(line) && (inTable || DELIMITER.test(lines[i + 1] ?? ''))) {
-      if (LEAD.test(line) && (listOpen || INDENTED.test(line))) {
+      if (!container(i, line, afterBlank) && LEAD.test(line)
+        && (listOpen || isIndented(line))) {
         refuse(i, 'a table under an indent');
       }
       if (!LEAD.test(line)) { listOpen = false; }
@@ -174,27 +222,10 @@ function unitsIn(body, anchor, refuse = () => {}) {
     if (!line.trim()) { flush(); afterBlank = true; continue; }
     const startsBlock = afterBlank;
     afterBlank = false;
-    // Every shape below reads as one unit here and as another to a reader, so
-    // the extractor refuses it instead of choosing. An indented construct with
-    // no list above it is an ordinary code block, which the extractor does
-    // read as a reader does, so it stands.
-    //
-    // `nested` is any indent under an open list, at ANY width. Four spaces was
-    // the width the reported shape used, and a child paragraph indented two
-    // passed the guard and was read as a top-level paragraph. What separates a
-    // child block from a wrapped line is the blank line above it, not how far
-    // the author indented.
-    const nested = listOpen && LEAD.test(line);
-    if (BLOCKQUOTE.test(line) && (nested || !INDENTED.test(line))) {
-      refuse(i, 'a blockquote');
-    } else if (MARKER.test(line) && (nested || !INDENTED.test(line))) {
-      refuse(i, 'a list item indented under another');
-    } else if (HEADING.test(line) && (nested || !INDENTED.test(line))) {
-      refuse(i, 'a heading that does not begin at column 0');
-    } else if (nested && startsBlock) {
-      refuse(i, 'a paragraph indented under a list item');
-    }
-    if (INDENTED.test(line) && !item && !para.length) {
+    // Every shape the guard names reads as one unit here and as another to a
+    // reader, so the extractor refuses it instead of choosing.
+    container(i, line, startsBlock);
+    if (isIndented(line) && !item && !para.length) {
       block = { kind: 'code', lines: [line] };
       block.kind = 'indented';
       continue;
@@ -207,9 +238,13 @@ function unitsIn(body, anchor, refuse = () => {}) {
       out.push(item);
       continue;
     }
+    // An empty marker opens a list too. The item pattern above wants content
+    // after the marker, so `-` on its own left the list shut and the child
+    // block under it was read at the top level.
+    if (OPENS_LIST.test(line)) listOpen = true;
     // A paragraph beginning at column 0 after a blank line is a new block, so
     // the list above it has ended. A line that merely continues one has not.
-    if (startsBlock && !LEAD.test(line)) listOpen = false;
+    else if (startsBlock && !LEAD.test(line)) listOpen = false;
     // Lazy continuation. Prose under a list item belongs to that item.
     if (item) item.text += ` ${line.trim()}`;
     else para.push(line.trim());
