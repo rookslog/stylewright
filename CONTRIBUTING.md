@@ -130,6 +130,10 @@ against the row, and then record what you did. Clear the cell and run
 `check:ground`. The finding names the digest of that row. Write the date of
 your reading and that digest in the cell.
 
+Write the date in UTC, which `date -u +%F` gives you. The check refuses a date
+after the UTC day it runs on, because nobody read a row on a day that has not
+arrived.
+
 Editing any other cell in the row changes the digest. The check then reports
 the audit as stale, because the words you read are no longer the words in the
 row. Read the row against the source again, or write `unaudited`.

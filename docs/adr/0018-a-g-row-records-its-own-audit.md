@@ -45,6 +45,20 @@ write.
 The cell names no auditor. The commit that wrote it does, and one record
 of who is enough for a repository whose documents carry no byline.
 
+**The date is a UTC day, and it cannot be in the future.** A calendar
+date that has not arrived certifies a reading nobody could have done, and
+`9999-12-31` satisfied every other rule while the coverage count called
+the row read. So the check takes the current day from the command line,
+where every other moment this program needs already comes from, and
+refuses a later one. `checkSkill` throws when the caller omits the day
+rather than defaulting, because a default turns the rule off for whoever
+forgets the argument, and a gate that fails open on a missing argument is
+a defect this repository has already paid for once.
+
+One reading of the cell serves both the findings and the count. Two
+readings disagreed: a stamp that merely matched the pattern counted as
+audited while the check called it stale or impossible.
+
 **The count prints and fails nothing.** `ground --check` reports how many
 `G` rows in each matrix carry a date, at a level the exit code ignores.
 Making it an error would have turned the gate red for every matrix on the

@@ -129,8 +129,47 @@ export function rowDigest(row) {
   return digest([row.guidance, row.anchor, row.rule, row.location].join('\n'));
 }
 
-/** Whether this row records a person's reading, rather than the absence of one. */
-const isAudited = (row) => AUDIT.test(row.audit ?? '');
+/**
+ * The UTC day the checker is running on, from the time the command line hands
+ * in. No module here reads a clock, so the day arrives as a parameter like
+ * every other moment this program needs.
+ *
+ * A caller that omits it is refused rather than defaulted. The one thing this
+ * value does is reject an audit dated in the future, and a default would turn
+ * that check off for whoever forgot the argument. A gate that fails open on a
+ * missing argument is the defect `ground --check` already carries a fix for,
+ * one floor down.
+ */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}/;
+function dayOf(now) {
+  if (typeof now !== 'string' || !ISO_DAY.test(now)) {
+    throw new TypeError('checkSkill needs `now` as an ISO timestamp, so it can refuse a future audit.');
+  }
+  return now.slice(0, 10);
+}
+
+/**
+ * What a row's audit cell amounts to, read once and used twice. The findings
+ * below and the coverage count above disagreed when each read the cell for
+ * itself: a stale or impossible stamp still matched the pattern, so the count
+ * called the row audited while the check called it broken.
+ *
+ * `recorded` is the only state that counts as a person having read the row.
+ */
+function auditState(row, today) {
+  const audit = row.audit ?? '';
+  if (!audit) return { state: 'absent' };
+  if (audit === UNAUDITED) return { state: 'unaudited' };
+  const stamp = AUDIT.exec(audit);
+  if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
+    return { state: 'malformed' };
+  }
+  const day = `${stamp[1]}-${stamp[2]}-${stamp[3]}`;
+  // Zero-padded ISO days sort as text, so this needs no date arithmetic.
+  if (day > today) return { state: 'ahead', day };
+  if (stamp[4] !== rowDigest(row)) return { state: 'stale', day };
+  return { state: 'recorded', day };
+}
 
 const PREAMBLE = '(before the first heading)';
 
@@ -422,7 +461,8 @@ export function unmodelled(skillText) {
   return extract(skillText).refusals;
 }
 
-export function checkSkill({ skillText, matrixText }) {
+export function checkSkill({ skillText, matrixText, now }) {
+  const today = dayOf(now);
   if (matrixText === null || matrixText === undefined) {
     return [{ level: 'error', code: 'no-matrix', message: 'Skill has no grounding matrix.' }];
   }
@@ -505,9 +545,9 @@ export function checkSkill({ skillText, matrixText }) {
     // are true findings. Folding them into one chain reported whichever came
     // first and hid the rest until it was fixed.
     if (!kind) return;
-    const audit = row.audit ?? '';
+    const { state, day } = auditState(row, today);
     if (kind !== 'G') {
-      if (audit) {
+      if (state !== 'absent') {
         findings.push({
           level: 'error',
           code: 'e-row-has-audit',
@@ -516,34 +556,33 @@ export function checkSkill({ skillText, matrixText }) {
       }
       return;
     }
-    if (!audit) {
+    const remedy = `Write \`${UNAUDITED}\`, or a date and \`${rowDigest(row)}\`.`;
+    if (state === 'absent') {
       findings.push({
         level: 'error',
         code: 'g-row-no-audit',
-        message: `${row.id}: a G row records its audit. Write \`${UNAUDITED}\`, `
-          + `or a date and \`${rowDigest(row)}\`.`,
+        message: `${row.id}: a G row records its audit. ${remedy}`,
       });
-      return;
-    }
-    if (audit === UNAUDITED) return;
-    const stamp = AUDIT.exec(audit);
-    if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
+    } else if (state === 'malformed') {
       findings.push({
         level: 'error',
         code: 'audit-malformed',
-        message: `${row.id}: "${audit}" is not an audit. Write \`${UNAUDITED}\`, `
-          + `or a date as YYYY-MM-DD and \`${rowDigest(row)}\`.`,
+        message: `${row.id}: "${row.audit}" is not an audit. ${remedy}`,
       });
-      return;
-    }
-    const current = rowDigest(row);
-    if (stamp[4] !== current) {
+    } else if (state === 'ahead') {
+      findings.push({
+        level: 'error',
+        code: 'audit-ahead-of-the-check',
+        message: `${row.id}: ${day} has not happened yet on ${today}, `
+          + `so nobody read this row that day. ${remedy}`,
+      });
+    } else if (state === 'stale') {
       findings.push({
         level: 'error',
         code: 'audit-stale',
-        message: `${row.id}: the row changed since ${stamp[1]}-${stamp[2]}-${stamp[3]}, `
-          + `so its audit describes other words. Read it against the source again and write `
-          + `\`${current}\`, or write \`${UNAUDITED}\`.`,
+        message: `${row.id}: the row changed since ${day}, so its audit describes other `
+          + `words. Read it against the source again and write \`${rowDigest(row)}\`, `
+          + `or write \`${UNAUDITED}\`.`,
       });
     }
   });
@@ -578,15 +617,15 @@ export function checkSkill({ skillText, matrixText }) {
     findings.push({
       level: 'note',
       code: 'audit-coverage',
-      message: `${sourced.filter(isAudited).length} of ${sourced.length} G rows `
-        + 'record a person reading them against the source.',
+      message: `${sourced.filter((r) => auditState(r, today).state === 'recorded').length} `
+        + `of ${sourced.length} G rows record a person reading them against the source.`,
     });
   }
 
   return findings;
 }
 
-export async function checkAll(repoRoot) {
+export async function checkAll(repoRoot, { now } = {}) {
   const out = {};
   for (const skill of await loadCatalog(repoRoot)) {
     const skillText = await fs.readFile(path.join(skill.dir, 'SKILL.md'), 'utf8');
@@ -596,7 +635,7 @@ export async function checkAll(repoRoot) {
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
-    out[skill.name] = checkSkill({ skillText, matrixText });
+    out[skill.name] = checkSkill({ skillText, matrixText, now });
   }
   return out;
 }

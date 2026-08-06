@@ -75,6 +75,12 @@ longer matches its row is the second, and the check catches that one. A change
 that makes the checker fill the cell is the third, because the cell records a
 person and nothing else can. ADR-0018 records the decision.
 
+The date is a UTC day, and the check refuses one later than the day it runs
+on. It takes that day from the command line, which is where every other moment
+this program needs comes from. `checkSkill` throws when the caller omits it,
+rather than defaulting, because a default turns the rule off for whoever
+forgot the argument.
+
 `ground --check` prints the audited count for each matrix beside its verdict.
 That line is a note, so it fails nothing. Do not promote it to an error, and do
 not remove it to quiet the output. A green run over a matrix nobody has read

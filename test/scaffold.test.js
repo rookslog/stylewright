@@ -12,6 +12,10 @@ import { isBelow } from '../src/tree.js';
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sw-scaf-'));
 
+// The grounding check refuses an audit dated after the day it runs on, so it
+// takes the day from the caller rather than from a clock it may not read.
+const NOW = '2026-08-06T12:00:00.000Z';
+
 const STD = {
   name: 'demo-guide',
   tier: 'standards',
@@ -24,7 +28,7 @@ const STD = {
 test('a scaffolded standards skill passes the grounding check immediately', async () => {
   const repo = await tmp();
   await scaffoldSkill({ repoRoot: repo, ...STD });
-  const all = await checkAll(repo);
+  const all = await checkAll(repo, { now: NOW });
   assert.deepEqual(all['demo-guide'].filter((f) => f.level !== 'note'), [],
     'a fresh scaffold must be green, or contributors learn to silence the check');
 });
@@ -79,7 +83,7 @@ test('a craft skill needs no source and gets an E row', async () => {
   assert.match(matrix, /\| E-01 \|/);
   await assert.rejects(
     () => fs.access(path.join(repo, 'skills', 'craft', 'demo-craft', 'SOURCE.md')));
-  assert.deepEqual((await checkAll(repo))['demo-craft'], []);
+  assert.deepEqual((await checkAll(repo, { now: NOW }))['demo-craft'], []);
 });
 
 test('a standards skill without a source is refused', async () => {
@@ -447,6 +451,6 @@ test('a source name containing a pipe still produces a matrix that passes', asyn
     url: 'https://example.invalid/x',
     license: 'CC BY 4.0',
   });
-  const all = await checkAll(repo);
+  const all = await checkAll(repo, { now: NOW });
   assert.deepEqual(all.piped.filter((f) => f.level !== 'note'), []);
 });

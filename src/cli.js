@@ -195,7 +195,7 @@ export async function run(argv, ctx) {
       say('ground needs --check.');
       return 2;
     }
-    const all = await checkAll(repoRoot);
+    const all = await checkAll(repoRoot, { now });
     const names = flags.all ? Object.keys(all) : flags.skill;
     if (!names.length) {
       say('ground needs --all or --skill <name>.');
