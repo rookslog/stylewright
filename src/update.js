@@ -138,7 +138,21 @@ export async function updateSkills({
         const fresh = wantedNow.filter((n) => known.has(n));
         if (!fresh.length && !pendingNow.length) {
           return {
-            installed: [], skipped: [], recovered: [], cleared: [], orphaned, emptied: false,
+            installed: [],
+            skipped: [],
+            recovered: [],
+            cleared: [],
+            orphaned,
+            // The directory can be one this command put back. `withTargetLock`
+            // creates it to place the lock, so an uninstall that removed the
+            // last skill AND the directory between the discovery above and this
+            // lock leaves it standing again with nothing in it — recreated by
+            // the run that came to update it and found nothing to update.
+            // Reported as emptied so the caller's `rmdir` reaches it after the
+            // lock is released. That `rmdir` refuses a directory holding
+            // anything, so an orphaned skill this branch leaves alone keeps its
+            // own directory.
+            emptied: !Object.keys(manifest.skills).length && !pendingNow.length,
           };
         }
         const held = await installHeld({

@@ -8,7 +8,7 @@ import {
 } from './manifest.js';
 import {
   hasPending, addPending, clearPending, recoverPending, discardStated, stagingPath,
-  STAGING_SUFFIX,
+  stagingKey, STAGING_SUFFIX,
 } from './journal.js';
 import { withTargetLock } from './lock.js';
 import {
@@ -73,7 +73,7 @@ async function untrackedCollisions(destDir, sourceRels, recorded) {
     // suffix along. A stale one of ours never reaches here, because recovery
     // clears it before this runs.
     if (await destinationState(stagingPath(path.join(destDir, rel))) !== 'absent') {
-      hits.add(`${rel}${STAGING_SUFFIX}`);
+      hits.add(stagingKey(rel));
     }
     if (known.has(rel)) continue; // A recorded path is `alteredFiles`'s to judge.
     const abs = path.join(destDir, rel);

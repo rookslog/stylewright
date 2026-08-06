@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { hashFile } from './manifest.js';
 import { destinationState, removeAt, pruneEmpty, reachability } from './tree.js';
 
@@ -77,8 +78,61 @@ async function recordedAs(destDir, rel, recorded) {
  */
 export const STAGING_SUFFIX = '.stylewright-part';
 
+/**
+ * The longest one component of a path may be. Every filesystem this tool runs
+ * on stops at 255 — bytes on ext4 and APFS, UTF-16 units on NTFS — and counting
+ * bytes is the stricter of the two readings for the names a skill ships.
+ */
+const MAX_COMPONENT = 255;
+
+/** `text`, shortened until it fits `limit` bytes, never splitting a character. */
+function clipBytes(text, limit) {
+  const chars = Array.from(text);
+  while (chars.length && Buffer.byteLength(chars.join('')) > limit) chars.pop();
+  return chars.join('');
+}
+
+/**
+ * The staging basename for a destination basename.
+ *
+ * A suffix alone cannot be the whole answer. A skill may ship a name that is
+ * legal and nearly as long as a component may be, and appending to it produces
+ * a name the filesystem refuses — so the first install failed with
+ * ENAMETOOLONG after committing its statement, and every later command failed
+ * on the same path while trying to recover, leaving a target that only hand
+ * editing the manifest could repair. A name that cannot be written is worse
+ * than a name that cannot be read.
+ *
+ * So an over-long one is clipped and given a digest of the name it came from.
+ * The digest is what keeps two clipped names apart, since clipping alone maps
+ * every name sharing a long head onto one staging path. It is computed from the
+ * destination and nothing else, which is the property recovery depends on: a
+ * run that died left only its statement, and the next command has to reach the
+ * staging path from the stated path alone.
+ *
+ * Short names — every name in practice — are untouched, so the staging file
+ * beside a destination still reads as that destination's.
+ */
+export function stagingName(base) {
+  const plain = `${base}${STAGING_SUFFIX}`;
+  if (Buffer.byteLength(plain) <= MAX_COMPONENT) return plain;
+  const digest = crypto.createHash('sha256').update(base).digest('hex').slice(0, 16);
+  const tail = `-${digest}${STAGING_SUFFIX}`;
+  return `${clipBytes(base, MAX_COMPONENT - Buffer.byteLength(tail))}${tail}`;
+}
+
 export function stagingPath(abs) {
-  return `${abs}${STAGING_SUFFIX}`;
+  return path.join(path.dirname(abs), stagingName(path.basename(abs)));
+}
+
+/**
+ * The same derivation over a manifest key, which is spelled with `/` on every
+ * platform and so cannot go through `path`.
+ */
+export function stagingKey(rel) {
+  const parts = rel.split('/');
+  parts[parts.length - 1] = stagingName(parts[parts.length - 1]);
+  return parts.join('/');
 }
 
 export function hasPending(manifest) {
@@ -172,7 +226,7 @@ export async function discardStated(targetDir, name, stated, manifest, wrote = n
     // from. Here the file is the record's own and deletion is the irreversible
     // move, so identity alone decides.
     if (await destinationState(staged) === 'file'
-      && await recordedAs(destDir, `${rel}${STAGING_SUFFIX}`, recorded) === null) {
+      && await recordedAs(destDir, stagingKey(rel), recorded) === null) {
       await removeAt(staged);
       took = true;
     }

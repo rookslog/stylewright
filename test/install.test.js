@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { installSkills } from '../src/install.js';
+import { stagingName } from '../src/journal.js';
 import {
   readManifest, readManifestWithIdentity, writeManifest, hashFile, MANIFEST_NAME,
 } from '../src/manifest.js';
@@ -857,6 +858,54 @@ test('undo clears the destinations this run wrote, not every one it stated', asy
   assert.ok(
     Object.hasOwn((await readManifest(target)).skills['demo-craft'].files, 'references/guide.md'),
     'and the record still names a file that is still there');
+});
+
+test('a name at the filesystem limit is staged under one that fits', async () => {
+  // The staging name is the destination plus a suffix, and a skill may ship a
+  // basename that is legal and nearly as long as a component may be. Appending
+  // to that produced a name the filesystem refused: the install failed with
+  // ENAMETOOLONG after committing its statement, and every later command failed
+  // on the same path while recovering, so the target could only be repaired by
+  // editing the manifest by hand.
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'wide');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'SKILL.md'),
+    '---\nname: wide\ndescription: Ships a name at the limit.\n---\n\n# wide\n');
+  const long = `${'w'.repeat(246)}.md`; // 249 bytes, and 264 with the suffix.
+  await fs.writeFile(path.join(dir, long), 'as wide as the filesystem allows\n');
+  const target = await tmp();
+
+  const res = await installSkills({
+    repoRoot: repo, targetDir: target, names: ['wide'], now: NOW,
+  });
+
+  assert.deepEqual(res.installed, ['wide']);
+  assert.equal(await fs.readFile(path.join(target, 'wide', long), 'utf8'),
+    'as wide as the filesystem allows\n');
+  assert.deepEqual(Object.keys((await readManifest(target)).skills), ['wide']);
+  assert.equal((await readManifest(target)).pending, undefined,
+    'and no statement outlives a run that finished');
+  for (const entry of await fs.readdir(path.join(target, 'wide'))) {
+    assert.ok(Buffer.byteLength(entry) <= 255, `${entry.length} bytes is a name a target may refuse`);
+    assert.ok(!entry.endsWith('.stylewright-part'), 'and no staging file survives');
+  }
+});
+
+test('a staging name is bounded, and stays derivable from the destination', async () => {
+  // Recovery reaches the staging path from the stated path and nothing else, so
+  // the derivation has to be a function of the destination alone. Clipping
+  // without the digest would map every name sharing a long head onto one
+  // staging path.
+  const head = 'x'.repeat(300);
+  assert.equal(stagingName('SKILL.md'), 'SKILL.md.stylewright-part', 'short names are untouched');
+  assert.equal(stagingName(`${head}a`), stagingName(`${head}a`), 'and the answer is stable');
+  assert.notEqual(stagingName(`${head}a`), stagingName(`${head}b`));
+  for (const base of ['SKILL.md', `${head}a`, 'e'.repeat(255), 'é'.repeat(200)]) {
+    assert.ok(Buffer.byteLength(stagingName(base)) <= 255);
+    assert.ok(stagingName(base).endsWith('.stylewright-part'));
+  }
 });
 
 test('a skill that ships a name this tool stages under is refused', async () => {

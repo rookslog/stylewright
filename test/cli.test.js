@@ -1131,3 +1131,38 @@ test('a command rejects a flag it does not read', async () => {
     { home: '/h', cwd: '/c', repoRoot: REPO, stdout: said, now: NOW }), 2);
   assert.match(said.text(), /update does not take --all/);
 });
+
+test('an update that finds the directory emptied under it does not put it back', async () => {
+  // Discovery saw an installed skill. An uninstall then removed the last skill
+  // AND the directory before this run took the lock — and `withTargetLock`
+  // creates the directory to place its lock in, so the update recreated what
+  // the uninstall had just removed. The locked reread found nothing to do and
+  // reported nothing emptied, so the caller's `rmdir` never ran and an empty
+  // skills directory outlived the uninstall that removed it.
+  //
+  // The window is the moment the lock is taken, so the uninstall is staged
+  // there: a run that committed a heartbeat before this one acquired the
+  // directory leaves exactly this behind.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await run(['install', '--platform', 'claude', '--scope', 'user'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+
+  const real = fs.writeFile;
+  fs.writeFile = async (file, ...rest) => {
+    if (String(file).endsWith('.stylewright-lock')) {
+      for (const entry of await fs.readdir(target)) {
+        await fs.rm(path.join(target, entry), { recursive: true, force: true });
+      }
+    }
+    return real(file, ...rest);
+  };
+  try {
+    await run(['update'], { home, cwd: '/c', repoRoot: REPO, stdout: capture(), now: NOW });
+  } finally {
+    fs.writeFile = real;
+  }
+
+  assert.equal(await fs.access(target).then(() => true, () => false), false,
+    'the directory the uninstall removed must not survive the update that found it gone');
+});
