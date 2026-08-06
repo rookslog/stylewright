@@ -45,15 +45,6 @@ async function alteredFiles(destDir, recorded) {
 }
 
 /**
- * Paths this skill is about to write that already hold something we never
- * recorded. It belongs to the user, and copying over it destroys work with no
- * warning and no way back.
- *
- * Checking the manifest alone missed this, because an unrecorded path has no
- * hash to compare. A collision on an unrecorded path is drift, and it is the
- * more dangerous kind.
- */
-/**
  * Paths holding something at the name this run moves an old file ASIDE to.
  *
  * Separate from `untrackedCollisions`, and checked whether or not `--force` is
@@ -83,6 +74,15 @@ async function reservedCollisions(destDir, sourceRels, retiredRels) {
   return [...hits].sort();
 }
 
+/**
+ * Paths this skill is about to write that already hold something we never
+ * recorded. It belongs to the user, and copying over it destroys work with no
+ * warning and no way back.
+ *
+ * Checking the manifest alone missed this, because an unrecorded path has no
+ * hash to compare. A collision on an unrecorded path is drift, and it is the
+ * more dangerous kind.
+ */
 async function untrackedCollisions(destDir, sourceRels, recorded) {
   const known = new Set(Object.keys(recorded ?? {}));
   const hits = new Set();
