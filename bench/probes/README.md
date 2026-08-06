@@ -53,9 +53,16 @@ and prints what it derived. The check refuses a record that states an outcome
 of its own, because a record that grades itself is the author's summary, and a
 reader is owed the evidence instead.
 
-A probe derives a pass on three conditions together. The installed arm repeated
-the nonce. The empty-home control did not, which catches a probe passing for the
-wrong reason. And the flags were the control arm's.
+A probe derives a pass when both arms answered and three things then hold. The
+installed arm repeated the nonce. The empty-home control answered and did not
+repeat it, which catches a probe passing for the wrong reason. And the flags
+were the control arm's.
+
+An arm answered when a build is named, the harness reported no error, and the
+answer carries text. `armAnswered` in `bench/probe.mjs` is the definition, and
+every check reads it from there. Saying only that the control did not repeat the
+nonce is true of a control that never ran at all, which is the reading three
+review rounds each caught in a different place.
 
 A failure is a result. A record of a probe that failed stays here, and the
 status a later reader computes says the probe failed rather than saying nothing.

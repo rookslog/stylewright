@@ -144,28 +144,69 @@ export async function treeDigest(dir) {
 }
 
 /**
+ * The open flags a plant uses. `noFollow` is a parameter so a test can build
+ * the word a platform without `O_NOFOLLOW` produces, and measure what that
+ * platform actually permits rather than taking a docstring's word for it.
+ */
+export function plantFlags(noFollow = constants.O_NOFOLLOW ?? 0) {
+  return constants.O_WRONLY | constants.O_APPEND | noFollow;
+}
+
+/**
+ * Every ancestor between `baseDir` and `dir`, including `baseDir` itself, that
+ * is not a plain directory.
+ *
+ * Both write surfaces in this file read it, before and after they write. A
+ * check and the call it guards are two steps, so the answer is re-read
+ * afterwards: creating or classifying a chain narrows the window and does not
+ * close it, and Node offers no way to open a path relative to a directory it
+ * has already checked. Detection after the fact is the honest end of what this
+ * can do.
+ */
+export async function chainProblems(baseDir, dir) {
+  const problems = [];
+  if (await destinationState(baseDir) !== 'directory') {
+    problems.push(`${baseDir} is not a directory.`);
+  }
+  let cur = baseDir;
+  for (const part of path.relative(baseDir, dir).split(path.sep).filter((p) => p && p !== '.')) {
+    cur = path.join(cur, part);
+    if (await destinationState(cur) !== 'directory') problems.push(`${cur} is not a directory.`);
+  }
+  return problems;
+}
+
+/**
  * Plant the nonce in the installed skill, without following anything.
  *
  * This is a write surface like any other, so it inherits the tree discipline
  * rather than repeating the defect the rest of this repository already fixed
- * twice. `appendFile` resolves the path, so a `SKILL.md` swapped for a symbolic
- * link between the install returning and this call appended the nonce to
- * whatever the link pointed at, outside the throwaway tree entirely.
+ * twice. `appendFile` resolves the WHOLE path, so two different swaps sent the
+ * nonce outside the throwaway tree: a `SKILL.md` replaced by a symbolic link,
+ * and the skill directory itself replaced by one. The leaf is checked here and
+ * the chain is checked from `baseDir`, before and after the write.
  *
- * `destinationState` classifies the path first, and the open then refuses to
- * follow a link at the leaf whatever appeared since. `O_NOFOLLOW` is a POSIX
- * flag that reads as zero where a platform does not define it, so the
- * classification carries Windows and the flag closes the race everywhere else.
- * The handle is the identity from there on.
+ * One residue, stated rather than papered over. `O_NOFOLLOW` is POSIX, and it
+ * reads as zero where a platform does not define it, which includes Windows.
+ * There, the classification is all there is, so a leaf swapped for a link to a
+ * regular file between the classification and the open is followed, and
+ * `fstat` on the handle reports a plain file because it is one. Measured, not
+ * reasoned: `test/probe.test.js` builds both flag words and records that the
+ * POSIX word refuses the swap and the Windows word permits it. The chain
+ * re-read after the write is what still catches a swapped ancestor there.
  */
-export async function plantNonce(skillDir, nonce) {
+export async function plantNonce(skillDir, nonce, baseDir = path.dirname(skillDir),
+  flags = plantFlags()) {
+  const before = await chainProblems(baseDir, skillDir);
+  if (before.length) {
+    throw new Error(`The installed tree moved before the nonce was planted. ${before.join(' ')}`);
+  }
   const target = path.join(skillDir, 'SKILL.md');
   const state = await destinationState(target);
   if (state !== 'file') {
     throw new Error(`The installed SKILL.md is ${state === 'absent' ? 'missing' : `a ${state}`}, `
       + 'so the nonce has nowhere to go.');
   }
-  const flags = constants.O_WRONLY | constants.O_APPEND | (constants.O_NOFOLLOW ?? 0);
   const fh = await fs.open(target, flags).catch((err) => {
     if (err.code === 'ELOOP' || err.code === 'EMLINK') {
       throw new Error(`${target} became a symbolic link, and nothing is written through one.`);
@@ -180,6 +221,11 @@ export async function plantNonce(skillDir, nonce) {
     await fh.write(plantedText(nonce));
   } finally {
     await fh.close();
+  }
+  const after = await chainProblems(baseDir, skillDir);
+  if (after.length) {
+    throw new Error(`The installed tree moved while the nonce was planted, so the nonce may `
+      + `have gone somewhere else. ${after.join(' ')}`);
   }
 }
 
@@ -210,6 +256,43 @@ export function servingBuild(modelUsage) {
   if (!usage.length) return '';
   if (usage.length > 1 && usage[0][1] === usage[1][1]) return '';
   return usage[0][0];
+}
+
+/**
+ * One harness run's output, as an arm.
+ *
+ * Pure, and separate from the spawn, because everything worth checking about a
+ * run lives here: whether the JSON parsed, which build answered, and whether
+ * the harness called it a failure. Inside the close handler none of it could be
+ * tested.
+ *
+ * The answer text is kept even when the run reported an error, because that
+ * text is the evidence — the refusal this probe first recorded was an errored
+ * run whose result said the harness was not logged in. The failure byte travels
+ * beside it, and the derived outcome refuses to count an errored arm as served.
+ *
+ * `is_error` is read as TRUTHY, the way `bench/extract.mjs` reads the same
+ * field. Testing for exactly `true` made a non-boolean a failed run to the
+ * extractor and a clean run to this collector, and that disagreement would have
+ * been baked into the record before anything could check it.
+ */
+export function readRun({ raw, err = '', home }) {
+  let run;
+  try {
+    run = JSON.parse(raw);
+  } catch {
+    return {
+      answer: '', model_id: '', is_error: true,
+      stderr: `${err}\nnot JSON:\n${String(raw).slice(0, 400)}`, home,
+    };
+  }
+  return {
+    answer: typeof run.result === 'string' ? run.result : '',
+    model_id: servingBuild(run.modelUsage),
+    is_error: Boolean(run.is_error),
+    stderr: err,
+    home,
+  };
 }
 
 /**
@@ -244,35 +327,7 @@ export function runArm({ harness, flags, cwd, home, ask }) {
     child.on('error', (e) => resolve({
       answer: '', model_id: '', is_error: true, stderr: `${text(errs)}${e.message}`, home,
     }));
-    child.on('close', () => {
-      const raw = text(out);
-      const err = text(errs);
-      let run;
-      try {
-        run = JSON.parse(raw);
-      } catch {
-        resolve({
-          answer: '',
-          model_id: '',
-          is_error: true,
-          stderr: `${err}\nnot JSON:\n${raw.slice(0, 400)}`,
-          home,
-        });
-        return;
-      }
-      // The answer text is kept even when the run reported an error, because
-      // that text is the evidence — the refusal this probe first recorded was
-      // an `is_error` run whose result said the harness was not logged in. The
-      // failure byte travels beside it, and the derived outcome refuses to
-      // count an errored arm as served.
-      resolve({
-        answer: typeof run.result === 'string' ? run.result : '',
-        model_id: servingBuild(run.modelUsage),
-        is_error: run.is_error === true,
-        stderr: err,
-        home,
-      });
-    });
+    child.on('close', () => resolve(readRun({ raw: text(out), err: text(errs), home })));
   });
 }
 
@@ -331,16 +386,7 @@ export async function writeRecord(outPath, record, baseDir) {
   // window and does not close it, and Node offers no way to open a path
   // relative to a directory it has already checked, so detection after the
   // fact is the honest end of what this can do.
-  const problems = [];
-  if (await destinationState(baseDir) !== 'directory') {
-    problems.push(`${baseDir} is no longer a directory.`);
-  }
-  let cur = baseDir;
-  for (const part of path.relative(baseDir, path.dirname(outPath))
-    .split(path.sep).filter((p) => p && p !== '.')) {
-    cur = path.join(cur, part);
-    if (await destinationState(cur) !== 'directory') problems.push(`${cur} is not a directory.`);
-  }
+  const problems = await chainProblems(baseDir, path.dirname(outPath));
   const now = await fs.lstat(outPath).catch(() => null);
   if (!now?.isFile() || now.dev !== identity.dev || now.ino !== identity.ino) {
     problems.push(`${outPath} no longer names the file this call created.`);
@@ -418,7 +464,9 @@ async function main(argv) {
   }
 
   const skillDir = path.join(targetDir, opts.skill);
-  await plantNonce(skillDir, nonce);
+  // The whole chain from the throwaway home down, not just the skill's parent,
+  // because a link anywhere along it sends the plant outside the tree.
+  await plantNonce(skillDir, nonce, arms.installed.home);
   const digest = await treeDigest(skillDir);
 
   const flags = armFlags(opts.model);

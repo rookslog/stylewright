@@ -8,6 +8,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,8 +17,8 @@ import {
   TUPLE, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory, describe,
 } from '../bench/probe.mjs';
 import {
-  armFlags, parseArgs, parsePathway, plantNonce, plantedText, recordName, servingBuild,
-  treeDigest, tupleModel, writeRecord, ASK,
+  armFlags, chainProblems, parseArgs, parsePathway, plantFlags, plantNonce, plantedText,
+  readRun, recordName, servingBuild, treeDigest, tupleModel, writeRecord, ASK,
 } from '../bench/collect-probe.mjs';
 
 const NONCE = 'sw-probe-0123456789abcdef';
@@ -85,12 +86,33 @@ test('the tuple model comes from an arm that answered, never from an errored one
   assert.equal(tupleModel(errored, errored), '');
 });
 
+// The predicate's third condition narrowed this check when it was first
+// introduced: an installed arm on one build and a control on another that
+// returned no text reported nothing, and the record committed a tuple naming
+// one of the two builds that ran. Build disagreement is about which builds
+// touched the probe, not about which ones answered.
+test('two builds are reported even when one of the arms returned no text', () => {
+  const mixed = record();
+  mixed.control.model_id = 'claude-sonnet-4-6-20260514';
+  mixed.control.answer = '';
+  const problems = checkRecord(mixed).join(' ');
+  assert.match(problems, /the arms ran on different builds/);
+  assert.match(problems, /claude-sonnet-4-6-20260514/);
+});
+
+test('an errored arm does not raise a build disagreement on its own', () => {
+  const errored = record();
+  errored.control.model_id = 'claude-sonnet-4-6-20260514';
+  errored.control.is_error = true;
+  assert.deepEqual(checkRecord(errored), []);
+});
+
 test('a record whose only build came from an errored arm names no build', () => {
   const both = record();
   both.installed.is_error = true;
   both.control.is_error = true;
   both.identity.model = 'claude-opus-4-6-20260514';
-  assert.match(checkRecord(both).join(' '), /identity.model names a build, and no arm reports one/);
+  assert.match(checkRecord(both).join(' '), /no arm answered, so nothing served this probe/);
 });
 
 test('a well-formed record passes and derives a pass', () => {
@@ -144,7 +166,7 @@ test('an ask carrying the nonce is refused, because a repeat would prove nothing
 test('the arms must be served by the same build, and by the one the tuple names', () => {
   const split = record();
   split.control.model_id = 'claude-sonnet-4-6-20260514';
-  assert.match(checkRecord(split).join(' '), /served by different builds/);
+  assert.match(checkRecord(split).join(' '), /the arms ran on different builds/);
   const wrong = record({ identity: { ...record().identity, model: 'claude-haiku-4-6' } });
   assert.match(checkRecord(wrong).join(' '), /identity.model disagrees/);
 });
@@ -178,11 +200,11 @@ test('a failed installed arm beside a served control is still a valid record', (
   assert.equal(deriveOutcome(half).passes, false);
 });
 
-test('a record naming a build no arm reports is refused', () => {
+test('a record naming a build no arm answered is refused', () => {
   const bad = record();
   bad.installed.model_id = '';
   bad.control.model_id = '';
-  assert.match(checkRecord(bad).join(' '), /identity.model names a build, and no arm reports one/);
+  assert.match(checkRecord(bad).join(' '), /no arm answered, so nothing served this probe/);
 });
 
 test('the control installs nothing, so it records no tree', () => {
@@ -361,6 +383,29 @@ test('a flag in a value position is a missing value, not a value', () => {
     { model: 'opus', dryRun: true, skill: 'a', pathway: 'claude:user' });
 });
 
+// `extract.mjs` reads `is_error` as truthy. Reading it as exactly `true` here
+// made a non-boolean a failed run to the extractor and a clean run to this
+// collector, and the record would have carried the disagreement.
+test('is_error is read as truthy, the way the extractor reads it', () => {
+  const of = (obj) => readRun({ raw: JSON.stringify(obj), home: '/tmp/h' });
+  assert.equal(of({ result: 'x', is_error: false, modelUsage: { b: { outputTokens: 1 } } })
+    .is_error, false);
+  assert.equal(of({ result: 'x', is_error: true, modelUsage: { b: { outputTokens: 1 } } })
+    .is_error, true);
+  assert.equal(of({ result: 'x', is_error: 1, modelUsage: { b: { outputTokens: 1 } } })
+    .is_error, true);
+  assert.equal(of({ result: 'x', is_error: 'yes', modelUsage: { b: { outputTokens: 1 } } })
+    .is_error, true);
+  assert.equal(of({ result: 'x', modelUsage: { b: { outputTokens: 1 } } }).is_error, false);
+});
+
+test('output that is not JSON is a failed run, and keeps what arrived', () => {
+  const arm = readRun({ raw: 'harness exploded', err: 'boom', home: '/tmp/h' });
+  assert.equal(arm.is_error, true);
+  assert.equal(arm.model_id, '');
+  assert.match(arm.stderr, /not JSON/);
+});
+
 test('a tie in the model usage names no build, the way extract.mjs refuses one', () => {
   assert.equal(servingBuild({ a: { outputTokens: 9 }, b: { outputTokens: 4 } }), 'a');
   assert.equal(servingBuild({ a: { outputTokens: 9 }, b: { outputTokens: 9 } }), '');
@@ -395,6 +440,46 @@ test('a SKILL.md that is a symlink is refused, and its target is untouched', asy
 test('a missing SKILL.md is refused rather than created', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
   await assert.rejects(plantNonce(dir, NONCE), /SKILL.md is missing/);
+});
+
+// The leaf check alone let the whole directory be swapped. Measured: the nonce
+// landed outside the tree with no error at all.
+test('a skill directory that is a symlink is refused, and its target is untouched', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
+  const home = path.join(root, 'home');
+  const outside = path.join(root, 'outside');
+  await fs.mkdir(home);
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(outside, 'SKILL.md'), 'someone else\n');
+  await fs.symlink(outside, path.join(home, 'skill'));
+  await assert.rejects(
+    plantNonce(path.join(home, 'skill'), NONCE, home), /is not a directory/);
+  assert.equal(await fs.readFile(path.join(outside, 'SKILL.md'), 'utf8'), 'someone else\n');
+});
+
+// The open branch, which the classify-time refusal above never reaches. This
+// builds both flag words and records what each one permits, so the residue in
+// `plantNonce`'s docstring is a measurement rather than a claim.
+test('O_NOFOLLOW refuses a swapped leaf, and a platform without it does not', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-flags-'));
+  const outside = path.join(dir, 'outside.md');
+  const link = path.join(dir, 'SKILL.md');
+  await fs.writeFile(outside, 'someone else\n');
+  await fs.symlink(outside, link);
+
+  // The word a platform without the flag produces. It follows the link to a
+  // regular file, and the handle reports a plain file because it is one.
+  const windows = await fs.open(link, plantFlags(0));
+  try {
+    assert.equal((await windows.stat()).isFile(), true);
+  } finally {
+    await windows.close();
+  }
+
+  if (constants.O_NOFOLLOW) {
+    await assert.rejects(fs.open(link, plantFlags()), (err) => err.code === 'ELOOP');
+  }
+  assert.equal(await fs.readFile(outside, 'utf8'), 'someone else\n');
 });
 
 test('the tree digest names contents, so an edit inside the tree moves it', async () => {

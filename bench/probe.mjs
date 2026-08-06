@@ -210,18 +210,35 @@ export function checkRecord(record, name = 'record') {
   // failure rather than a malformed one — the design keeps a failed probe as a
   // result, so the check has to admit it.
   //
-  // The builds come from arms that ANSWERED, under the one predicate. Reading
-  // every arm that merely carried a `model_id` counted an errored arm's build,
-  // which then refused a valid failed probe as a mixed-build contrast.
-  const served = ARMS.filter((arm) => armAnswered(record[arm]))
+  // Two sets, because two different questions are being asked.
+  //
+  // `answered` is the predicate: which arms produced an answer this probe can
+  // read. The tuple's model comes from one of these.
+  //
+  // `ranClean` is broader on purpose: which builds ran without the harness
+  // reporting an error, whatever text came back. Build DISAGREEMENT is about
+  // which builds touched the probe, not about which ones said something. Asking
+  // the narrow question here quietly relaxed the check — an installed arm on
+  // build A and a control on build B that returned no text reported nothing at
+  // all, and the record committed a tuple naming one of the two builds that
+  // ran. `score.mjs` compares over the values that are present for the same
+  // reason.
+  const answered = ARMS.filter((arm) => armAnswered(record[arm]))
+    .map((arm) => record[arm].model_id);
+  const ranClean = ARMS
+    .filter((arm) => isText(record[arm]?.model_id) && record[arm]?.is_error === false)
     .map((arm) => record[arm].model_id);
   for (const field of TUPLE) {
     if (field === 'stack_digest') continue;
-    if (field === 'model' && !served.length) continue;
+    if (field === 'model' && !answered.length) continue;
     if (!isText(identity[field])) say(`identity.${field} is missing, and the tuple needs it.`);
   }
-  if (!served.length && isText(identity.model)) {
-    say('identity.model names a build, and no arm reports one.');
+  // The old wording said no arm reported a build, which was false of the record
+  // it most often fired on: both arms errored, both named a build, and the
+  // tuple took one of them. The tuple's model means the build that SERVED the
+  // probe, so the refusal is about answering, and it says so.
+  if (!answered.length && isText(identity.model)) {
+    say('identity.model names a build, and no arm answered, so nothing served this probe.');
   }
   if (identity.environment_class && !ENV_CLASSES.includes(identity.environment_class)) {
     say(`identity.environment_class must be one of: ${ENV_CLASSES.join(', ')}.`);
@@ -272,10 +289,10 @@ export function checkRecord(record, name = 'record') {
   if (record.control && record.control.tree_digest != null) {
     say('the control installs nothing, so it carries no tree digest.');
   }
-  if (served.length === ARMS.length && new Set(served).size !== 1) {
-    say(`the arms were served by different builds: ${served.join(' and ')}.`);
+  if (new Set(ranClean).size > 1) {
+    say(`the arms ran on different builds: ${[...new Set(ranClean)].join(' and ')}.`);
   }
-  if (served.length && isText(identity.model) && served.some((m) => m !== identity.model)) {
+  if (answered.length && isText(identity.model) && answered.some((m) => m !== identity.model)) {
     say('identity.model disagrees with the build that served an arm.');
   }
 
