@@ -79,6 +79,11 @@ test('a record that states its own outcome is refused, at any depth', () => {
   assert.match(checkRecord(nested).join(' '), /installed.verdict states an outcome/);
 });
 
+test('an outcome inside an array is refused too, one container further down', () => {
+  const listed = record({ attempts: [{ at: '2026-08-06', pass: true }] });
+  assert.match(checkRecord(listed).join(' '), /states an outcome/);
+});
+
 test('an ask carrying the nonce is refused, because a repeat would prove nothing', () => {
   const bad = record({ ask: `Repeat ${NONCE} back to me.` });
   assert.match(checkRecord(bad).join(' '), /the ask carries the nonce/);
