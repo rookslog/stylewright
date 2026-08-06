@@ -61,14 +61,29 @@ the manifest does not record that same content.
 **What proves a file is ours to restore** is that the file under
 `.stylewright-prev` holds exactly the bytes `keep` names. The hash is
 taken before the rename that moved them, so a match proves these are the
-bytes this run displaced. Content decides ownership, and the destination
-decides direction: a matching file goes back where the destination is
-absent, and goes away where it is not. Nothing is ever written over a
-file standing at the destination, because that is either the copy this
-run made or a version another run committed, and neither wants an older
-version put on top of it. Leaving a matching file where it is instead
-was the alternative, and it blocks every later install with a collision
-at a name the user cannot be expected to explain.
+bytes this run displaced. Content decides ownership. The destination
+decides direction, and **three things can stand there**, not two.
+
+- The copy this run made, which the deletion pass kept because a record
+  names those bytes. It supersedes the old version, so the old version
+  goes.
+- A version another run committed, whose record is live. It supersedes
+  the old version too.
+- **A file the user created after the interrupted run**, at a path that
+  was empty because this run had emptied it. Nothing supersedes these
+  bytes. For a retired path they are the only copy left on the machine,
+  because no release ships them and no record can restore them.
+
+The first draft of this decision enumerated only the first two and
+deleted the moved-aside file whenever anything occupied the destination.
+That destroyed the user's only copy silently, and it made the two halves
+of the statement disagree: the write half leaves an unmatched
+destination standing for the collision check, and the keep half was
+deleting a matched one. So a file whose destination holds content that
+is neither the stated write nor a recorded hash stays where it is, and
+the collision check names it at the next install.
+
+Nothing is ever written over a file standing at the destination.
 
 **What a reading is still true about when it is acted on** comes from
 the lock. One run holds a target directory, so nothing of ours moves
@@ -93,10 +108,30 @@ compares equal manifests. A skill whose install replaces or retires
 anything writes three: the record and the mark together, then the
 withdrawal once the bytes are swept.
 
-`--force` still costs reversibility in one place. A directory or a link
-standing at a shipping path is cleared rather than moved aside, because
-neither can be kept as the bytes of a file. That is the line `--force`
-already draws.
+`--force` costs reversibility in two places, and both are stated rather
+than discovered.
+
+- A directory or a link standing at a shipping path is cleared rather
+  than moved aside, because neither can be kept as the bytes of a file.
+- A blocked ancestor that `--force` razes takes every recorded path
+  beneath it, and those bytes sit behind a blocker this run refuses to
+  walk through, so they cannot be moved aside at all.
+
+In the second case the statement still NAMES the razed paths, with the
+hash the record holds and nothing under the reserved name, so a rollback
+withdraws them. That is the repair below, reached deliberately. The
+razing also happens AFTER the statement rather than before it: putting a
+destruction ahead of the record that names it is the one ordering this
+engine exists to forbid, and doing it first left every pre-commit window
+with a record no command could reconcile.
+
+What `--force` does NOT do is dispose of a file at `.stylewright-prev`.
+Force removes what stands in the way of a file it must write, and nothing
+is written at that name — it is where this tool chooses to put bytes it
+is choosing to preserve, and choosing to preserve one file must never
+cost the user a different one. The run is refused and the file is named.
+The staging name is the other way round, because the copy must have that
+path, and PR #54 settled it there.
 
 One shipping path cannot be held either, with or without `--force`. A
 release that replaces a directory of files with a file of the same name
@@ -105,6 +140,15 @@ beneath it. The statement still NAMES those paths, so a rollback
 withdraws them from the record rather than leaving it over-claiming.
 That is the repair this engine already had, reached deliberately here
 rather than by omission.
+
+**Two spellings can name one file.** A release that changes only the case
+of a name retires `Notes.md` and ships `notes.md`, and a case-folding
+target makes those one path — and their two reserved names one path as
+well. So a set-aside asks the filesystem whether the destination is still
+the file the statement named, before it clears anything. Without that,
+the second pass cleared the reserved name the first had just moved the
+user's bytes into. It is PR #54's `recordedAs` lesson one suffix along:
+identity is the filesystem's answer, not the spelling's.
 
 `pending` has never appeared in a published release. 0.2.1 predates
 PR #54, so no manifest in the wild carries the older flat shape, and the

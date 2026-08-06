@@ -8,6 +8,7 @@ import { updateSkills } from './update.js';
 import { doctor } from './doctor.js';
 import { readManifest } from './manifest.js';
 import { lintText } from './lint.js';
+import { PREVIOUS_SUFFIX } from './journal.js';
 import { checkAll } from './ground.js';
 import { scaffoldSkill } from './scaffold.js';
 import { isLocked, isHeldError } from './lock.js';
@@ -133,6 +134,20 @@ export async function run(argv, ctx) {
   const sayLocked = (dir) => say(
     `held: ${dir}. A stylewright command is working there, or one was killed. `
     + `Remove ${path.join(dir, '.stylewright-lock')} if no other run is active.`);
+  // Advise `--force` only where `--force` is the answer, which is the rule the
+  // uninstall branch already learned. A file at the name this tool moves old
+  // bytes aside to blocks no write, so force has no power over it and telling
+  // the user to pass it sends them through the same command twice with nothing
+  // to try. The staging name is not this case: the copy must have that path, so
+  // force does dispose of it.
+  const saySkipped = (s) => {
+    const held = s.files.filter((f) => f.toLowerCase().endsWith(PREVIOUS_SUFFIX));
+    const remedy = held.length
+      ? ` "${PREVIOUS_SUFFIX}" is where this tool holds the version it replaces. `
+        + `Rename or remove ${held.join(', ')} and run again.`
+      : ' Use --force to overwrite.';
+    say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}).${remedy}`);
+  };
   const sayCleared = ({ recovered, restored, cleared }, dir) => {
     for (const name of cleared ?? []) {
       say(`cleared the unfinished install of ${name} in ${dir}`);
@@ -308,7 +323,7 @@ export async function run(argv, ctx) {
       sayCleared(r, r.targetDir);
       for (const n of r.installed) say(`updated ${n} -> ${r.targetDir}`);
       for (const s of r.skipped) {
-        say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
+        saySkipped(s);
       }
       for (const n of r.orphaned) {
         say(`no longer in this repository: ${n} in ${r.targetDir}. Uninstall it or keep it as it is.`);
@@ -574,7 +589,7 @@ export async function run(argv, ctx) {
         sayCleared(res, targetDir);
         for (const n of res.installed) say(`installed ${n} -> ${targetDir}`);
         for (const s of res.skipped) {
-          say(`skipped ${s.name}: ${s.reason} (${s.files.join(', ')}). Use --force to overwrite.`);
+          saySkipped(s);
         }
         // Clearing what an interrupted run left is a change, and a command
         // that deleted files must not report that nothing happened.

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { CONSUMERS, SCOPES, resolveTarget, describeTarget } from './targets.js';
 import { readManifest } from './manifest.js';
 import { LOCK_NAME } from './lock.js';
+import { isCommitted } from './journal.js';
 import { destinationState } from './tree.js';
 
 // A duplicate is a problem only when ONE agent would load two copies of the
@@ -69,16 +70,25 @@ export async function doctor({ home, cwd }) {
       // An install that did not come back states what it was about to write.
       // The files it left are reachable, and the next `install` or `uninstall`
       // clears them, but nothing said they were there.
-      for (const name of Object.keys(manifest.pending ?? {})) {
+      //
+      // A COMMITTED statement is the opposite case, and reporting it as
+      // unfinished told the user their skill was half installed when it is
+      // recorded and whole. What is outstanding there is the sweep of the
+      // version it replaced, so the finding says that instead.
+      for (const [name, stated] of Object.entries(manifest.pending ?? {})) {
         const key = `${dir} :: ${name}`;
         if (reported.has(key)) continue;
         reported.add(key);
         findings.push({
           level: 'warn',
-          code: 'interrupted-install',
-          message: `An install of "${name}" in ${dir} did not finish. `
-            + 'Run `stylewright install` or `stylewright uninstall` against that '
-            + 'directory to clear what it left.',
+          code: isCommitted(stated) ? 'unswept-install' : 'interrupted-install',
+          message: isCommitted(stated)
+            ? `An install of "${name}" in ${dir} is recorded, and the version it `
+              + 'replaced is still on disk. Run `stylewright install` or '
+              + '`stylewright uninstall` against that directory to clear it.'
+            : `An install of "${name}" in ${dir} did not finish. `
+              + 'Run `stylewright install` or `stylewright uninstall` against that '
+              + 'directory to clear what it left.',
         });
       }
       for (const name of Object.keys(manifest.skills)) {

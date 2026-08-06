@@ -402,7 +402,8 @@ export async function rollBack(targetDir, name, stated, manifest, wrote = null) 
       // is neither, and it is never touched.
       const mine = await destinationState(previous) === 'file'
         && await hashFile(previous) === keep[rel];
-      if (mine && await destinationState(abs) === 'absent') {
+      const state = await destinationState(abs);
+      if (mine && state === 'absent') {
         // The deletion above can have pruned the directory out from under this,
         // and a retired path's directory may have gone with it. `ensureDir`
         // stops at the skill directory and clears only what `reachability` has
@@ -412,14 +413,31 @@ export async function rollBack(targetDir, name, stated, manifest, wrote = null) 
         restored.push(`${name}/${rel}`);
         took = false; // Nothing to prune. The directory holds this file again.
       } else if (mine) {
-        // The destination is occupied, so the old version has nowhere to go.
-        // It is still provably this run's, and leaving it would block every
-        // later install as a collision at a name the user cannot be expected
-        // to explain. What stands at the destination is either these same
-        // bytes — the copy landed and the record agrees — or a version another
-        // run committed, whose record is live. Neither wants this file back.
-        await removeAt(previous);
-        took = true;
+        // The destination is occupied, so these bytes have nowhere to go, and
+        // what stands there decides whether they are still wanted. THREE things
+        // can be at that path, and only two of them supersede this file.
+        //
+        // - The copy this run made, which the deletion pass above kept because
+        //   a record names those bytes. Superseded.
+        // - A version another run committed, whose record is live. Superseded.
+        // - **A file the user created after the interrupted run**, at a path
+        //   that was empty because this run had emptied it. Nothing supersedes
+        //   these bytes, and for a retired path they are the only copy left on
+        //   the machine — no release ships them and no record can restore them.
+        //   Deleting them to tidy a reserved name would be this tool destroying
+        //   work it did not create, which is the one thing it must never do.
+        //
+        // So the file stays, and the ordinary collision check names it at the
+        // next install. That is what the write half does with an unmatched
+        // destination, and the two halves are the same rule.
+        const held = state === 'file' ? await hashFile(abs) : null;
+        const owner = await recordedAs(destDir, rel, recorded);
+        const superseded = held !== null
+          && (held === write[rel] || (owner !== null && recorded[owner] === held));
+        if (superseded) {
+          await removeAt(previous);
+          took = true;
+        }
       }
       if (await destinationState(abs) === 'absent') missing.push(rel);
     }

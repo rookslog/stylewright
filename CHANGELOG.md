@@ -65,7 +65,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   back an install whose record has landed. A skill may ship a path ending in
   neither reserved suffix. ADR-0019 records the decision, and
   `test/install.test.js` kills a real process at each boundary the statement
-  adds.
+  adds. A rollback frees the held bytes only where the destination holds
+  something that supersedes them, so a file the user wrote at a path an
+  interrupted run emptied never costs them the only copy of the old release.
+  `--force` states what it razes before it razes it, refuses a user file at
+  `.stylewright-prev` rather than deleting it, and completes a release that
+  changes only the case of a name.
+- **`doctor` tells a recorded install apart from an unfinished one.** A
+  statement left after the record landed reported as an install that did not
+  finish, which told the user their skill was half installed when it is whole.
+  It now reports as `unswept-install`, naming the version still on disk.
 - **A reserved shipped name is refused before the first skill is copied.** The
   rule ran per skill, inside the loop that installs them, so a later skill's
   bad name was refused after an earlier skill had already been committed — and

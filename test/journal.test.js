@@ -546,6 +546,38 @@ test('a file at the reserved name that no statement identifies is left alone', a
     'something else entirely\n');
 });
 
+test('a file the user wrote at a destroyed path does not take the old bytes with it', async () => {
+  // The third occupant. A rollback deletes the moved-aside bytes when the
+  // destination holds the copy this run made, or a version another run
+  // committed — both supersede them. It must not when the destination holds a
+  // file the USER wrote after the interrupted run, because nothing supersedes
+  // those bytes: for a RETIRED path no release ships them and no record can
+  // restore them, so the moved-aside file is the only copy on the machine.
+  const target = await tmp();
+  const dir = path.join(target, 'demo-craft');
+  const only = await put(previousPath(path.join(dir, 'references', 'gone.md')), 'the only copy\n');
+  await put(path.join(dir, 'references', 'gone.md'), 'my placeholder\n');
+  const manifest = await interrupted(target, {
+    manifest: {
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', files: { 'references/gone.md': only } } },
+    },
+    pending: {
+      'demo-craft': { write: {}, keep: { 'references/gone.md': only } },
+    },
+  });
+
+  const done = await recoverPending(target, manifest);
+
+  assert.deepEqual(done.restored, [], 'the placeholder is not overwritten');
+  assert.equal(
+    await fs.readFile(path.join(dir, 'references', 'gone.md'), 'utf8'), 'my placeholder\n');
+  assert.equal(
+    await fs.readFile(previousPath(path.join(dir, 'references', 'gone.md')), 'utf8'),
+    'the only copy\n',
+    'and the only copy of the old release must survive');
+});
+
 test('a record stops naming a path whose bytes a rollback cannot find', async () => {
   // The deletion half of the statement, on its own. The bytes are gone, so the
   // path cannot come back — and the record must stop claiming a file that is

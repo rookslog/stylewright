@@ -982,6 +982,117 @@ test('a run whose tidying is refused does not resurrect what it retired', async 
   assert.deepEqual(left.filter((e) => e.includes('.stylewright-')), []);
 });
 
+test('force states what it razes, so a refused run can withdraw it', async () => {
+  // What `--force` clears is a deletion this run makes, so it goes in the
+  // statement like every other one. The bytes cannot be moved aside — they sit
+  // behind a blocker this run refuses to walk through — so the statement names
+  // the paths with the hash the record holds and nothing under the reserved
+  // name, and a rollback withdraws them. Without that, every pre-commit window
+  // left the record naming files that force had destroyed and no command could
+  // reconcile it.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  // The user replaces the recorded directory with a link out of the tree.
+  const outside = await tmp();
+  await fs.rm(path.join(target, 'demo-craft', 'references'), { recursive: true, force: true });
+  await fs.symlink(outside, path.join(target, 'demo-craft', 'references'));
+
+  // And the run fails after force has cleared it, when it reaches SKILL.md.
+  const source = path.join(repo, 'skills', 'craft', 'demo-craft');
+  const original = fs.copyFile;
+  let swapped = false;
+  fs.copyFile = async (...args) => {
+    if (!swapped && String(args[0]).endsWith('SKILL.md')) {
+      swapped = true;
+      await fs.writeFile(path.join(source, 'SKILL.md'), '---\nname: demo-craft\n---\n\nLater.\n');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({
+        repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+      }),
+      /changed in .* while this command was running/);
+  } finally {
+    fs.copyFile = original;
+  }
+
+  const after = await readManifest(target);
+  assert.equal(after.pending, undefined);
+  assert.ok(
+    !Object.hasOwn(after.skills['demo-craft'].files, 'references/guide.md'),
+    'the record stops naming what force razed');
+  for (const [rel, hash] of Object.entries(after.skills['demo-craft'].files)) {
+    const abs = path.join(target, 'demo-craft', rel);
+    assert.equal(await hashFile(abs), hash, `${rel} is where the record says`);
+  }
+  assert.deepEqual(await fs.readdir(outside), [], 'and nothing was written outside the tree');
+});
+
+test('force refuses a user file at the reserved name rather than deleting it', async () => {
+  // `--force` means "remove something I edited that is in the way of a file you
+  // must write". Nothing is written at this name: it is where this tool chooses
+  // to put bytes it is choosing to preserve, and choosing to preserve one file
+  // must never cost the user a different one. Inside the force branch the
+  // rename simply replaced whatever stood there, with no check and no report.
+  const { repo, target, licence } = await readyToReplace();
+  const mine = `${licence}.stylewright-prev`;
+  await fs.writeFile(mine, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+
+  assert.deepEqual(res.installed, []);
+  assert.equal(res.skipped[0].reason, 'not-ours');
+  assert.deepEqual(res.skipped[0].files, ['LICENSE.stylewright-prev']);
+  assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
+
+  // And removing it is the remedy, so the same command then goes through.
+  await fs.rm(mine);
+  const again = await installSkills({
+    repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW, force: true,
+  });
+  assert.deepEqual(again.installed, ['demo-craft']);
+});
+
+test('a release that changes only the case of a name keeps the bytes', async () => {
+  // Two entries resolving to ONE file. A release that retires `Notes.md` and
+  // ships `notes.md` gives a case-folding target one path, and their two
+  // reserved names one path as well — so the second pass cleared the reserved
+  // name the first had just moved the user's bytes into, then threw a raw
+  // ENOENT renaming a file that was no longer there.
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'cased');
+  await fs.mkdir(dir, { recursive: true });
+  const head = '---\nname: cased\ndescription: One name, two spellings.\n---\n\n# cased\n';
+  await fs.writeFile(path.join(dir, 'SKILL.md'), head);
+  await fs.writeFile(path.join(dir, 'Notes.md'), 'the bytes the user cares about\n');
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['cased'], now: NOW });
+
+  await fs.rm(path.join(dir, 'Notes.md'));
+  await fs.writeFile(path.join(dir, 'notes.md'), 'the bytes the user cares about\n');
+
+  const res = await installSkills({
+    repoRoot: repo, targetDir: target, names: ['cased'], now: NOW, force: true,
+  });
+
+  assert.deepEqual(res.installed, ['cased'], JSON.stringify(res.skipped));
+  const mf = await readManifest(target);
+  for (const [rel, hash] of Object.entries(mf.skills.cased.files)) {
+    assert.equal(
+      await hashFile(path.join(target, 'cased', rel)), hash,
+      `${rel} is where the record says, byte for byte`);
+  }
+  const under = await fs.readdir(path.join(target, 'cased'));
+  assert.deepEqual(under.filter((e) => e.includes('.stylewright-')), []);
+});
+
 test('a file at the reserved name for old bytes is a collision, not something to clear', async () => {
   // The rename that moves a file aside replaces whatever stands at that name,
   // so it is a destination like the staging one and the preflight sees it. A

@@ -300,6 +300,28 @@ test('install reports a cleanup that wrote no skill as a change', async () => {
   assert.equal(await fs.readFile(mine, 'utf8'), 'my own notes\n');
 });
 
+test('a reserved-name collision is not advised to try --force', async () => {
+  // `--force` overwrites a collision at a shipping path. It has no power over
+  // the name this tool moves old bytes aside to, because nothing is written
+  // there — so advising it sends the user through the same command twice with
+  // nothing to try, which is the defect the uninstall branch already fixed.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  const first = capture();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: first, now: NOW });
+  await fs.writeFile(path.join(target, 'demo-craft', 'LICENSE.stylewright-prev'), 'mine\n');
+
+  const out = capture();
+  await run(['install', '--skill', 'demo-craft', '--platform', 'claude', '--force'],
+    { home, cwd: '/c', repoRoot: REPO, stdout: out, now: NOW });
+
+  assert.match(out.text(), /skipped demo-craft/);
+  assert.match(out.text(), /LICENSE\.stylewright-prev/);
+  assert.match(out.text(), /Rename or remove/);
+  assert.doesNotMatch(out.text(), /Use --force to overwrite/);
+});
+
 test('uninstall reports a cleanup that removed no skill as a change', async () => {
   const home = await tmp();
   const target = path.join(home, '.claude', 'skills');

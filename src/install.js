@@ -53,20 +53,39 @@ async function alteredFiles(destDir, recorded) {
  * hash to compare. A collision on an unrecorded path is drift, and it is the
  * more dangerous kind.
  */
-async function untrackedCollisions(destDir, sourceRels, recorded, retiredRels = []) {
-  const known = new Set(Object.keys(recorded ?? {}));
+/**
+ * Paths holding something at the name this run moves an old file ASIDE to.
+ *
+ * Separate from `untrackedCollisions`, and checked whether or not `--force` is
+ * set, which is the whole point of it standing alone. `--force` means "remove
+ * something I edited that is in the way of a file you must write". Nothing is
+ * written at this name: it is where this tool chooses to put bytes it is
+ * choosing to preserve, and choosing to preserve one file must never cost the
+ * user a different one. Inside the `--force` branch the rename simply replaced
+ * whatever stood there, with no check and no report.
+ *
+ * The staging name stays in `untrackedCollisions`, where `--force` does dispose
+ * of it. That name is scratch space the copy MUST have, so a file there really
+ * does block a write, and PR #54 settled that disposition deliberately.
+ *
+ * It stands at every path the run DESTROYS — the shipped ones it overwrites and
+ * the recorded ones it retires, so the check ranges over both. That is the same
+ * rule the two `reachability` passes below carry, and the reason is stated
+ * there.
+ */
+async function reservedCollisions(destDir, sourceRels, retiredRels) {
   const hits = new Set();
-  // The name this run moves an old file to is a destination too, and it stands
-  // at every path the run DESTROYS — the shipped ones it overwrites and the
-  // recorded ones it retires. So the check ranges over both. A rule about paths
-  // stated over the convenient half is how the ancestor check came back: it
-  // walked only the shipped paths, so a release that dropped the last file
-  // beneath a symlinked directory deleted through the link.
   for (const rel of new Set([...sourceRels, ...retiredRels])) {
     if (await destinationState(previousPath(path.join(destDir, rel))) !== 'absent') {
       hits.add(previousKey(rel));
     }
   }
+  return [...hits].sort();
+}
+
+async function untrackedCollisions(destDir, sourceRels, recorded) {
+  const known = new Set(Object.keys(recorded ?? {}));
+  const hits = new Set();
   for (const rel of sourceRels) {
     // The staging path is a destination too. The copy clears whatever stands
     // there, so a file the user happened to put at that name was deleted by a
@@ -262,6 +281,13 @@ async function installUnderLock(byName, {
     // A recorded ancestor that is still a plain file is the file-to-directory
     // release transition, and retirement completes it.
     const exempt = (dir, state) => state === 'file' && known.has(dir);
+    // Recorded paths that `--force` destroys by clearing an ancestor, and the
+    // ancestors themselves. Named here because the statement below has to carry
+    // the paths and the removal has to happen after it, and filled in the force
+    // branch, which is the only thing that can raze a path this way.
+    const razed = [];
+    const cleared = [];
+    const toClear = [];
     const retired = retiredFiles(recorded, rels);
     // Two passes, because `--force` disposes of one and not the other. An
     // ancestor of a path we SHIP stands in the way of a write, and force clears
@@ -274,12 +300,30 @@ async function installUnderLock(byName, {
     // paths once, so a release that dropped the last file beneath a symlinked
     // directory deleted through the link. Ranging one set over the union
     // deleted a user file through the retired half.
-    const write = await reachability(destDir, rels, exempt);
+    //
+    // `let`, because `--force` clears blockers further down and the reading has
+    // to be taken again once they are gone.
+    let write = await reachability(destDir, rels, exempt);
     const retire = await reachability(destDir, retired, exempt);
     const blockedWrite = write.blocked;
     const blockedRetire = retire.blocked;
     const blocked = new Set([...blockedWrite, ...blockedRetire]);
     const destBlocked = write.baseBlocked;
+
+    // Before the force branch, and outside it. A file at the name this run
+    // moves old bytes to blocks nothing that must be written, so `--force` has
+    // no business deleting it — the round-six rule, at the one name PR #54 did
+    // not have. Narrowed to the paths the walk could reach, like every other
+    // check: a blocker force will clear takes whatever is under it, and that is
+    // force clearing a blocker rather than force taking this file.
+    const reserved = await reservedCollisions(
+      destDir,
+      rels.filter((r) => write.reachable.includes(r)),
+      retired.filter((r) => retire.reachable.includes(r)));
+    if (reserved.length) {
+      skipped.push({ name, reason: 'not-ours', files: reserved });
+      continue;
+    }
 
     if (!force) {
       // Only the leaves the walk could actually reach. Handing every recorded
@@ -290,8 +334,7 @@ async function installUnderLock(byName, {
       const open = new Set([...write.reachable, ...retire.reachable]);
       const drifted = await alteredFiles(destDir, pick(recorded, open));
       const untracked = await untrackedCollisions(
-        destDir, rels.filter((r) => open.has(r)), recorded,
-        retired.filter((r) => open.has(r)));
+        destDir, rels.filter((r) => open.has(r)), recorded);
       if (destBlocked || blocked.size || drifted.length || untracked.length) {
         skipped.push({
           name,
@@ -303,14 +346,39 @@ async function installUnderLock(byName, {
         continue;
       }
     } else {
-      // Outermost first, so removing a directory takes its descendants and the
-      // inner entries become absent rather than stale. Clearing these BEFORE
-      // retirement is what stops a delete from travelling through a link.
-      if (destBlocked) await removeAt(destDir);
+      // What force will clear, decided here and REMOVED further down, after the
+      // statement is on disk. Outermost first, so removing a directory takes
+      // its descendants and the inner entries become absent rather than stale.
+      //
+      // The removal used to happen right here, and that put a destruction ahead
+      // of the record that names it — the one ordering this engine exists to
+      // forbid. A run killed at that `rm` left the record naming every path
+      // under the blocker with no statement to withdraw them, and no command
+      // could reconcile it.
+      if (destBlocked) toClear.push(destDir);
       for (const dir of [...blockedWrite].sort()) {
-        await removeAt(path.join(destDir, dir));
-        // Cleared, so it no longer blocks the retirement below either.
+        toClear.push(path.join(destDir, dir));
+        // Cleared, so it no longer blocks the retirement below either. This is
+        // bookkeeping rather than a change to the tree, so it stays here where
+        // the classification below reads it.
         blockedRetire.delete(dir);
+        cleared.push(dir);
+      }
+      if (destBlocked) cleared.push('');
+      // A recorded path beneath what force will remove is one THIS RUN
+      // destroys. Its bytes cannot be moved aside, because they sit behind a
+      // blocker this run refuses to walk through — so the statement carries the
+      // path with the hash the record holds, and nothing under the reserved
+      // name. A rollback then finds nothing to put back and withdraws the path
+      // instead, which is the repair ADR-0019 names. Leaving these out of the
+      // statement was the omission: the record went on over-claiming and no
+      // command could reconcile it.
+      if (cleared.length) {
+        for (const rel of Object.keys(recorded ?? {})) {
+          const under = cleared.includes('')
+            || ancestorsOf(rel).some((dir) => cleared.includes(dir));
+          if (under) razed.push(rel);
+        }
       }
     }
 
@@ -394,6 +462,12 @@ async function installUnderLock(byName, {
       keep[rel] = await hashFile(abs);
       setAside.push(rel);
     }
+    // The paths force razed. Stated with the hash the record holds and never
+    // set aside, because the bytes went with the ancestor before this run could
+    // reach them. The statement is what lets a rollback withdraw them.
+    for (const rel of razed) {
+      if (!Object.hasOwn(keep, rel)) keep[rel] = recorded[rel];
+    }
 
     manifest = addPending(manifest, name, stated, keep);
     // Held in its own binding, because `manifest` moves under it. The commit
@@ -410,6 +484,11 @@ async function installUnderLock(byName, {
     const files = new Map();
     let committed = false;
     try {
+      // What force asked to clear, cleared now that the statement naming
+      // everything under it is on disk. Outermost first, so an inner entry
+      // becomes absent rather than stale.
+      for (const abs of toClear) await removeAt(abs);
+
       // Move aside BEFORE anything else, and by rename. A copy into the second
       // reserved name could stop half way, which is the fragment problem the
       // staging name exists to avoid, one suffix along. A rename either happened
@@ -419,6 +498,24 @@ async function installUnderLock(byName, {
       for (const rel of setAside) {
         const abs = path.join(destDir, rel);
         const previous = previousPath(abs);
+        // Still the file the statement named, asked of the filesystem before
+        // anything is removed. Two entries can resolve to ONE file: a release
+        // that changes only the case of a name retires `Notes.md` and ships
+        // `notes.md`, and a case-folding target makes those one path — and
+        // their two reserved names one path as well. Without this guard the
+        // second pass cleared the reserved name the first had just moved the
+        // user's bytes into, then threw a raw ENOENT renaming a file that was
+        // no longer there. That is the `recordedAs` lesson from PR #54, one
+        // suffix along: identity is the filesystem's answer, not the
+        // spelling's.
+        //
+        // The hash is the second half of the same question. A destination that
+        // changed under the run would be moved aside under a hash that no
+        // longer describes it, and a rollback could never identify it again —
+        // so it is left where it is and the copy overwrites it, which is what
+        // --force asked for and what `alteredFiles` already refused without it.
+        if (await destinationState(abs) !== 'file') continue;
+        if (await hashFile(abs) !== keep[rel]) continue;
         // The name belongs to this tool, and the collision check refused a
         // file the user had put there. What can still stand here is this
         // engine's own leftover, and recovery cleared those before this ran.

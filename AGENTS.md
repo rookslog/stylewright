@@ -340,6 +340,32 @@ Two consequences for a change you propose here:
   the disposition `refuseStaleWrite` already gives the other file this tool
   cannot prove it wrote. Deleting it on the strength of the name would destroy
   bytes nothing can replace.
+- **Three things can stand at a destination whose old bytes are held aside,
+  and only two of them free those bytes.** The copy this run made and a version
+  another run committed both supersede the old one, so it goes. A file the USER
+  wrote there after the interrupted run supersedes nothing, and for a retired
+  path the held bytes are the only copy on the machine — no release ships them
+  and no record restores them. Enumerating only the first two deleted the
+  user's only copy silently, and it made the two halves disagree: the write
+  half leaves an unmatched destination standing for the collision check, so the
+  keep half must too.
+- **`--force` does not dispose of a file at `.stylewright-prev`.** Force removes
+  what stands in the way of a file it must WRITE, and nothing is written at that
+  name. Choosing to preserve one file must never cost the user a different one,
+  so the run is refused and the file is named — and the message must not advise
+  `--force`, which has no power there. The staging name is the other way round:
+  the copy must have that path.
+- **What `--force` razes, it states first.** A blocked ancestor it clears takes
+  every recorded path beneath it. Those bytes cannot be moved aside, so the
+  statement carries the paths with the hash the record holds and a rollback
+  withdraws them. The razing happens AFTER the statement, because a destruction
+  ahead of the record that names it is the ordering this engine forbids.
+- **A set-aside asks the filesystem whether the destination is still the file
+  the statement named.** Two spellings can be one file: a release that changes
+  only the case of a name gives a case-folding target one path, and its two
+  reserved names one path too. Without the check the second pass cleared the
+  reserved name the first had just moved the user's bytes into, then threw a raw
+  `ENOENT`.
 - **One command at a time holds a target directory**, through
   `src/lock.js`. Three review rounds found three ways for two runs to spoil each
   other's reading of the tree, and each patch produced the next one: a recovery
