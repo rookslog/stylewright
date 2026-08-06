@@ -34,6 +34,36 @@ test('throws when frontmatter is missing', () => {
   assert.throws(() => readFrontmatter('# No frontmatter\n'), /frontmatter/i);
 });
 
+// `.gitattributes` governs a checkout of this repository and nothing else. A
+// Windows user who opens their own scaffolded SKILL.md in an editor that saves
+// CRLF gets a file this parser has to read, so the line ending is not a signal
+// about the content.
+test('reads a file written with CRLF line endings', () => {
+  const fm = readFrontmatter('---\r\nname: a-skill\r\ndescription: Does a thing.\r\n---\r\n# Body\r\n');
+  assert.equal(fm.name, 'a-skill');
+  assert.equal(fm.description, 'Does a thing.');
+});
+
+// The closing quote sits before the carriage return, so a parser that splits on
+// the line feed alone strips nothing and returns a quoted value with a `\r` on
+// the end of it.
+test('strips quotes from a CRLF value, and leaves no carriage return', () => {
+  const fm = readFrontmatter('---\r\nname: "a-skill"\r\ndescription: \'Does a thing.\'\r\n---\r\n');
+  assert.equal(fm.name, 'a-skill');
+  assert.equal(fm.description, 'Does a thing.');
+});
+
+test('a CRLF skill directory loads, and its declared name matches', async () => {
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'crlf-skill');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'SKILL.md'),
+    '---\r\nname: crlf-skill\r\ndescription: The craft one.\r\n---\r\n\r\n# crlf-skill\r\n');
+  const cat = await loadCatalog(repo);
+  assert.deepEqual(cat.map((s) => [s.name, s.description]), [['crlf-skill', 'The craft one.']]);
+});
+
 test('loads both tiers, sorted by name', async () => {
   const cat = await loadCatalog(REPO);
   assert.deepEqual(cat.map((s) => s.name), ['demo-craft', 'demo-standard']);

@@ -3,8 +3,20 @@ import path from 'node:path';
 
 export const TIERS = ['standards', 'craft'];
 
+/**
+ * The line ending is not a signal about the content, so it is removed before
+ * anything reads the text. `.gitattributes` governs a checkout of this
+ * repository and nothing else. A Windows user who opens their own scaffolded
+ * SKILL.md in an editor that saves CRLF writes a file this parser has to read.
+ *
+ * One normalisation covers three readings that each assumed the line feed. The
+ * opening fence anchored on `^---\n`, so the block was not found at all. The
+ * split left a carriage return on the end of every value. The quote strip
+ * anchored on the end of the line, where the carriage return sat after the
+ * closing quote, so a quoted value kept its quotes.
+ */
 export function readFrontmatter(text) {
-  const m = /^---\n([\s\S]*?)\n---/.exec(text);
+  const m = /^---\n([\s\S]*?)\n---/.exec(text.replace(/\r\n/g, '\n'));
   if (!m) throw new Error('SKILL.md has no YAML frontmatter block.');
   const out = {};
   for (const line of m[1].split('\n')) {
