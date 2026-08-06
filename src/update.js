@@ -100,6 +100,11 @@ export async function updateSkills({
   }
 
   const results = [];
+  // What the locked rereads actually found. `unmatched` derives from this and
+  // never from the snapshot, because a skill can be uninstalled between
+  // discovery and the lock — the reread correctly updates nothing, and a
+  // report drawn from the snapshot would still call the name matched.
+  const matched = new Set();
 
   for (const install of installs) {
     let wanted = install.names;
@@ -123,6 +128,9 @@ export async function updateSkills({
         let wantedNow = Object.keys(manifest.skills);
         if (names?.length) wantedNow = wantedNow.filter((n) => names.includes(n));
         const pendingNow = Object.keys(manifest.pending ?? {});
+        for (const n of names ?? []) {
+          if (wantedNow.includes(n) || pendingNow.includes(n)) matched.add(n);
+        }
         // A skill can be renamed or withdrawn between releases. Its files stay
         // on disk and its manifest row stays valid, so report it rather than
         // throwing.
@@ -154,14 +162,14 @@ export async function updateSkills({
   }
   // A name this repository ships but no manifest records matches nothing, and
   // a request that selected nothing must not report success — the same rule
-  // that made an unsupported platform-and-scope pair an error. Computed after
-  // the loop, over the FINAL locked list: a directory taken between the
-  // snapshot and its lock joins `locked` mid-loop, and nothing is unmatched
-  // while any directory is held, because the skill may well be installed in
-  // the one this command could not read.
+  // that made an unsupported platform-and-scope pair an error. Derived from
+  // the locked rereads, over the FINAL locked list: two rounds of review
+  // caught this report stale, and both times the fix had moved the
+  // computation instead of its source. Nothing is unmatched while any
+  // directory is held, because the skill may well be installed in the one
+  // this command could not read.
   const unmatched = locked.length ? [] : (names ?? [])
-    .filter((n) => !installs.some(
-      (i) => i.names.includes(n) || i.pending.includes(n))).sort();
+    .filter((n) => !matched.has(n)).sort();
 
   return { results, unmatched, locked };
 }

@@ -397,6 +397,13 @@ export async function writeManifest(targetDir, manifest, expected) {
     // commits. Reading the path afterwards would return whatever another run
     // put there in the meantime.
     identity = identityOf(await fh.stat());
+  } catch (err) {
+    // This run created the file with `wx` a moment ago, so removing it on
+    // failure is not the guess refuseStaleWrite refuses to make — it is
+    // provably ours. Leaving it would turn one failed write, a full disk
+    // say, into a refusal on every later command until a person deletes it.
+    await fs.rm(tmp, { force: true });
+    throw err;
   } finally {
     await fh.close();
   }

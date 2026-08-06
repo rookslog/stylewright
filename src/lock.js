@@ -36,7 +36,12 @@ export const LOCK_NAME = '.stylewright-lock';
  * parse error rather than the name of the file to remove.
  */
 export async function isLocked(targetDir) {
-  return fs.stat(path.join(targetDir, LOCK_NAME)).then(() => true, () => false);
+  // `lstat`, because the question is whether the ENTRY exists — acquisition
+  // refuses on the entry, whatever it is. A dangling symlink at the lock name
+  // made `stat` follow it to ENOENT and answer unlocked, while the `wx`
+  // acquisition would still refuse with EEXIST, so discovery parsed a
+  // manifest it had just been told might be mid-change.
+  return fs.lstat(path.join(targetDir, LOCK_NAME)).then(() => true, () => false);
 }
 
 /**
@@ -53,33 +58,45 @@ export function isHeldError(err) {
 
 export async function withTargetLock(targetDir, run, { create = true } = {}) {
   const abs = path.join(targetDir, LOCK_NAME);
-  if (create) await fs.mkdir(targetDir, { recursive: true });
-  try {
-    // The acquisition is also the existence test. Asking `stat` first and
-    // running unlocked on "absent" left a window: a concurrent install could
-    // create and populate the directory between the look and the callback,
-    // which then deleted a fresh install while holding nothing. `wx` through
-    // the path resolves a symlinked target the way every other write does,
-    // and it fails ENOENT exactly when there is no directory to hold.
-    await fs.writeFile(abs, '', { flag: 'wx' });
-  } catch (err) {
-    // ENOTDIR is the same answer through a different door: the user has a
-    // FILE standing at the target path, so nothing of ours is under it and
-    // there is no directory to hold.
-    if ((err.code === 'ENOENT' || err.code === 'ENOTDIR') && !create) {
-      // No directory existed at the moment of acquisition, and creating one
-      // to lock it is how `uninstall` used to leave a skills directory behind
-      // on a machine that never had one. The callback is told, and must
-      // answer from that fact alone — never from a fresh look at a tree that
-      // may have appeared since, because nothing here holds it.
-      return run({ absent: true });
+  for (;;) {
+    if (create) await fs.mkdir(targetDir, { recursive: true });
+    try {
+      // The acquisition is also the existence test. Asking `stat` first and
+      // running unlocked on "absent" left a window: a concurrent install
+      // could create and populate the directory between the look and the
+      // callback, which then deleted a fresh install while holding nothing.
+      // `wx` through the path resolves a symlinked target the way every
+      // other write does, and it fails ENOENT exactly when there is no
+      // directory to hold.
+      await fs.writeFile(abs, '', { flag: 'wx' });
+      break;
+    } catch (err) {
+      // ENOTDIR is the same answer through a different door: the user has a
+      // FILE standing at the target path, so nothing of ours is under it and
+      // there is no directory to hold.
+      if ((err.code === 'ENOENT' || err.code === 'ENOTDIR') && !create) {
+        // No directory existed at the moment of acquisition, and creating
+        // one to lock it is how `uninstall` used to leave a skills directory
+        // behind on a machine that never had one. The callback is told, and
+        // must answer from that fact alone — never from a fresh look at a
+        // tree that may have appeared since, because nothing here holds it.
+        return run({ absent: true });
+      }
+      if (err.code === 'ENOENT' && create) {
+        // The directory vanished between the mkdir above and this write — an
+        // uninstall emptied and removed it in the window. Go around: the
+        // mkdir recreates it, and another ENOENT needs a whole further
+        // uninstall to land inside the next few syscalls, so the loop
+        // converges unless uninstalls arrive forever.
+        continue;
+      }
+      if (err.code !== 'EEXIST') throw err;
+      const held = new Error(
+        `Another stylewright command is working in ${targetDir}. Run again when it `
+        + `has finished, or remove ${abs} if no other run is active.`);
+      held.code = HELD;
+      throw held;
     }
-    if (err.code !== 'EEXIST') throw err;
-    const held = new Error(
-      `Another stylewright command is working in ${targetDir}. Run again when it `
-      + `has finished, or remove ${abs} if no other run is active.`);
-    held.code = HELD;
-    throw held;
   }
   try {
     return await run();

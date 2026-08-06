@@ -103,6 +103,7 @@ export async function discardStated(targetDir, name, stated, manifest) {
   // property up.
   const recorded = Object.hasOwn(manifest.skills ?? {}, name)
     ? manifest.skills[name]?.files ?? {} : {};
+  const recordedFold = new Set(Object.keys(recorded).map((k) => k.toLowerCase()));
   const rels = Object.keys(stated ?? {});
   const { baseBlocked, reachable } = await reachability(destDir, rels);
   if (baseBlocked) return []; // The skill directory is not ours. Nothing under it is either.
@@ -115,8 +116,11 @@ export async function discardStated(targetDir, name, stated, manifest) {
     // A recorded file is never a staging leftover, whatever its name ends with.
     // The suffix belongs to this tool, but a manifest that records a path
     // spelled that way records an installed file, and removing it would leave
-    // the record naming nothing.
-    if (!Object.hasOwn(recorded, `${rel}${STAGING_SUFFIX}`)
+    // the record naming nothing. Compared case-insensitively, because on a
+    // case-folding filesystem the staging path RESOLVES to a recorded file
+    // whose spelling differs only in case, and install refused new ones but a
+    // manifest an older release wrote can still record one.
+    if (!recordedFold.has(`${rel}${STAGING_SUFFIX}`.toLowerCase())
       && await destinationState(staged) === 'file') {
       await removeAt(staged);
       took = true;

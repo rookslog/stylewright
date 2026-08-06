@@ -1190,3 +1190,22 @@ test('a file at the manifest staging name is refused, never deleted', async () =
     /is in the way/);
   assert.equal(await fs.readFile(tmpFile, 'utf8'), 'mine, not yours\n');
 });
+
+test('a shipped name that aliases the staging suffix in any case is refused', async () => {
+  // A manifest travels, and Windows and macOS fold case: `A.STYLEWRIGHT-PART`
+  // aliases the staging name of a sibling `A` there, so recovery would clear
+  // a recorded installed file as its scratch space. Refused on every
+  // platform, like every other spelling one resolver treats specially.
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'demo-craft');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'SKILL.md'),
+    '---\nname: demo-craft\ndescription: Ships an alias.\n---\n\n# demo-craft\n');
+  await fs.writeFile(path.join(dir, 'A.STYLEWRIGHT-PART'), 'not scratch\n');
+  const target = await tmp();
+  await assert.rejects(
+    () => installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+    /STYLEWRIGHT-PART/);
+  assert.ok(!(await exists(path.join(target, MANIFEST_NAME))));
+});

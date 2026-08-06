@@ -245,8 +245,14 @@ async function installUnderLock(byName, {
     // Every segment, not the whole path. `A.stylewright-part/B` puts the
     // reserved name on a DIRECTORY, and the copy of a sibling `A` clears that
     // directory as its own scratch space — the same collision, one level up.
+    // Case-insensitively, because a manifest travels and Windows and macOS
+    // fold case: a shipped `A.STYLEWRIGHT-PART` aliases the staging name of a
+    // sibling `A` on those targets, and recovery would clear a recorded
+    // installed file as scratch space. Refused on every platform, like every
+    // other spelling that means something different to one resolver.
+    const suffix = STAGING_SUFFIX.toLowerCase();
     const reserved = rels.filter(
-      (rel) => rel.split(/[\\/]/).some((part) => part.endsWith(STAGING_SUFFIX)));
+      (rel) => rel.split(/[\\/]/).some((part) => part.toLowerCase().endsWith(suffix)));
     if (reserved.length) {
       throw new Error(
         `Skill "${name}" ships ${reserved.join(', ')}, and "${STAGING_SUFFIX}" is the suffix `

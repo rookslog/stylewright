@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { installSkills } from '../src/install.js';
 import { uninstallSkills } from '../src/uninstall.js';
-import { withTargetLock, LOCK_NAME } from '../src/lock.js';
+import { withTargetLock, LOCK_NAME, isLocked } from '../src/lock.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -94,4 +94,14 @@ test('a finished command leaves no lock behind', async () => {
   assert.ok(!(await exists(path.join(target, LOCK_NAME))));
   await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
   assert.ok(!(await exists(target)), 'and the empty directory still goes');
+});
+
+test('a dangling symlink at the lock name reads as held', async () => {
+  // Acquisition refuses on the ENTRY — wx sees the symlink and fails EEXIST —
+  // so discovery must see the same thing. `stat` followed the link to ENOENT
+  // and answered unlocked, and update then parsed a manifest it had just
+  // been told might be mid-change.
+  const target = await tmp();
+  await fs.symlink(path.join(target, 'nowhere'), path.join(target, '.stylewright-lock'));
+  assert.equal(await isLocked(target), true);
 });
