@@ -157,14 +157,15 @@ The probe answers one question: can this harness, on this build, through
 this pathway, surface an installed skill at all? It is a probe, not proof
 of loading.
 
-1. Install the skill through one real pathway into a pristine environment.
+1. Install the skill through one real pathway into an environment of the
+   class the probe covers — pristine, or a declared representative stack.
 2. Plant a nonce, outside the content the canonical digest covers, or run
    the probe on a separate install from the one any study measures. The
    probed tree and the measured tree must not differ silently.
 3. Ask the harness to repeat the nonce, and run the same ask against an
    identical environment with no skill installed.
 4. Record both answers, the harness build, the served model identifier,
-   the platform, the pathway, and the date.
+   the platform, the pathway, the environment class, and the date.
 
 A repeated nonce is evidence the text reached the context. The empty-home
 control catches a probe that passes for the wrong reason. A harness trace
@@ -172,10 +173,11 @@ that names the loaded file is better evidence than either, and the probe
 uses one wherever the harness offers it.
 
 **Cadence and applicability.** Probe cadence is decoupled from publication:
-the probe runs once per harness build per pathway, on a calendar, and the
-record is committed. A probe applies to a study only when the harness
-build, the served model, the platform, and the pathway are identical
-between them, and applicability is identity, never ordering: a study on
+the probe runs once per harness build per pathway per environment class
+it covers, on a calendar, and the record is committed. A probe applies to
+a study only when the harness build, the served model, the platform, the
+pathway, and the environment class are identical between them, and
+applicability is identity, never ordering: a study on
 an older or merely different model than the probe's is as unprobed as a
 study on a newer one. A status line
 whose study has no applicable probe says unprobed, and the comparison is
@@ -286,8 +288,13 @@ already sits in the history the server holds. Its verdict — run
 identifier, timestamp, result — cannot land in the study manifest that
 same push already carries, and a promoted study is never edited, so the
 verdict is appended to the ledger as an attestation entry naming the
-study. A study is citable only when its attestation entry exists, and the
-later static check verifies the pair, not the vanished push event.
+study. A study is citable only when its attestation entry exists. The
+entry is an author-written line, so the later static check verifies it
+against the forge's own record of the named run — the run exists, it
+succeeded, and it ran on the push that carried the evidence — and never
+against the entry alone. A forge record that has expired leaves the study
+inside the durability residue below, and the check reports that instead
+of passing.
 
 Three residues, stated. The attestation chain is as durable as the forge
 that issued it. The forge attests publication order, never execution
@@ -409,8 +416,8 @@ statements, in three classes.
   measured reads as a credential. A line is printed as stale when the
   skill's current content digest differs from the digest the study
   measured, and as unprobed when no probe matches the study's harness
-  build, served model, platform, and pathway under the identity rule in
-  section 4.1. The
+  build, served model, platform, pathway, and environment class under
+  the identity rule in section 4.1. The
   platform and environment class a line names come from the study
   manifest, which section 4.2 requires to carry both. Staleness is
   computed at read time. A derived line can go stale the moment the skill
@@ -493,3 +500,12 @@ decision, taken only with ADR-0007's test extended first.
   predicate compares. The redaction chain is named trust-bounded rather
   than checkable. And the two word-form figures in `bench/README.md` are
   marked unaudited instead of dodging the numeral check by spelling.
+- Draft 8, from the second round on the same pull request: three
+  findings, all accepted. The attestation entry is verified against the
+  forge's record of the run it names, never against itself, because the
+  entry is the author's line like everything else in the ledger. Probe
+  applicability gained the environment class — record, predicate, status
+  line, and ADR-0013 — so a pristine-home probe no longer covers a
+  representative-stack study. And ADR-0010's decision and consequences
+  carry the registered-attempts narrowing its amendment note had already
+  claimed for them.

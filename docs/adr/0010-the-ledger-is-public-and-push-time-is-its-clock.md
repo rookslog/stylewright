@@ -14,7 +14,8 @@ nothing.
 
 **Decision.** The ledger is `bench/samples/LEDGER.jsonl`, append-only, one
 event per line, and every arm attempt is an entry — exploratory arms
-included, so no attempt is invisible. An entry pre-registers the rubric,
+included, so no registered attempt is invisible, and the ledger binds
+only what enters it. An entry pre-registers the rubric,
 the scenario frame and selection, the primary metric and scenario, the
 repetition count, the predicted direction, and the stopping rule. An entry
 counts as pre-registered only when its push precedes the first push that
@@ -24,12 +25,16 @@ clone does not carry it, so a CI check verifies the ordering on the push
 that carries an arm's evidence, and its verdict is appended to the ledger
 as an attestation entry naming the study, because the manifest that push
 carries cannot hold a verdict produced after it and a promoted study is
-never edited. The later static check verifies the recorded attestation.
+never edited. The attestation entry is an author-written line, so the
+later static check verifies it against the forge's record of the run it
+names, never against the entry alone.
 
 **Consequences.** Pre-registration becomes checkable instead of asserted.
 Failed, aborted, and abandoned attempts stay on the ledger, so a retried
-run cannot quietly replace one and a clean control cannot be picked from
-invisible attempts. Measurement work must push before it runs, which is
+run cannot quietly replace one and every registered attempt shows.
+Selective reporting stays possible by leaving arms unregistered, and the
+design names that as a deliberate breach no check detects rather than
+hiding it. Measurement work must push before it runs, which is
 the point. Two residues, and the design states both: the attestation
 chain is as durable as the forge that issued it, the forge attests
 publication order, never execution order, and the ledger binds only what
