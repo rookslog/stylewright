@@ -52,17 +52,6 @@ async function alteredFiles(destDir, recorded) {
  * hash to compare. A collision on an unrecorded path is drift, and it is the
  * more dangerous kind.
  */
-/**
- * Every path this install touches — the ones it ships AND the ones it retires.
- * A rule about paths has to range over all of them. Stating it over the ones
- * that happened to be convenient is how it comes back: the ancestor check
- * walked only the shipped paths, so a release that dropped the last file
- * beneath a symlinked directory deleted through the link.
- */
-function pathsTouched(sourceRels, recorded) {
-  return [...sourceRels, ...Object.keys(recorded ?? {})];
-}
-
 async function untrackedCollisions(destDir, sourceRels, recorded) {
   const known = new Set(Object.keys(recorded ?? {}));
   const hits = new Set();
@@ -277,8 +266,13 @@ async function installUnderLock(byName, {
     // ancestor of a path we SHIP stands in the way of a write, and force clears
     // it. An ancestor reached only by a RETIRED path stands in the way of a
     // deletion, and nothing is written through it, so the round-six rule holds:
-    // force may clear what blocks a write, and not what blocks nothing. Ranging
-    // one set over the union deleted a user file through the retired half.
+    // force may clear what blocks a write, and not what blocks nothing.
+    // Two passes and not one, but both sets all the same. A rule about paths
+    // has to range over all of them, and stating it over the ones that happened
+    // to be convenient is how it comes back. This check walked only the shipped
+    // paths once, so a release that dropped the last file beneath a symlinked
+    // directory deleted through the link. Ranging one set over the union
+    // deleted a user file through the retired half.
     const write = await reachability(destDir, rels, exempt);
     const retire = await reachability(destDir, retired, exempt);
     const blockedWrite = write.blocked;
