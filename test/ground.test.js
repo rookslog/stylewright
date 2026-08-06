@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { parseMatrix, checkSkill, checkAll, contentUnits, unmodelled } from '../src/ground.js';
+import fs from 'node:fs';
+import {
+  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO,
+} from '../src/ground.js';
+import { sections } from '../src/markdown.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 
@@ -442,6 +446,48 @@ test('a table that does not begin at column 0 is refused at any width', () => {
   // indented table passed a guard that asked only about four columns.
   assert.match(refused('  | a | b |\n  |---|---|'), /a table row that does not begin at column 0/);
   assert.match(refused('  #'), /a heading that does not begin at column 0/);
+});
+
+test('one file has one reading, so the section scan closes a fence where the walk does', () => {
+  // `sections` closed on a marker indented four columns while the walk read
+  // that marker as the block's own contents. A heading below it then opened a
+  // section from inside a code block, and every anchor under it was wrong.
+  const text = '```js\ncode\n    ```\n## Later\n\nAlways preserve safety.';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`);
+  assert.equal(units.filter((u) => u.block).length, 1);
+  assert.equal(units.filter((u) => /Always preserve safety/.test(u.text)).length, 0);
+  assert.equal(sections(text).length, 0);
+});
+
+test('README names every construct refused at column 0', () => {
+  // It named the blockquote and not the other two, so a contributor could
+  // write a documented form and get a refusal for it.
+  const readme = fs.readFileSync(
+    path.join(import.meta.dirname, '..', 'README.md'), 'utf8').toLowerCase();
+  for (const shape of Object.values(AT_COLUMN_ZERO)) {
+    assert.ok(readme.includes(shape), `README does not name ${shape}`);
+  }
+});
+
+test('a refusal carries a remedy the author can follow', () => {
+  // Every refusal ended with "write it at column 0", which a blockquote, an
+  // empty marker and an empty heading already do. A remedy that cannot be
+  // followed reads as a check that misread the line.
+  const message = (text) => checkSkill({
+    skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
+  }).find((f) => f.code === 'unmodelled-construct').message;
+
+  for (const [text, remedy] of [
+    ['> quoted', /fenced block/],
+    ['#', /Give the heading its text/],
+    ['-', /Give the item its words/],
+    ['- A | B\n--- | ---', /Move the table out of the list/],
+  ]) {
+    assert.match(message(text), remedy);
+    assert.doesNotMatch(message(text), /Write it at column 0\./);
+  }
+  assert.match(message('  | a | b |\n  |---|---|'), /Write it at column 0\./);
 });
 
 test('an indented construct with no list above it is code, and stands', () => {

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { sections } from './markdown.js';
+import { sections, indentOf, isIndented } from './markdown.js';
 import { loadCatalog } from './catalog.js';
 
 export function parseMatrix(text) {
@@ -89,23 +89,19 @@ const OPENS_LIST = /^(?:[-*+]|\d{1,9}[.)])(?:\s|$)/;
 const EMPTY_LIST = /^(?:[-*+]|\d{1,9}[.)])\s*$/;
 const EMPTY_HEADING = /^#{1,6}\s*$/;
 
+// The indent in columns lives in `markdown.js`, because the section scan needs
+// the same rule. Two copies of it gave one file two readings.
+
 /**
- * The indent in columns, where a tab advances to the next stop of four. A
- * pattern over literal characters counted ` \t` as one space, so a code block
- * written with a mixed indent closed at that line and the guard then refused
- * the block's own contents.
+ * The three constructs refused at column 0, named once. README lists them for
+ * a contributor, and a test holds that list against this one, because a
+ * document that names two of three teaches an author to write the third.
  */
-const TAB = 4;
-function indentOf(line) {
-  let n = 0;
-  for (const ch of line) {
-    if (ch === ' ') n += 1;
-    else if (ch === '\t') n += TAB - (n % TAB);
-    else break;
-  }
-  return n;
-}
-const isIndented = (line) => indentOf(line) >= TAB;
+export const AT_COLUMN_ZERO = {
+  blockquote: 'a blockquote',
+  heading: 'a heading with no text',
+  item: 'a list item with no content',
+};
 
 /** What the line looks like. This names the refusal and nothing else. */
 function shapeOf(line) {
@@ -142,13 +138,13 @@ function outsideGrammar(line, { startsBlock, openText, listOpen, opensFence, ope
   if (indentOf(line) === 0) {
     // A blockquote is the one construct at column 0 whose contents the
     // extractor reads as its own prose, so the quote and its container merge.
-    if (line.startsWith('>')) return 'a blockquote';
+    if (line.startsWith('>')) return AT_COLUMN_ZERO.blockquote;
     // An empty marker and an empty heading are refused where they begin a
     // block. On a continuation line they are the prose of the line above, and
     // a Markdown reader agrees: neither interrupts a paragraph.
     if (!openText || startsBlock) {
-      if (EMPTY_HEADING.test(line)) return 'a heading with no text';
-      if (EMPTY_LIST.test(line)) return 'a list item with no content';
+      if (EMPTY_HEADING.test(line)) return AT_COLUMN_ZERO.heading;
+      if (EMPTY_LIST.test(line)) return AT_COLUMN_ZERO.item;
     }
     return null;
   }
@@ -330,6 +326,25 @@ export function contentUnits(skillText) {
 }
 
 /**
+ * What to do about the refusal. Every refusal used to end with "write it at
+ * column 0", which a blockquote, an empty marker and an empty heading already
+ * do. A remedy that the author cannot follow is worse than none, because it
+ * says the check misread the line.
+ */
+function remedyFor(shape) {
+  if (shape.startsWith('a blockquote')) {
+    return 'Write the quoted words as our own prose, or put them in a fenced block.';
+  }
+  if (shape === 'a heading with no text') return 'Give the heading its text, or delete the line.';
+  if (shape === 'a list item with no content') return 'Give the item its words, or delete the marker.';
+  if (shape === 'a table inside a list item') return 'Move the table out of the list.';
+  if (shape === 'a paragraph indented under a list item') {
+    return 'Write it at column 0, or fold it into the item above it.';
+  }
+  return 'Write it at column 0.';
+}
+
+/**
  * Every construct in the skill that the extractor does not model, by line.
  * `checkSkill` reports these, and this export lets a caller ask for them
  * without a matrix to compare against.
@@ -353,7 +368,7 @@ export function checkSkill({ skillText, matrixText }) {
       level: 'error',
       code: 'unmodelled-construct',
       message: `line ${r.line}: ${r.shape} is outside the Markdown this check models. `
-        + 'Write it at column 0, or move it out of the container.',
+        + remedyFor(r.shape),
     });
   }
 

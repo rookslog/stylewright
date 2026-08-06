@@ -236,9 +236,16 @@ The check reads Markdown a line at a time, and it models no container. So it
 states the forms it reads: a blank line, any construct at column 0, a line that
 continues the paragraph above it, and an indented code block that stands on its
 own. It refuses every other line and names it, rather than reading a blockquote
-or a nested construct as the wrong unit. A blockquote is refused at column 0
-too, because the check reads its contents as our own prose. ADR-0016 records
-that decision.
+or a nested construct as the wrong unit.
+
+Three constructs are refused at column 0 as well, because the check reads none
+of them:
+
+- A blockquote, whose contents the check reads as our own prose.
+- A heading with no text, such as `#`, which opens no section.
+- A list item with no content, such as `-`, which opens no item.
+
+ADR-0016 records that decision.
 
 ## Licensing
 
