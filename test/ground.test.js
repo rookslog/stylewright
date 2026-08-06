@@ -322,12 +322,44 @@ test('a table indented under a list item is refused', () => {
     /a table under an indent/);
 });
 
+test('a child paragraph under a list item is refused at any indent', () => {
+  // The first guard asked for four spaces, which was the width the reported
+  // shape used. Two spaces passed it and became a top-level paragraph, so the
+  // matrix could anchor a directive outside the item that qualifies it. A
+  // blank line above separates a child block from a wrapped line, not a width.
+  assert.match(refused('- Context.\n\n  Always preserve safety.'),
+    /a paragraph indented under a list item/);
+  assert.match(refused('- Context.\n\n\tAlways preserve safety.'),
+    /a paragraph indented under a list item/);
+});
+
+test('a setext heading that does not begin at column 0 is refused', () => {
+  // The section split consumes a setext heading before the line walk sees it,
+  // so `Rules` over `-----` under a list item became a top-level section and
+  // moved the anchor of everything below it.
+  assert.match(refused('- Context.\n\n  Rules\n  -----\n\nAlways preserve safety.'),
+    /a heading that does not begin at column 0/);
+  assert.match(refused('  Rules\n  -----\n\nAlways preserve safety.'),
+    /a heading that does not begin at column 0/);
+  assert.equal(refused('Rules\n-----\n\nAlways preserve safety.'), '');
+});
+
+test('an indented code block holds whatever it contains', () => {
+  // A fence marker inside the block was read as an opener, which split one
+  // block into two designators and refused a line that is only an example.
+  const text = 'Prose here.\n\n    const x = 1;\n    ```\n    const y = 2;';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`);
+  assert.equal(units.filter((u) => u.block).length, 1);
+});
+
 test('an indented construct with no list above it is code, and stands', () => {
   // Refusing is not narrowing. An indented block that begins its own paragraph
   // is read here exactly as a reader reads it, so it needs no refusal, and a
   // wrapped continuation line is not a container either.
   assert.equal(refused('Prose here.\n\n    const x = 1;\n    > quoted'), '');
   assert.equal(refused('- Do not use a semicolon,\n  because it joins two ideas.'), '');
+  assert.equal(refused('- Do not use a semicolon,\n    because it joins two ideas.'), '');
   assert.equal(refused('```md\n> quoted\n```'), '');
   assert.equal(refused('- Do first.\n\nProse here.\n\n    const x = 1;'), '');
 });

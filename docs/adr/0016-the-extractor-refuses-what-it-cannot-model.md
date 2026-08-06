@@ -33,10 +33,11 @@ refusal is one more finding rather than a replacement for one.
 
 **Consequences.** The narrowness sits at the point of use rather than in
 a review round, which is the rule this repository sells about a check
-never being narrower than the claim it enforces. The package keeps its
-zero-dependency property, which four of the six install pathways rely
-on. The cost falls on the author of a skill, who writes in the subset,
-and the shipped skills already sit inside it.
+never being narrower than the claim it enforces. The package adds
+nothing to the dependency set it already declares, and that set stays at
+one prompt library that the command line injects. The cost falls on the
+author of a skill, who writes in the subset, and the shipped skills
+already sit inside it.
 
 This rests on one belief. The skills this repository ships, and the ones
 its scaffold generates, stay inside that subset. A real skill that needs

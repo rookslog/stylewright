@@ -123,6 +123,15 @@ function unitsIn(body, anchor, refuse = () => {}) {
   };
   const lines = body.split('\n');
   for (const [i, line] of lines.entries()) {
+    // An indented block is code too. Reading it as prose reported each line as
+    // an uncovered statement, which teaches a contributor to write a grounding
+    // row for an example. Its contents are settled before anything else looks
+    // at the line, because a fence marker or a table row indented INSIDE one is
+    // part of the example. Testing for a fence first split one block in two.
+    if (block?.kind === 'indented') {
+      if (!line.trim() || INDENTED.test(line)) { block.lines.push(line); continue; }
+      closeBlock();
+    }
     const fence = FENCE.exec(line);
     // Close only on the SAME marker, at least as long. A four-backtick fence
     // around a three-backtick example was closed by the example's own opening
@@ -161,13 +170,6 @@ function unitsIn(body, anchor, refuse = () => {}) {
       block.lines.push(line.trim());
       continue;
     }
-    // An indented block is code too. Reading it as prose reported each line as
-    // an uncovered statement, which teaches a contributor to write a grounding
-    // row for an example.
-    if (block?.kind === 'indented') {
-      if (!line.trim() || INDENTED.test(line)) { block.lines.push(line); continue; }
-      closeBlock();
-    }
     if (block) closeBlock();
     if (!line.trim()) { flush(); afterBlank = true; continue; }
     const startsBlock = afterBlank;
@@ -176,6 +178,12 @@ function unitsIn(body, anchor, refuse = () => {}) {
     // the extractor refuses it instead of choosing. An indented construct with
     // no list above it is an ordinary code block, which the extractor does
     // read as a reader does, so it stands.
+    //
+    // `nested` is any indent under an open list, at ANY width. Four spaces was
+    // the width the reported shape used, and a child paragraph indented two
+    // passed the guard and was read as a top-level paragraph. What separates a
+    // child block from a wrapped line is the blank line above it, not how far
+    // the author indented.
     const nested = listOpen && LEAD.test(line);
     if (BLOCKQUOTE.test(line) && (nested || !INDENTED.test(line))) {
       refuse(i, 'a blockquote');
@@ -183,7 +191,7 @@ function unitsIn(body, anchor, refuse = () => {}) {
       refuse(i, 'a list item indented under another');
     } else if (HEADING.test(line) && (nested || !INDENTED.test(line))) {
       refuse(i, 'a heading that does not begin at column 0');
-    } else if (nested && INDENTED.test(line)) {
+    } else if (nested && startsBlock) {
       refuse(i, 'a paragraph indented under a list item');
     }
     if (INDENTED.test(line) && !item && !para.length) {
@@ -240,6 +248,13 @@ function extract(skillText) {
   const at = (base) => (i, shape) => refusals.push({ line: offset + base + i + 1, shape });
   const out = unitsIn(lines.slice(0, firstHeading).join('\n'), PREAMBLE, at(0));
   for (const sec of secs) {
+    // A setext heading never reaches `unitsIn`, because the section split
+    // consumes it. So the guard has to meet it here, or `Rules` over `-----`
+    // indented under a list item becomes a top-level section and every anchor
+    // below it moves. An ATX heading begins at column 0 by the rule that finds
+    // it, so this refuses only the setext spelling.
+    const head = sec.firstLine ?? sec.startLine - 1;
+    if (LEAD.test(lines[head] ?? '')) at(0)(head, 'a heading that does not begin at column 0');
     // The heading is a unit of its own. It was the anchor and nothing else, so
     // a heading that gave an instruction was never disposed of by any row.
     out.push({ text: sec.heading, anchor: sec.heading, block: false });
