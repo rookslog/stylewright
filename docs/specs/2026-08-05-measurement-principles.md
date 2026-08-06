@@ -99,11 +99,26 @@ cannot survive, because anyone can re-read them.
 ## A claim binds to its conditions
 
 No result generalises past its harness, build, served model, platform,
-pathway, and environment class. The probe records its scope and its
+pathway, and environment class — down to the committed stack digest
+where the class is a representative stack. The probe records its scope and its
 cadence is calendar-driven. Status lines are derived, digest-bound, and
 computed stale when the skill or the harness moves. An old figure is
 superseded per claim by a person, and retired from tables into prose when
 the first retained study lands — the record kept, the credential expired.
+
+## The mechanisms bind an honest author
+
+Every chain in the design bottoms out in the operator, who holds every
+key — the workflows, the rulesets, the account. The mechanisms exist for
+the honest author's failure modes, drift and memory and the flattering
+reading, and they make dishonesty premeditated and auditable, never
+impossible. Four review rounds proved the alternative does not terminate:
+each attestation link, once checked, exposed the next, because no
+single-owner repository can constrain its owner. ADR-0015 records the
+threat model and its flip — a bench meant to be trusted by strangers who
+distrust the author needs infrastructure outside the repository. Until
+then, what defends the claims is retention: a stranger re-judges the
+evidence, not the author.
 
 ## Observation and experiment are different instruments
 
@@ -125,3 +140,6 @@ confirmatory one. The bench tests.
   author's fact and can be post-dated past any push.
 - Draft 5 narrowed the ledger claim to registered attempts: the ledger
   makes selective reporting a deliberate breach, never an impossibility.
+- Draft 6 added the honest-author commitment, when four review rounds
+  showed the attestation chain has no floor inside a single-owner
+  repository, and ADR-0015 recorded the threat model.

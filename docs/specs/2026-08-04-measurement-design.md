@@ -23,6 +23,22 @@ convention, and it is narrower than it was: the numeral check in section 3
 catches a figure written as a number, and a figure written out in words
 escapes it. That residue is reviewed like any other claim.
 
+**The threat model.** This is a single-owner repository, and the design
+says plainly what its mechanisms defend against: the honest author's
+failure modes — drift, memory, post-hoc convenience, the reading that
+flatters the result. Every mechanism makes dishonesty premeditated,
+visible, or expensive. None makes it impossible, because the author
+controls the workflows, the rulesets, and the account they run under,
+and a chain of custody cannot rise above the person who holds every key.
+What the design promises is auditability: evidence, rubric, labels, and
+ledger are committed whole, so a stranger re-judges every claim without
+trusting the author's summary. A finding that only a dishonest owner
+could exploit is disposed of as a named residue once the mechanism's
+honest-author value is exhausted — ADR-0015 records the decision, and
+records the flip: a bench meant as a credential for readers who distrust
+the author needs attestation outside this repository, and that is a
+different project.
+
 ## 2. Decisions already made
 
 The owner decided both of these on 2026-08-04, recorded on the issues.
@@ -164,8 +180,10 @@ of loading.
    probed tree and the measured tree must not differ silently.
 3. Ask the harness to repeat the nonce, and run the same ask against an
    identical environment with no skill installed.
-4. Record both answers, every element of the identity tuple defined
-   under cadence below, the outcome, and the date.
+4. Record both answers verbatim, the planted nonce, the harness trace
+   where one exists, every element of the identity tuple defined under
+   cadence below, and the date. The outcome is derived from those bytes
+   by whoever checks, never asserted beside them.
 
 A repeated nonce is evidence the text reached the context. The empty-home
 control catches a probe that passes for the wrong reason. A harness trace
@@ -175,11 +193,16 @@ uses one wherever the harness offers it.
 **Cadence and applicability.** Probe cadence is decoupled from publication:
 a probe binds to an identity tuple, and this sentence is the tuple's one
 definition — harness build, served model, platform, pathway, environment
-class — which every other mention of probe identity refers to rather than
-re-listing, because three review rounds each caught one re-listing site
-missing one element. The probe runs on a calendar, once per identity
-tuple it is scheduled to cover, and the record is committed carrying
-every element of the tuple, the outcome, and the date. A probe covers a
+class, and where the class is a representative stack, the committed
+stack digest, because two stacks of the same class can differ in exactly
+the configuration that changes discovery — which every other mention of
+probe identity refers to rather than re-listing, because three review
+rounds each caught one re-listing site missing one element. The probe
+runs on a calendar, once per identity tuple it is scheduled to cover,
+and the record is committed carrying every element of the tuple, the
+date, and the bytes that let a checker derive the outcome — both answers
+verbatim, the planted nonce, and the harness trace where one exists — so
+a pass is computed from the record, never declared by it. A probe covers a
 study only when every element of the tuple is identical between them and
 the probe passed. Applicability is identity, never ordering: a study on
 an older or merely different model than the probe's is as unprobed as a
@@ -316,8 +339,11 @@ against the entry alone. A forge record that has expired leaves the study
 inside the durability residue below, and the check reports that instead
 of passing.
 
-Three residues, stated. The attestation chain is as durable as the forge
-that issued it. The forge attests publication order, never execution
+Four residues, stated. The attestation chain is as durable as the forge
+that issued it. The ordering workflow is the owner's file, and a push
+could replace it with one that always succeeds — the first link in this
+chain that only a dishonest owner could exploit, so under the threat
+model in section 1 it is named here and chased no further. The forge attests publication order, never execution
 order: an author who runs an arm, registers afterward, and publishes the
 evidence last passes the check, and no record this design retains could
 show it. And the ledger binds only what enters it: an author can run arms
@@ -385,7 +411,10 @@ ordering claim, and the attestation floor prices it: the check compares
 the frame registration's push against the first push that carries the
 skill's content, both server facts, and a treatment drafted locally
 before the frame was pushed is the same residue as every other work the
-forge never saw. Late disclosure is still the ceiling: a public
+forge never saw. When the forge's record of the earlier push has expired
+by the time the comparison runs, the ordering cannot be established, and
+the check blocks the confirmatory claim and says why instead of passing —
+the durability residue, applied rather than merely named. Late disclosure is still the ceiling: a public
 repository cannot hold a test set back.
 
 Step 5 exists because the exploratory control goes stale: a control
@@ -423,9 +452,12 @@ whole is what lets a later reader argue with that view.
 
 ## 7. Status, derived and scoped
 
-A skill's maturity is not a badge. Every claim in section 4 binds to the
-identity tuple section 4.1 defines, and a single word such as "tested"
-erases exactly those bindings. Status is a set of scoped
+A skill's maturity is not a badge. A measured claim binds to everything
+section 4.2 requires its records to carry — the shared provenance fields
+and the delivery-specific ones — and probe coverage binds separately to
+the narrower identity tuple section 4.1 defines, which scopes discovery
+and nothing else. A single word such as "tested" erases exactly those
+bindings. Status is a set of scoped
 statements, in three classes.
 
 - **Unmeasured**, hand-written in `SOURCE.md`, for a skill with no study.
@@ -545,3 +577,15 @@ decision, taken only with ADR-0007's test extended first.
   so the attestation entry binds to the ordering workflow's own run, and
   frame-before-skill is priced as push order with local drafting a named
   residue. ADR-0011 and ADR-0013 carry matching amendments.
+- Draft 10 ended the loop by decision rather than by patching: a fourth
+  round returned five more real findings, and the owner ratified the
+  threat model as ADR-0015 — the mechanisms bind the honest author, and
+  a link only a dishonest owner could exploit becomes a named residue
+  once its honest-author value is spent. Under it, the replaceable
+  ordering workflow is the first such residue, and forge-record
+  expiration blocks a confirmatory ordering claim instead of passing it.
+  The three findings real under any threat model were fixed. Probe
+  passes are derived from retained bytes, never declared. The identity
+  tuple carries the committed stack digest for representative stacks.
+  And measurement scope binds to section 4.2's full provenance, with
+  the probe tuple scoping discovery alone.

@@ -118,7 +118,7 @@ the authority and not this paragraph.
 ### A figure that outruns its study
 
 The measurement design (`docs/specs/2026-08-04-measurement-design.md`,
-ADR-0009 through ADR-0014) governs every number published in
+ADR-0009 through ADR-0015) governs every number published in
 `bench/README.md`.
 
 - A figure carries a `bench-study:<study>#<result>` marker, or the word

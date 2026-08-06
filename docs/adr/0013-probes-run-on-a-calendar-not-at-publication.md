@@ -14,7 +14,8 @@ speaks of them as covered.
 
 **Decision.** The discoverability probe binds to the identity tuple the
 measurement design defines once, in section 4.1 — harness build, served
-model, platform, pathway, environment class — and runs on a calendar,
+model, platform, pathway, environment class, and the committed stack
+digest where the class is a representative stack — and runs on a calendar,
 once per tuple it is scheduled to cover, with a committed record naming
 every element, the outcome, and the date. A probe covers a study only
 when every element of the tuple is identical between them and the probe
@@ -37,5 +38,7 @@ nothing about discovery under a representative stack. A third round
 replaced the enumerated lists with the single identity tuple the design
 defines once, scheduled cadence per tuple, and made a passing outcome a
 condition of coverage, after three rounds each caught one enumeration
-site missing one element. The mechanism is the measurement design,
-section 4.
+site missing one element. A fourth round refined the class to the
+committed stack digest for representative stacks, and made the outcome
+derivable from retained bytes rather than declared. The mechanism is the
+measurement design, section 4.
