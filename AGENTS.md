@@ -79,7 +79,9 @@ The date is a UTC day, and the check refuses one later than the day it runs
 on. It takes that day from the command line, which is where every other moment
 this program needs comes from. `checkSkill` throws when the caller omits it,
 rather than defaulting, because a default turns the rule off for whoever
-forgot the argument.
+forgot the argument. It throws on a day the calendar does not carry as well.
+A bound that is not a day bounds nothing, and `9999-99-99` sorted above every
+real date and let a future audit through.
 
 `ground --check` prints the audited count for each matrix beside its verdict.
 That line is a note, so it fails nothing. Do not promote it to an error, and do

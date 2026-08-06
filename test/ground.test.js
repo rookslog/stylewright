@@ -149,6 +149,25 @@ test('the check refuses to run without the day, rather than skipping the future 
   assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now: 'today' }), TypeError);
 });
 
+test('the day the check runs on must itself be a day', () => {
+  // The bound was read as the first ten characters and asked nothing more, so
+  // `9999-99-99` arrived as the upper bound, every real date sorted below it,
+  // and an audit dated `9999-12-31` came back counted as read. A bound that is
+  // not a day cannot bound anything.
+  const ahead = audited(`9999-12-31 ${CURRENT}`);
+  for (const now of ['9999-99-99', '0000-00-00', '2026-02-31', '2026-08-06extra', '2026-8-6']) {
+    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: ahead, now }), TypeError,
+      `${now} was accepted as the day the check runs on`);
+  }
+
+  // A bare day and a full timestamp are both moments, and both still refuse
+  // the audit dated after them.
+  for (const now of ['2026-08-06', '2026-08-06T12:00:00.000Z', '2026-08-06 12:00:00']) {
+    assert.ok(checkSkill({ skillText: SKILL, matrixText: ahead, now })
+      .some((f) => f.code === 'audit-ahead-of-the-check'), `${now} was refused`);
+  }
+});
+
 test('the coverage count and the findings read the audit cell the same way', () => {
   // Each read the cell for itself, so a stamp that merely matched the pattern
   // counted as audited while the check called it broken. One reading, used by

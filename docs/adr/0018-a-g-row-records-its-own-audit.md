@@ -55,6 +55,13 @@ rather than defaulting, because a default turns the rule off for whoever
 forgets the argument, and a gate that fails open on a missing argument is
 a defect this repository has already paid for once.
 
+The injected day obeys the calendar too. The first version read the
+leading ten characters and asked no more, so `9999-99-99` arrived as the
+upper bound, every real date sorted below it, and an audit dated
+`9999-12-31` came back counted as read. A bound that is not a day cannot
+bound anything, and applying the calendar to one of the two dates and not
+the other was the same gap one argument over.
+
 One reading of the cell serves both the findings and the count. Two
 readings disagreed: a stamp that merely matched the pattern counted as
 audited while the check called it stale or impossible.

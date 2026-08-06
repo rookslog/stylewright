@@ -139,13 +139,27 @@ export function rowDigest(row) {
  * that check off for whoever forgot the argument. A gate that fails open on a
  * missing argument is the defect `ground --check` already carries a fix for,
  * one floor down.
+ *
+ * The day it names must exist, by the same rule the audit date obeys. This
+ * read the first ten characters and asked no more, so `9999-99-99` arrived as
+ * the upper bound, every real date sorted below it, and an audit dated
+ * `9999-12-31` came back counted as read. A bound that is not a day cannot
+ * bound anything, and applying the calendar to one of these dates and not the
+ * other is the same check-narrower-than-the-claim shape one argument over.
+ *
+ * The tail after the day is the time, which nothing here reads. It may be
+ * absent, and it may not be arbitrary text, because text that is not a
+ * timestamp is a caller passing something other than a moment.
  */
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}/;
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})(?:[T ][0-9:.,+\-Z]*)?$/;
 function dayOf(now) {
-  if (typeof now !== 'string' || !ISO_DAY.test(now)) {
-    throw new TypeError('checkSkill needs `now` as an ISO timestamp, so it can refuse a future audit.');
+  const stamp = typeof now === 'string' ? ISO_DAY.exec(now) : null;
+  if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
+    throw new TypeError(
+      `checkSkill needs \`now\` as an ISO timestamp, so it can refuse a future audit. Got ${JSON.stringify(now)}.`,
+    );
   }
-  return now.slice(0, 10);
+  return `${stamp[1]}-${stamp[2]}-${stamp[3]}`;
 }
 
 /**
