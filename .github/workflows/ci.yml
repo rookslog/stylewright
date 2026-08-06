@@ -39,3 +39,33 @@ jobs:
       # Fails when a document's front matter does not fit the schema.
       - name: Check every document's front matter
         run: npm run check:docs
+
+  # Windows support is a claim, and a claim nothing runs stops being true
+  # quietly. This job is separate from `check` rather than an `os` dimension on
+  # its matrix, because adding a dimension renames every existing job and the
+  # branch ruleset requires those names.
+  windows:
+    runs-on: windows-latest
+    strategy:
+      # A failure at one end of the range says nothing about the other, and
+      # cancelling the second version hides half of what a Windows run knows.
+      fail-fast: false
+      matrix:
+        # Both ends of the supported range, because Node's own behaviour moves
+        # inside it: a release above the floor began refusing to spawn a `.cmd`
+        # without a shell, and `npm` is `npm.cmd` here. One version would test
+        # one side of that refusal.
+        node: ['20.11.0', '24']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+
+      # `npm run check` is the same four checks the ubuntu job runs. None of
+      # them shells out, so nothing here needs zsh. `bench/run.sh` does, and CI
+      # never invokes the runner.
+      - name: Every check
+        run: npm run check

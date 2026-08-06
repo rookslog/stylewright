@@ -274,7 +274,12 @@ test('a manifest of the wrong shape is refused where it is read', async () => {
   await assert.rejects(readManifest(dir), /"a" records no hash for "SKILL.md"/);
 });
 
-test('the replacement carries the manifest permissions from the moment it exists', async () => {
+test('the replacement carries the manifest permissions from the moment it exists', {
+  // NTFS carries an access-control list and not POSIX mode bits, so `chmod`
+  // moves only the read-only flag there and `stat().mode` reports a synthesized
+  // 0666 or 0444. The property under test cannot hold on that filesystem.
+  skip: process.platform === 'win32',
+}, async () => {
   const dir = await tmp();
   await writeManifest(dir, emptyManifest());
   const abs = path.join(dir, MANIFEST_NAME);

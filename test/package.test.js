@@ -15,8 +15,19 @@ const repoRoot = path.dirname(import.meta.dirname);
 // command the help text advertises, in its flag-driven shape, against the
 // extracted copy. It does not install the tarball's dependencies, so a
 // wrong dependency manifest passes here, and the interactive dialogue is
-// never reached. It also needs `npm` and `tar` on PATH, which CI's
-// ubuntu runners have and a Windows runner would not.
+// never reached. It also needs `npm` and `tar` on PATH, which every runner
+// in the CI matrix has.
+
+// `npm` is `npm.cmd` on Windows, and Node refuses to spawn a `.cmd` without a
+// shell. A shell splits the command line on spaces, and `execFile` quotes
+// nothing once `shell` is set, so the arguments carry their own quotes there.
+const onWindows = process.platform === 'win32';
+const npm = (args, options) => run(
+  onWindows ? 'npm.cmd' : 'npm',
+  onWindows ? args.map((a) => `"${a}"`) : args,
+  { ...options, shell: onWindows },
+);
+
 test('the packed artifact serves every advertised command', async (t) => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'stylewright-pack-'));
   t.after(() => fs.rm(tmp, { recursive: true, force: true }));
@@ -25,7 +36,7 @@ test('the packed artifact serves every advertised command', async (t) => {
   await fs.mkdir(home, { recursive: true });
   await fs.mkdir(project, { recursive: true });
 
-  const { stdout: packOut } = await run('npm', ['pack', '--pack-destination', tmp], {
+  const { stdout: packOut } = await npm(['pack', '--pack-destination', tmp], {
     cwd: repoRoot,
   });
   const tarball = path.join(tmp, packOut.trim().split('\n').pop());
