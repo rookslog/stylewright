@@ -263,6 +263,14 @@ runs, in a redirected home the harness fully respects. The design states,
 per pathway, which flags each installed arm runs under, and implementation
 does not start until the probe passes or fails.
 
+**How a probed home authenticates.** Amended 2026-08-06, in ADR-0016. A
+redirected home holds no credentials, so the harness refuses to run in one
+and answers that it is not logged in. A probe arm therefore authenticates
+from `ANTHROPIC_API_KEY` in the environment, and its home stays empty. The
+environment class the tuple carries is `api-key-empty-home`, named for how
+the arm authenticates, because a home holding a credential is a different
+environment and compares as one only under its own name.
+
 **Environment equivalence, and what a figure generalises to.** Installed
 runs get one pristine environment snapshot, cloned per arm, fingerprinted,
 with the installed skill as the only difference. Where installation itself
@@ -594,6 +602,11 @@ decision, taken only with ADR-0007's test extended first.
   tuple carries the committed stack digest for representative stacks.
   And measurement scope binds to section 4.2's full provenance, with
   the probe tuple scoping discovery alone.
+- Draft 12 records what building the probe found. A redirected home holds
+  no credentials, so the harness refused to run in one, and the pristine
+  class had to say how an arm authenticates. ADR-0016 settles it: an API
+  key in the environment, over an empty home, under the class name
+  `api-key-empty-home`.
 - Draft 11 disposed of the confirmation round: four findings, all
   consistency audits against the ratified threat model, none contesting
   it. The principles page matched the ADR's wording instead of promising

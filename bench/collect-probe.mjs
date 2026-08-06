@@ -27,10 +27,12 @@
  *   --skill NAME          the skill to install. Required.
  *   --pathway P:S         platform and scope, such as claude:user. Required.
  *   --model ALIAS         the model alias the arms run under. Default: opus.
- *   --env-class CLASS     pristine or representative. Default: pristine.
- *   --stack-digest D      required when the class is representative.
- *   --date YYYY-MM-DD     the date recorded. Default: today, in UTC.
  *   --dry-run             prepare both homes, print the plan, call no model.
+ *
+ * The environment class is always `api-key-empty-home`: two empty homes, with
+ * ANTHROPIC_API_KEY in the environment (ADR-0016). A representative stack needs
+ * a protocol that builds the stack, and this collector does not have one, so it
+ * never labels a record with that class.
  */
 
 import { spawn } from 'node:child_process';
@@ -47,7 +49,19 @@ import { destinationState, ensureDir, isBelow, walk } from '../src/tree.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
 
-/** `claude:user` into its two halves, refusing anything the engine cannot install. */
+/**
+ * Which harness reads a pathway's tree. A probe that installed into
+ * `.codex/skills` and then asked Claude Code about it would attribute one
+ * harness's answer to the other pathway, and would normally record a failure
+ * that says nothing about Codex.
+ *
+ * `cowork` resolves to the Claude directory, and `agents` is a cross-agent
+ * convention that Claude reads, so both are probed with `claude`. Codex needs
+ * its own runner, and this collector does not have one.
+ */
+export const HARNESS_FOR = { claude: 'claude', cowork: 'claude', agents: 'claude' };
+
+/** `claude:user` into its two halves, refusing anything this collector cannot probe. */
 export function parsePathway(pathway) {
   const [platform, scope] = String(pathway ?? '').split(':');
   if (!PLATFORMS.includes(platform)) {
@@ -56,7 +70,14 @@ export function parsePathway(pathway) {
   if (!SCOPES.includes(scope)) {
     throw new Error(`Unknown scope "${scope}". Known: ${SCOPES.join(', ')}`);
   }
-  return { platform, scope };
+  const harness = HARNESS_FOR[platform];
+  if (!harness) {
+    throw new Error(
+      `This collector drives ${[...new Set(Object.values(HARNESS_FOR))].join(', ')}, and `
+      + `"${platform}" needs its own runner. Probing it with another harness would `
+      + 'attribute that harness\'s answer to this pathway.');
+  }
+  return { platform, scope, harness };
 }
 
 /**
@@ -103,46 +124,70 @@ export function recordName({ date, pathway, nonce }) {
 }
 
 /**
- * One `claude --output-format json` run, with the home redirected. Returns the
- * answer verbatim and the build that served it, or the reason neither exists.
+ * The build that emitted the answer, or an empty string when no single build
+ * can be named.
  *
- * The environment is rebuilt rather than extended, because a variable naming
- * the operator's own configuration directory survives a redirected HOME and
- * points the harness straight back at the tree the probe exists to exclude.
+ * A tie is refused rather than resolved. `bench/extract.mjs` already refuses
+ * one, for the reason that applies here twice over: the identity tuple binds a
+ * probe to a served model, and guessing binds a passing probe to the wrong
+ * one, which then matches or excludes a study on a model it never ran.
  */
-export function runArm({ flags, cwd, home, ask }) {
+export function servingBuild(modelUsage) {
+  const usage = Object.entries(modelUsage ?? {})
+    .map(([id, u]) => [id, u.outputTokens ?? u.output_tokens ?? 0])
+    .sort((a, b) => b[1] - a[1]);
+  if (!usage.length) return '';
+  if (usage.length > 1 && usage[0][1] === usage[1][1]) return '';
+  return usage[0][0];
+}
+
+/**
+ * One harness run, with the home redirected. Returns the answer verbatim and
+ * the build that served it, or the reason neither exists.
+ *
+ * The environment carries ANTHROPIC_API_KEY through, and that is how the
+ * harness authenticates over an empty home (ADR-0016). Nothing here reads the
+ * value, and nothing writes it anywhere. The config variables are deleted
+ * instead, because one naming the operator's own configuration directory
+ * survives a redirected HOME and points the harness back at the tree the probe
+ * exists to exclude.
+ */
+export function runArm({ harness, flags, cwd, home, ask }) {
   const env = { ...process.env };
   for (const key of ['CLAUDE_CONFIG_DIR', 'XDG_CONFIG_HOME', 'CLAUDE_HOME']) delete env[key];
   env.HOME = home;
   env.USERPROFILE = home;
   return new Promise((resolve) => {
-    const child = spawn('claude', [...flags, ask], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    child.stdout.on('data', (d) => { out += d; });
-    child.stderr.on('data', (d) => { err += d; });
+    const child = spawn(harness, [...flags, ask], {
+      cwd, env, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    // Buffers, concatenated once at the end. Decoding each chunk on arrival
+    // splits a multibyte character across a chunk boundary and substitutes a
+    // replacement character, so the retained answer would differ from the bytes
+    // the harness emitted, and JSON that was valid could arrive damaged.
+    const out = [];
+    const errs = [];
+    child.stdout.on('data', (d) => out.push(d));
+    child.stderr.on('data', (d) => errs.push(d));
+    const text = (chunks) => Buffer.concat(chunks).toString('utf8');
     child.on('error', (e) => resolve({
-      answer: '', model_id: '', stderr: `${err}${e.message}`, home,
+      answer: '', model_id: '', stderr: `${text(errs)}${e.message}`, home,
     }));
     child.on('close', () => {
+      const raw = text(out);
+      const err = text(errs);
       let run;
       try {
-        run = JSON.parse(out);
+        run = JSON.parse(raw);
       } catch {
         resolve({
-          answer: '', model_id: '', stderr: `${err}\nnot JSON:\n${out.slice(0, 400)}`, home,
+          answer: '', model_id: '', stderr: `${err}\nnot JSON:\n${raw.slice(0, 400)}`, home,
         });
         return;
       }
-      // The build that answered is the one that emitted the output tokens.
-      // Claude Code bills a small auxiliary call alongside the answering one on
-      // some prompts, so the largest is the answer's and not the only entry.
-      const usage = Object.entries(run.modelUsage ?? {})
-        .map(([id, u]) => [id, u.outputTokens ?? u.output_tokens ?? 0])
-        .sort((a, b) => b[1] - a[1]);
       resolve({
         answer: typeof run.result === 'string' ? run.result : '',
-        model_id: usage[0]?.[0] ?? '',
+        model_id: servingBuild(run.modelUsage),
         stderr: err,
         home,
       });
@@ -151,13 +196,14 @@ export function runArm({ flags, cwd, home, ask }) {
 }
 
 /** The harness build, as `bench/run.sh` reads it: the first field of --version. */
-export function harnessBuild() {
+export function harnessBuild(harness) {
   return new Promise((resolve) => {
-    const child = spawn('claude', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    let out = '';
-    child.stdout.on('data', (d) => { out += d; });
+    const child = spawn(harness, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = [];
+    child.stdout.on('data', (d) => out.push(d));
     child.on('error', () => resolve(''));
-    child.on('close', () => resolve(out.split('\n')[0]?.trim().split(/\s+/)[0] ?? ''));
+    child.on('close', () => resolve(
+      Buffer.concat(out).toString('utf8').split('\n')[0]?.trim().split(/\s+/)[0] ?? ''));
   });
 }
 
@@ -170,6 +216,14 @@ export async function writeRecord(outPath, record, baseDir) {
   if (!isBelow(baseDir, outPath)) {
     throw new Error(`A probe record is written under ${baseDir}, not at ${outPath}.`);
   }
+  // The base directory ITSELF is classified, the way `reachability` classifies
+  // its own base. `ensureDir` compares paths below the base and never the base,
+  // so a symlinked `probes/` was walked through rather than refused, and the
+  // exclusive write then landed in whatever the link pointed at.
+  const baseState = await destinationState(baseDir);
+  if (baseState !== 'absent' && baseState !== 'directory') {
+    throw new Error(`${baseDir} is a ${baseState}, and a record is never written through one.`);
+  }
   await ensureDir(path.dirname(outPath), baseDir);
   const state = await destinationState(outPath);
   if (state !== 'absent') {
@@ -178,36 +232,51 @@ export async function writeRecord(outPath, record, baseDir) {
   await fs.writeFile(outPath, `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx' });
 }
 
-function parseArgs(argv) {
-  const opts = { model: 'opus', envClass: 'pristine', dryRun: false };
+export function parseArgs(argv) {
+  const opts = { model: 'opus', dryRun: false };
   const keys = {
     '--skill': 'skill',
     '--pathway': 'pathway',
     '--model': 'model',
-    '--env-class': 'envClass',
-    '--stack-digest': 'stackDigest',
-    '--date': 'date',
   };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--dry-run') { opts.dryRun = true; continue; }
     const key = keys[argv[i]];
     if (!key) throw new Error(`unknown flag: ${argv[i]}`);
-    opts[key] = argv[i + 1];
+    const value = argv[i + 1];
+    // A flag in a value position is a missing value, not a value. `--model
+    // --dry-run` consumed the safety flag as the model alias and then ran both
+    // live calls, which is the opposite of what the operator asked for.
+    if (value === undefined || value.startsWith('-')) {
+      throw new Error(`${argv[i]} needs a value, and "${value ?? ''}" is another flag.`);
+    }
+    opts[key] = value;
     i += 1;
   }
   if (!opts.skill) throw new Error('--skill is required.');
   if (!opts.pathway) throw new Error('--pathway is required.');
-  if (opts.envClass === 'representative' && !opts.stackDigest) {
-    throw new Error('a representative stack records --stack-digest.');
-  }
   return opts;
 }
 
 async function main(argv) {
   const opts = parseArgs(argv);
-  const { platform, scope } = parsePathway(opts.pathway);
-  const date = opts.date ?? new Date().toISOString().slice(0, 10);
+  const { platform, scope, harness } = parsePathway(opts.pathway);
+  // The date the collection happened, and nothing else. An operator-supplied
+  // date can post-date a record that cadence and staleness are computed from,
+  // so this reads the clock rather than an argument.
+  const date = new Date().toISOString().slice(0, 10);
   const nonce = `sw-probe-${crypto.randomBytes(8).toString('hex')}`;
+
+  // ADR-0016: the harness authenticates from the environment, over an empty
+  // home. Without the key both arms answer that they are not logged in, and the
+  // probe never reaches its question. The value is never read, printed, or
+  // written — only its presence is.
+  if (!opts.dryRun && !process.env.ANTHROPIC_API_KEY) {
+    throw new Error(
+      'ANTHROPIC_API_KEY is not set. The probe runs over an empty home, so the '
+      + 'harness has nothing else to authenticate with. Set it in this shell and '
+      + 'run again.');
+  }
 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-probe-'));
   const arms = {};
@@ -243,9 +312,13 @@ async function main(argv) {
     return 0;
   }
 
-  const build = await harnessBuild();
-  const installedArm = await runArm({ flags, cwd: arms.installed.cwd, home: arms.installed.home, ask: ASK });
-  const controlArm = await runArm({ flags, cwd: arms.control.cwd, home: arms.control.home, ask: ASK });
+  const build = await harnessBuild(harness);
+  const installedArm = await runArm({
+    harness, flags, cwd: arms.installed.cwd, home: arms.installed.home, ask: ASK,
+  });
+  const controlArm = await runArm({
+    harness, flags, cwd: arms.control.cwd, home: arms.control.home, ask: ASK,
+  });
 
   const record = {
     kind: 'isolation-probe',
@@ -260,8 +333,12 @@ async function main(argv) {
       model: installedArm.model_id,
       platform: `${process.platform}-${process.arch}`,
       pathway: opts.pathway,
-      environment_class: opts.envClass,
-      stack_digest: opts.envClass === 'representative' ? opts.stackDigest : null,
+      // This collector builds one environment: two empty homes, with the key
+      // in the environment. A representative stack is a different protocol,
+      // and labelling this one with that class would let a pristine probe
+      // cover a study that ran under an operator's own configuration.
+      environment_class: 'api-key-empty-home',
+      stack_digest: null,
     },
     installed: { ...installedArm, tree_digest: digest, trace: null },
     control: { ...controlArm, trace: null },

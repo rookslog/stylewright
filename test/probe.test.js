@@ -16,7 +16,8 @@ import {
   TUPLE, checkRecord, deriveOutcome, isolationProblems, checkDirectory, describe,
 } from '../bench/probe.mjs';
 import {
-  armFlags, parsePathway, plantedText, recordName, treeDigest, writeRecord, ASK,
+  armFlags, parseArgs, parsePathway, plantedText, recordName, servingBuild, treeDigest,
+  writeRecord, ASK,
 } from '../bench/collect-probe.mjs';
 
 const NONCE = 'sw-probe-0123456789abcdef';
@@ -33,7 +34,7 @@ const record = (over = {}) => ({
     model: 'claude-opus-4-6-20260514',
     platform: 'darwin-arm64',
     pathway: 'claude:user',
-    environment_class: 'pristine',
+    environment_class: 'api-key-empty-home',
     stack_digest: null,
   },
   installed: {
@@ -49,7 +50,12 @@ const record = (over = {}) => ({
 test('a well-formed record passes and derives a pass', () => {
   assert.deepEqual(checkRecord(record()), []);
   assert.deepEqual(deriveOutcome(record()), {
-    discovered: true, control_clean: true, isolated: true, passes: true,
+    installed_served: true,
+    control_served: true,
+    discovered: true,
+    control_clean: true,
+    isolated: true,
+    passes: true,
   });
 });
 
@@ -61,7 +67,7 @@ test('every element of the identity tuple is required', () => {
   }
 });
 
-test('a representative stack carries its digest, and a pristine one carries none', () => {
+test('a representative stack carries its digest, and an empty home carries none', () => {
   const rep = record({ identity: { ...record().identity, environment_class: 'representative' } });
   assert.match(checkRecord(rep).join(' '), /representative stack records its committed stack digest/);
   const ok = record({
@@ -149,6 +155,46 @@ test('a repeated flag is refused, and every occurrence is read', () => {
   assert.equal(deriveOutcome({ nonce: 'x', flags: twice }).isolated, false);
 });
 
+// A control that never ran and a control that ran clean have the same empty
+// answer. Reading the second from the first hands a passing probe the very
+// comparison it exists to make.
+test('a control that no build served does not count as a clean control', () => {
+  const dead = record();
+  dead.control.answer = '';
+  dead.control.model_id = '';
+  const outcome = deriveOutcome(dead);
+  assert.equal(outcome.control_served, false);
+  assert.equal(outcome.control_clean, false);
+  assert.equal(outcome.passes, false);
+  assert.match(describe('r.json', dead), /control_served=false/);
+});
+
+test('an installed arm that no build served has discovered nothing', () => {
+  const dead = record();
+  dead.installed.answer = NONCE;
+  dead.installed.model_id = '';
+  dead.control.model_id = '';
+  assert.equal(deriveOutcome(dead).discovered, false);
+});
+
+test('the flag set must be complete, not merely free of strangers', () => {
+  assert.match(isolationProblems(['-p', '--setting-sources', '', '--strict-mcp-config',
+    '--output-format', 'json']).join(' '), /flags omit --model/);
+  assert.match(isolationProblems(['-p', '--model', 'opus', '--setting-sources', '',
+    '--strict-mcp-config']).join(' '), /flags omit --output-format/);
+  assert.match(isolationProblems(['-p', '--model', 'opus', '--setting-sources', '',
+    '--strict-mcp-config', '--output-format', 'text']).join(' '),
+  /--output-format carried "text"/);
+});
+
+test('a record carrying anything shaped like an api key is refused', () => {
+  const leaked = record();
+  leaked.installed.stderr = 'env had sk-ant-api03-AAAABBBBCCCC';
+  const problems = checkRecord(leaked).join(' ');
+  assert.match(problems, /looks like an API key/);
+  assert.equal(problems.includes('sk-ant-api03-AAAABBBBCCCC'), false);
+});
+
 test('a probe run outside the isolation flags derives a failure', () => {
   const loose = record({ flags: ['-p', '--setting-sources', 'user', '--strict-mcp-config'] });
   const outcome = deriveOutcome(loose);
@@ -195,10 +241,28 @@ test('a missing probe directory holds no records and reports no problem', async 
   assert.deepEqual(lines, []);
 });
 
-test('a pathway names a platform and a scope the engine can install', () => {
-  assert.deepEqual(parsePathway('claude:user'), { platform: 'claude', scope: 'user' });
+test('a pathway names a platform and a scope, and the harness that reads it', () => {
+  assert.deepEqual(parsePathway('claude:user'),
+    { platform: 'claude', scope: 'user', harness: 'claude' });
   assert.throws(() => parsePathway('claude'), /Unknown scope/);
   assert.throws(() => parsePathway('emacs:user'), /Unknown platform/);
+  // Installing into `.codex/skills` and then asking Claude Code about it would
+  // attribute one harness's answer to the other pathway.
+  assert.throws(() => parsePathway('codex:user'), /needs its own runner/);
+});
+
+test('a flag in a value position is a missing value, not a value', () => {
+  assert.throws(() => parseArgs(['--skill', '--dry-run', '--pathway', 'claude:user']),
+    /--skill needs a value/);
+  assert.throws(() => parseArgs(['--skill', 'a', '--pathway']), /--pathway needs a value/);
+  assert.deepEqual(parseArgs(['--skill', 'a', '--pathway', 'claude:user', '--dry-run']),
+    { model: 'opus', dryRun: true, skill: 'a', pathway: 'claude:user' });
+});
+
+test('a tie in the model usage names no build, the way extract.mjs refuses one', () => {
+  assert.equal(servingBuild({ a: { outputTokens: 9 }, b: { outputTokens: 4 } }), 'a');
+  assert.equal(servingBuild({ a: { outputTokens: 9 }, b: { outputTokens: 9 } }), '');
+  assert.equal(servingBuild({}), '');
 });
 
 test('the planted text carries the nonce, and the ask never does', () => {
@@ -228,4 +292,18 @@ test('a record path outside the probe directory is refused', async () => {
   await assert.rejects(
     writeRecord(path.join(dir, '..', 'escape.json'), record(), dir),
     /written under/);
+});
+
+// `ensureDir` compares paths BELOW the base and never the base itself, so a
+// symlinked probe directory was walked through rather than refused, and the
+// exclusive write landed in whatever the link pointed at.
+test('a symlinked record directory is refused, and nothing is written through it', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-link-'));
+  const real = path.join(root, 'elsewhere');
+  const link = path.join(root, 'probes');
+  await fs.mkdir(real);
+  await fs.symlink(real, link);
+  await assert.rejects(
+    writeRecord(path.join(link, 'r.json'), record(), link), /never written through one/);
+  assert.deepEqual(await fs.readdir(real), []);
 });

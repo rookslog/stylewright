@@ -33,8 +33,17 @@ export const TUPLE = [
   'harness_build', 'model', 'platform', 'pathway', 'environment_class', 'stack_digest',
 ];
 
-/** The environment classes the design names, and the one that needs a digest. */
-export const ENV_CLASSES = ['pristine', 'representative'];
+/**
+ * The environment classes, and the one that needs a digest.
+ *
+ * `api-key-empty-home` is the pristine class as the owner settled it on
+ * 2026-08-06, in ADR-0016. The home is empty, and the harness authenticates
+ * from an API key in the environment, so nothing about the operator's own
+ * configuration reaches either arm. The class is named for how it
+ * authenticates, because a home that held a credential would be a different
+ * environment and must be a different name.
+ */
+export const ENV_CLASSES = ['api-key-empty-home', 'representative'];
 export const STACK_CLASS = 'representative';
 
 /**
@@ -47,11 +56,13 @@ export const STACK_CLASS = 'representative';
  * settings and their CLAUDE.md together, which is what makes a true no-guidance
  * control possible. `--strict-mcp-config` suppresses the servers.
  */
-export const REQUIRED_FLAGS = ['-p', '--strict-mcp-config'];
-export const ALLOWED_FLAGS = [
+export const REQUIRED_FLAGS = [
   '-p', '--model', '--setting-sources', '--strict-mcp-config', '--output-format',
 ];
+export const ALLOWED_FLAGS = REQUIRED_FLAGS;
 const FLAGS_TAKING_A_VALUE = ['--model', '--setting-sources', '--output-format'];
+/** Values a flag must carry, where the control arm fixes one. */
+const FIXED_VALUES = { '--setting-sources': '', '--output-format': 'json' };
 
 /**
  * Words a record may not carry. Each one states an outcome, and the outcome is
@@ -63,6 +74,8 @@ const ASSERTED = ['outcome', 'pass', 'passed', 'fail', 'failed', 'verdict', 'res
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ARMS = ['installed', 'control'];
+/** An Anthropic key, in the shape the vendor issues them. */
+const SECRET = /sk-ant-[A-Za-z0-9_-]{8,}/;
 
 const isText = (v) => typeof v === 'string' && v.trim().length > 0;
 
@@ -97,9 +110,6 @@ function keyPaths(value, prefix = '') {
 export function isolationProblems(flags) {
   if (!Array.isArray(flags) || !flags.length) return ['flags is a non-empty array.'];
   const problems = [];
-  for (const required of REQUIRED_FLAGS) {
-    if (!flags.includes(required)) problems.push(`flags omit ${required}.`);
-  }
   // EVERY occurrence, not the first. A set that opens with an empty
   // `--setting-sources` and then repeats it with `user` passes a check that
   // reads `indexOf`, and the later flag is the one the harness obeys. A
@@ -116,15 +126,19 @@ export function isolationProblems(flags) {
     }
     if (seen.has(flag)) problems.push(`${flag} appears twice, so the arm's surface is unclear.`);
     seen.add(flag);
-    if (flag === '--setting-sources' && flags[i + 1] !== '') {
+    const fixed = FIXED_VALUES[flag];
+    if (fixed !== undefined && flags[i + 1] !== fixed) {
       problems.push(
-        `--setting-sources carried "${flags[i + 1]}", and the control arm passes an `
-        + 'empty value.');
+        `${flag} carried "${flags[i + 1]}", and the control arm passes `
+        + `${fixed === '' ? 'an empty value' : `"${fixed}"`}.`);
     }
     if (FLAGS_TAKING_A_VALUE.includes(flag)) i += 1;
   }
-  if (!seen.has('--setting-sources')) {
-    problems.push('flags omit --setting-sources, so nothing suppressed the operator config.');
+  // Presence is checked from what the walk SAW, not from `includes`. A flag
+  // sitting in a value position is not a flag the arm ran, and reading the raw
+  // array would count it as one.
+  for (const required of REQUIRED_FLAGS) {
+    if (!seen.has(required)) problems.push(`flags omit ${required}.`);
   }
   return problems;
 }
@@ -212,6 +226,13 @@ export function checkRecord(record, name = 'record') {
 
   for (const p of isolationProblems(record.flags)) say(p);
 
+  // The probe authenticates from an API key in the environment, per ADR-0016,
+  // and the key never enters the tree. A record is committed, so a key that
+  // reached one would be published. The match is never quoted back.
+  if (SECRET.test(JSON.stringify(record))) {
+    say('something in this record looks like an API key. Nothing here may carry one.');
+  }
+
   for (const at of keyPaths(record)) {
     const leaf = at.split('.').pop();
     if (ASSERTED.includes(leaf)) {
@@ -232,10 +253,20 @@ export function checkRecord(record, name = 'record') {
  */
 export function deriveOutcome(record) {
   const nonce = record?.nonce ?? '';
-  const discovered = Boolean(nonce) && (record?.installed?.answer ?? '').includes(nonce);
-  const controlClean = Boolean(nonce) && !(record?.control?.answer ?? '').includes(nonce);
+  // An arm that no build served did not answer. Its empty answer contains no
+  // nonce, which reads identically to a control that ran and stayed clean —
+  // so a failed control invocation would hand a passing probe the very
+  // comparison it exists to make. Both halves therefore require a served arm.
+  const installedServed = isText(record?.installed?.model_id);
+  const controlServed = isText(record?.control?.model_id);
+  const discovered = installedServed && Boolean(nonce)
+    && (record?.installed?.answer ?? '').includes(nonce);
+  const controlClean = controlServed && Boolean(nonce)
+    && !(record?.control?.answer ?? '').includes(nonce);
   const isolated = isolationProblems(record?.flags).length === 0;
   return {
+    installed_served: installedServed,
+    control_served: controlServed,
     discovered,
     control_clean: controlClean,
     isolated,
@@ -247,8 +278,13 @@ export function deriveOutcome(record) {
 export function describe(name, record) {
   const o = deriveOutcome(record);
   const tuple = TUPLE.map((f) => `${f}=${record.identity?.[f] ?? '-'}`).join(' ');
+  // `control_served` is printed beside `control_clean`, because a control that
+  // never ran and a control that ran clean are opposite readings of the same
+  // empty answer, and a line that showed only the second would hide the first.
   return `${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
-    + `(discovered=${o.discovered} control_clean=${o.control_clean} isolated=${o.isolated}) ${tuple}`;
+    + `(installed_served=${o.installed_served} discovered=${o.discovered} `
+    + `control_served=${o.control_served} control_clean=${o.control_clean} `
+    + `isolated=${o.isolated}) ${tuple}`;
 }
 
 /** Reads every record under `dir`. A missing directory holds no records. */

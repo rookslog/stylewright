@@ -20,6 +20,10 @@ under the exact flag set the control arm runs, in a redirected home the harness
 respects. `bench/probe.mjs` holds that flag set and refuses a record collected
 under any other.
 
+The collector drives the Claude Code harness, so it probes the pathways that
+harness reads. A Codex pathway needs its own runner, and the collector refuses
+it rather than attributing one harness's answer to another pathway.
+
 Every pathway runs the same flags, because the bench runs one control:
 
 ```
@@ -30,7 +34,7 @@ Every pathway runs the same flags, because the bench runs one control:
 
 ```
 node bench/collect-probe.mjs --skill <name> --pathway claude:user --dry-run
-node bench/collect-probe.mjs --skill <name> --pathway claude:user
+ANTHROPIC_API_KEY=... node bench/collect-probe.mjs --skill <name> --pathway claude:user
 ```
 
 The collector installs the skill into a throwaway redirected home through one
@@ -62,21 +66,21 @@ never attests that the run happened as the bytes describe. Section 5 of the
 measurement design names that floor, and ADR-0015 records why the design stops
 there rather than building a deeper mechanism.
 
-## The harness must authenticate from outside the home
+## The harness authenticates from the environment
 
-A redirected home holds no credentials, so a harness that reads its credentials
-from the home refuses to run and answers that it is not logged in. Observed on
-2026-08-06 on macOS, with the Claude Code CLI. Both arms recorded that answer,
-and the record derives a failure, which is the honest reading: the probe never
-reached the question it asks.
+A redirected home holds no credentials, so the harness refuses to run in one
+and answers that it is not logged in. Observed on 2026-08-06 on macOS, with the
+Claude Code CLI, on an empty home and again on a home holding only an
+onboarding flag.
 
-A home holding only an onboarding flag answers the same way, so onboarding
-state is not what is missing. This machine keeps its token in the keychain and
-has no credential file to copy.
+ADR-0016 settles it. Set `ANTHROPIC_API_KEY` in the shell that runs the
+collector, and both homes stay empty. The collector refuses to run without the
+key, and nothing here reads, prints, or records its value. The check refuses a
+record that carries anything shaped like a key, because a record is committed
+and a leaked key would be published.
 
-Issue #68 carries the decision and both routes. Until it closes, the collector
-copies nothing into either home, and the classes stay the two the measurement
-design names. A home that may hold a credential is a class of its own, and it
-gets its own name when someone decides what it holds.
+That is the environment class, and the record names it `api-key-empty-home`. A
+home holding a credential would be a different environment, so it would need
+its own class name to compare as one.
 Give the harness a credential the home does not supply, such as an API key in
 the environment, and the probe reaches its question.
