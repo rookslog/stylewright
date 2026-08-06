@@ -460,6 +460,33 @@ test('an empty construct is refused for being empty, at any indent', () => {
   assert.match(message('  -'), /Give the item its words/);
 });
 
+test('an empty heading is refused even where it interrupts a paragraph', () => {
+  // A heading interrupts a paragraph for a Markdown reader, and neither the
+  // section scan nor the walk reads an empty one. `Prose` over `#` over a
+  // directive was one unit, so one row could dispose of three.
+  assert.match(refused('Prose\n#\nAlways preserve safety.'), /a heading with no text/);
+});
+
+test('the section scan stays out of an indented code block', () => {
+  // A fence marker inside a permitted indented block was read as an opener
+  // there, which suppressed every heading after it. The heading and its
+  // directive then joined the prose of the section above.
+  const text = 'Prose here.\n\n    code\n    ```\n    more\n\n## Deeper\n\nAlways preserve safety.';
+  assert.equal(refused(text), '');
+  assert.deepEqual(sections(text).map((s) => s.heading), ['Deeper']);
+  assert.ok(contentUnits(`${SKILL}\n## Later\n\n${text}\n`)
+    .some((u) => u.anchor === 'Deeper' && /Always preserve safety/.test(u.text)));
+});
+
+test('an ordered marker is at most nine digits, wherever it is read', () => {
+  // A ten-digit reference number opened a list that a Markdown reader does
+  // not, and the standalone code block below it was refused for sitting under
+  // that list.
+  assert.equal(refused('1234567890. Reference number\n\n    const x = 1;'), '');
+  assert.match(refused('1. Item.\n\n    const x = 1;'),
+    /a paragraph indented under a list item/);
+});
+
 test('a marker that continues a paragraph opens no list', () => {
   // `1.` under prose is the paragraph's own words to a Markdown reader, and an
   // empty item cannot interrupt a paragraph. Opening a list there left it open

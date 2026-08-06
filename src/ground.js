@@ -138,13 +138,16 @@ function outsideGrammar(line, { startsBlock, openText, listOpen, opensFence, ope
   // A blockquote is the one construct at column 0 whose contents the extractor
   // reads as its own prose, so the quote and its container merge.
   if (indentOf(line) === 0 && line.startsWith('>')) return AT_COLUMN_ZERO.blockquote;
-  // An empty marker and an empty heading are refused where they begin a block,
-  // at any indent. On a continuation line they are the prose of the line above,
-  // and a Markdown reader agrees: neither interrupts a paragraph. Indented,
-  // they used to be refused for their indent alone, and the remedy told the
-  // author to write at column 0 the very line the check refuses there.
+  // An empty heading is refused wherever it appears, because a heading does
+  // interrupt a paragraph for a Markdown reader, and neither the section scan
+  // nor the walk reads one. `Prose` over `#` over a directive was one unit.
+  if (EMPTY_HEADING.test(line.trimStart())) return AT_COLUMN_ZERO.heading;
+  // An empty marker is refused where it begins a block, at any indent. On a
+  // continuation line it is the prose of the line above, and a Markdown reader
+  // agrees: an empty item interrupts no paragraph. Indented, both were refused
+  // for the indent alone, and the remedy told the author to write at column 0
+  // the very line the check refuses there.
   if (!openText || startsBlock) {
-    if (EMPTY_HEADING.test(line.trimStart())) return AT_COLUMN_ZERO.heading;
     if (EMPTY_LIST.test(line.trimStart())) return AT_COLUMN_ZERO.item;
   }
   if (indentOf(line) === 0) return null;
@@ -253,7 +256,10 @@ function unitsIn(body, anchor, refuse = () => {}) {
       block.kind = 'indented';
       continue;
     }
-    const m = /^\s*(?:[-*+]|\d+[.)])\s+(.*\S)\s*$/.exec(line);
+    // Nine digits at most here too. A ten-digit reference number opened a list
+    // that a Markdown reader does not, and the standalone code block below it
+    // was then refused for sitting under that list.
+    const m = /^\s*(?:[-*+]|\d{1,9}[.)])\s+(.*\S)\s*$/.exec(line);
     if (m) {
       flush();
       if (!LEAD.test(line)) listOpen = true;
