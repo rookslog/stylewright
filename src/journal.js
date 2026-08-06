@@ -1,6 +1,28 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { hashFile } from './manifest.js';
 import { destinationState, removeAt, pruneEmpty, reachability } from './tree.js';
+
+/**
+ * Does the stated path RESOLVE to a file a recorded key names in different
+ * case? Asked of the filesystem, not guessed from the platform: on a
+ * case-folding target the two spellings are one file, and deleting through
+ * the stated one takes the file the record still names. Identity, not
+ * spelling, is the comparison — the same rule the manifest read applies to
+ * its own handle.
+ */
+async function recordedThroughFold(destDir, rel, recorded) {
+  const aliases = Object.keys(recorded).filter(
+    (k) => k !== rel && k.toLowerCase() === rel.toLowerCase());
+  if (!aliases.length) return false;
+  const here = await fs.lstat(path.join(destDir, rel)).catch(() => null);
+  if (!here) return false;
+  for (const k of aliases) {
+    const there = await fs.lstat(path.join(destDir, k)).catch(() => null);
+    if (there && here.dev === there.dev && here.ino === there.ino) return true;
+  }
+  return false;
+}
 
 /**
  * The record a run writes before it copies, and the recovery that reads it.
@@ -127,7 +149,12 @@ export async function discardStated(targetDir, name, stated, manifest) {
     }
     if (await destinationState(abs) === 'file'
       && await hashFile(abs) === stated[rel]
-      && recorded[rel] !== stated[rel]) {
+      && recorded[rel] !== stated[rel]
+      // An interrupted case-only rename leaves one file under two spellings
+      // on a case-folding target. The exact-key check above says unrecorded,
+      // the resolver says this IS the recorded file, and the resolver is the
+      // one that executes the deletion.
+      && !(await recordedThroughFold(destDir, rel, recorded))) {
       await removeAt(abs);
       removed.push(`${name}/${rel}`);
       took = true;

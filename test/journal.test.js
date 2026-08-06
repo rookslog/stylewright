@@ -245,3 +245,30 @@ test('a pending skill named constructor is judged by its record, not the prototy
   assert.deepEqual(done.cleared, ['constructor']);
   assert.ok(!(await exists(dir)), 'the emptied directory must be pruned');
 });
+
+test('recovery keeps a file the record names in different case', async () => {
+  // An interrupted case-only rename: recorded a.md, pending A.md, same
+  // content, one file on a case-folding filesystem. The exact-key ownership
+  // check said unrecorded, and recovery deleted the file the manifest still
+  // names. Discriminates on case-folding filesystems (macOS, Windows); on a
+  // case-sensitive one the stated path is absent and nothing was at risk.
+  const target = await tmp();
+  const dir = path.join(target, 'demo-craft');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'a.md'), 'same bytes\n');
+  const manifest = {
+    ...emptyManifest(),
+    skills: {
+      'demo-craft': {
+        tier: 'craft',
+        pathway: 'engine',
+        installedAt: NOW,
+        files: { 'a.md': sha('same bytes\n') },
+      },
+    },
+    pending: { 'demo-craft': { 'A.md': sha('same bytes\n') } },
+  };
+  await recoverPending(target, manifest);
+  assert.ok(await exists(path.join(dir, 'a.md')),
+    'the file the record still names must survive recovery');
+});
