@@ -12,15 +12,16 @@ one person at the moment of maximum deadline pressure. A protocol shaped
 that way never runs, and its pathways stay unprobed while the design
 speaks of them as covered.
 
-**Decision.** The discoverability probe runs once per harness build per
-pathway per environment class it covers, on a calendar, with a committed
-record naming the build, the served model, the platform, the pathway, the
-environment class, and the date. A probe applies to a study only when the
-harness build, the served model, the platform, the pathway, and the
-environment class are identical between them — identity, not ordering,
-because a study on an older or merely different model is as unprobed as
-one on a newer, and nothing generalises across pathways. The comparison
-is computed at read time, never hand-tracked. Installed delivery stays publication-tier, and
+**Decision.** The discoverability probe binds to the identity tuple the
+measurement design defines once, in section 4.1 — harness build, served
+model, platform, pathway, environment class — and runs on a calendar,
+once per tuple it is scheduled to cover, with a committed record naming
+every element, the outcome, and the date. A probe covers a study only
+when every element of the tuple is identical between them and the probe
+passed — identity, not ordering, because a study on an older or merely
+different model is as unprobed as one on a newer, and nothing
+generalises across any element. A recorded failure is a result, never
+coverage. The comparison is computed at read time, never hand-tracked. Installed delivery stays publication-tier, and
 injection stays the drafting tool.
 
 **Consequences.** Probe cost is spread and scheduled instead of spiked and
@@ -32,5 +33,9 @@ compared build and model alone, which let one pathway's probe cover
 another's study, contradicting the scope rule beside it. Platform and
 pathway joined the identity, and a second round added the environment
 class to the record and the predicate, because a pristine-home probe says
-nothing about discovery under a representative stack. The mechanism is
-the measurement design, section 4.
+nothing about discovery under a representative stack. A third round
+replaced the enumerated lists with the single identity tuple the design
+defines once, scheduled cadence per tuple, and made a passing outcome a
+condition of coverage, after three rounds each caught one enumeration
+site missing one element. The mechanism is the measurement design,
+section 4.

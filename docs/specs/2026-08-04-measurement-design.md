@@ -164,8 +164,8 @@ of loading.
    probed tree and the measured tree must not differ silently.
 3. Ask the harness to repeat the nonce, and run the same ask against an
    identical environment with no skill installed.
-4. Record both answers, the harness build, the served model identifier,
-   the platform, the pathway, the environment class, and the date.
+4. Record both answers, every element of the identity tuple defined
+   under cadence below, the outcome, and the date.
 
 A repeated nonce is evidence the text reached the context. The empty-home
 control catches a probe that passes for the wrong reason. A harness trace
@@ -173,19 +173,23 @@ that names the loaded file is better evidence than either, and the probe
 uses one wherever the harness offers it.
 
 **Cadence and applicability.** Probe cadence is decoupled from publication:
-the probe runs once per harness build per pathway per environment class
-it covers, on a calendar, and the record is committed. A probe applies to
-a study only when the harness build, the served model, the platform, the
-pathway, and the environment class are identical between them, and
-applicability is identity, never ordering: a study on
+a probe binds to an identity tuple, and this sentence is the tuple's one
+definition — harness build, served model, platform, pathway, environment
+class — which every other mention of probe identity refers to rather than
+re-listing, because three review rounds each caught one re-listing site
+missing one element. The probe runs on a calendar, once per identity
+tuple it is scheduled to cover, and the record is committed carrying
+every element of the tuple, the outcome, and the date. A probe covers a
+study only when every element of the tuple is identical between them and
+the probe passed. Applicability is identity, never ordering: a study on
 an older or merely different model than the probe's is as unprobed as a
-study on a newer one. A status line
-whose study has no applicable probe says unprobed, and the comparison is
-computed, never hand-tracked. A probe result binds to the exact harness,
-build, model, platform, and pathway it ran on, and the record says so.
-Nothing generalises across pathways. The copy pathways share one static
-conformance suite, which needs no live model, and each live pathway needs
-its own probe.
+study on a newer one. And a recorded failure is a result, not coverage:
+a status line whose study matches only a failed probe says the probe
+failed, a line whose study matches no probe says unprobed, and the
+comparison is computed, never hand-tracked. Nothing generalises across
+any element of the tuple. The copy pathways share one static conformance
+suite, which needs no live model, and each live pathway needs its own
+probe.
 
 ### 4.2 Installed delivery
 
@@ -268,6 +272,19 @@ measures, because a revised skill is a new treatment with a new digest,
 and section 7 already computes staleness against exactly that binding. A
 confirmatory entry never carries a null digest.
 
+**The attestation floor.** Every ordering claim in this section reduces
+to two forge facts, and only two: that named content was pushed at a
+server-recorded time, and that a named workflow, at a revision the
+repository history carries, concluded a named result on a named push. An
+author-written record — a manifest, a ledger line, a timestamp — is never
+its own evidence. It verifies against one of those two facts, or the
+design names it as trusted. And where no forge fact can carry a claim —
+execution order, work never pushed, a transformation of bytes the tree
+never held — the design records the residue instead of inventing a
+mechanism. Three review rounds each found one author-written record
+standing as its own evidence, so this floor is stated once and every
+mechanism below inherits it.
+
 Ordering is not self-attested, and both ends of the comparison are the
 server's facts: an entry counts as pre-registered only when its push
 precedes the first push that carries any evidence file of an arm it
@@ -291,7 +308,10 @@ verdict is appended to the ledger as an attestation entry naming the
 study. A study is citable only when its attestation entry exists. The
 entry is an author-written line, so the later static check verifies it
 against the forge's own record of the named run — the run exists, it
-succeeded, and it ran on the push that carried the evidence — and never
+succeeded, it ran on the push that carried the evidence, and it is a run
+of the ordering workflow itself, identified by workflow path at a
+revision the repository history carries, because a push can carry many
+green runs and naming any of them would attest nothing — and never
 against the entry alone. A forge record that has expired leaves the study
 inside the durability residue below, and the check reports that instead
 of passing.
@@ -360,8 +380,13 @@ written to suit the skill. Selection: the frame and a deterministic rule
 are registered at step 3, before the skill exists, because provenance
 alone still permits searching a corpus until a favourable scenario turns
 up, and a rule fixed before the skill closes that search. The ledger
-records frame, rule, and selection. Late disclosure is still the ceiling:
-a public repository cannot hold a test set back.
+records frame, rule, and selection. Before the skill exists is itself an
+ordering claim, and the attestation floor prices it: the check compares
+the frame registration's push against the first push that carries the
+skill's content, both server facts, and a treatment drafted locally
+before the frame was pushed is the same residue as every other work the
+forge never saw. Late disclosure is still the ceiling: a public
+repository cannot hold a test set back.
 
 Step 5 exists because the exploratory control goes stale: a control
 collected days before its treatment measures a service that may have
@@ -398,9 +423,9 @@ whole is what lets a later reader argue with that view.
 
 ## 7. Status, derived and scoped
 
-A skill's maturity is not a badge. Every claim in section 4 binds to a
-harness, a build, a model, a platform, and a pathway, and a single word
-such as "tested" erases exactly those bindings. Status is a set of scoped
+A skill's maturity is not a badge. Every claim in section 4 binds to the
+identity tuple section 4.1 defines, and a single word such as "tested"
+erases exactly those bindings. Status is a set of scoped
 statements, in three classes.
 
 - **Unmeasured**, hand-written in `SOURCE.md`, for a skill with no study.
@@ -415,9 +440,9 @@ statements, in three classes.
   line that says the study found nothing, because a line that only says
   measured reads as a credential. A line is printed as stale when the
   skill's current content digest differs from the digest the study
-  measured, and as unprobed when no probe matches the study's harness
-  build, served model, platform, pathway, and environment class under
-  the identity rule in section 4.1. The
+  measured, as failed-probe when the study's identity tuple matches only
+  a probe that failed, and as unprobed when no probe matches the tuple at
+  all, under the identity rule in section 4.1. The
   platform and environment class a line names come from the study
   manifest, which section 4.2 requires to carry both. Staleness is
   computed at read time. A derived line can go stale the moment the skill
@@ -509,3 +534,14 @@ decision, taken only with ADR-0007's test extended first.
   representative-stack study. And ADR-0010's decision and consequences
   carry the registered-attempts narrowing its amendment note had already
   claimed for them.
+- Draft 9, after the third round tripped the round-economy tripwire —
+  five findings, and the count rose. The diagnosis: two structural causes
+  were being patched one symptom at a time. So the probe identity tuple
+  is now defined once in section 4.1, with cadence, record, coverage, and
+  status all referring to it, and a passing outcome is a condition of
+  coverage. And section 5 states the attestation floor once — two forge
+  facts, push time and a named workflow's result at a carried revision,
+  with everything author-written verified against them or named trusted —
+  so the attestation entry binds to the ordering workflow's own run, and
+  frame-before-skill is priced as push order with local drafting a named
+  residue. ADR-0011 and ADR-0013 carry matching amendments.

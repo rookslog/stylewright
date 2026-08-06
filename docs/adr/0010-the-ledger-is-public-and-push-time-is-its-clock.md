@@ -27,7 +27,9 @@ as an attestation entry naming the study, because the manifest that push
 carries cannot hold a verdict produced after it and a promoted study is
 never edited. The attestation entry is an author-written line, so the
 later static check verifies it against the forge's record of the run it
-names, never against the entry alone.
+names — a run of the ordering workflow itself, identified by workflow
+path at a revision the history carries, on the evidence push — never
+against the entry alone.
 
 **Consequences.** Pre-registration becomes checkable instead of asserted.
 Failed, aborted, and abandoned attempts stay on the ledger, so a retried
