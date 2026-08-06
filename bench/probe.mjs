@@ -110,33 +110,51 @@ function keyPaths(value, prefix = '') {
 export function isolationProblems(flags) {
   if (!Array.isArray(flags) || !flags.length) return ['flags is a non-empty array.'];
   const problems = [];
-  // EVERY occurrence, not the first. A set that opens with an empty
-  // `--setting-sources` and then repeats it with `user` passes a check that
-  // reads `indexOf`, and the later flag is the one the harness obeys. A
-  // repeated flag is refused outright for the same reason: the acceptance test
-  // is about the surface the arm actually ran under, and a duplicate makes that
-  // a question about the harness's precedence rules.
+  // EVERY element is consumed, as a flag or as the value of the flag before it.
+  // Skipping anything that does not open with a dash left a stray positional
+  // invisible, so an argv carrying an extra prompt read as the control arm's
+  // exact invocation. And EVERY occurrence is read, not the first: a set that
+  // opens with an empty `--setting-sources` and repeats it with `user` obeys
+  // the later spelling, so a duplicate is refused outright.
   const seen = new Set();
-  for (let i = 0; i < flags.length; i += 1) {
+  let i = 0;
+  while (i < flags.length) {
     const flag = flags[i];
-    if (typeof flag !== 'string' || !flag.startsWith('-')) continue;
+    if (typeof flag !== 'string') {
+      problems.push(`the entry at position ${i} is not a string.`);
+      i += 1;
+      continue;
+    }
     if (!ALLOWED_FLAGS.includes(flag)) {
-      problems.push(`${flag} is not a flag the control arm runs.`);
+      problems.push(flag.startsWith('-')
+        ? `${flag} is not a flag the control arm runs.`
+        : `"${flag}" at position ${i} is not part of the control arm's invocation.`);
+      i += 1;
       continue;
     }
     if (seen.has(flag)) problems.push(`${flag} appears twice, so the arm's surface is unclear.`);
     seen.add(flag);
-    const fixed = FIXED_VALUES[flag];
-    if (fixed !== undefined && flags[i + 1] !== fixed) {
-      problems.push(
-        `${flag} carried "${flags[i + 1]}", and the control arm passes `
-        + `${fixed === '' ? 'an empty value' : `"${fixed}"`}.`);
+    if (!FLAGS_TAKING_A_VALUE.includes(flag)) {
+      i += 1;
+      continue;
     }
-    if (FLAGS_TAKING_A_VALUE.includes(flag)) i += 1;
+    const value = flags[i + 1];
+    const fixed = FIXED_VALUES[flag];
+    if (i + 1 >= flags.length) {
+      problems.push(`${flag} carries no value.`);
+    } else if (fixed !== undefined) {
+      if (value !== fixed) {
+        problems.push(
+          `${flag} carried "${value}", and the control arm passes `
+          + `${fixed === '' ? 'an empty value' : `"${fixed}"`}.`);
+      }
+    } else if (typeof value !== 'string' || value === '' || value.startsWith('-')) {
+      problems.push(`${flag} carries no value.`);
+    }
+    i += 2;
   }
-  // Presence is checked from what the walk SAW, not from `includes`. A flag
-  // sitting in a value position is not a flag the arm ran, and reading the raw
-  // array would count it as one.
+  // Presence is read from what the walk SAW, not from `includes`. A flag
+  // sitting in a value position is not a flag the arm ran.
   for (const required of REQUIRED_FLAGS) {
     if (!seen.has(required)) problems.push(`flags omit ${required}.`);
   }
@@ -204,6 +222,13 @@ export function checkRecord(record, name = 'record') {
       continue;
     }
     if (typeof side.answer !== 'string') say(`${arm}.answer retains the answer verbatim.`);
+    // The harness's own failure byte. A run that reported an error can still
+    // carry answer text and a serving build, so without this the record keeps
+    // no trace of the failure and the outcome reads two failed invocations as
+    // a comparison.
+    if (typeof side.is_error !== 'boolean') {
+      say(`${arm}.is_error records whether the harness reported the run as failed.`);
+    }
     // Empty when no build answered, which is a failed probe and not a broken
     // record. Absent is a different thing, and it is refused.
     if (typeof side.model_id !== 'string') {
@@ -257,8 +282,9 @@ export function deriveOutcome(record) {
   // nonce, which reads identically to a control that ran and stayed clean —
   // so a failed control invocation would hand a passing probe the very
   // comparison it exists to make. Both halves therefore require a served arm.
-  const installedServed = isText(record?.installed?.model_id);
-  const controlServed = isText(record?.control?.model_id);
+  const served = (arm) => isText(record?.[arm]?.model_id) && record?.[arm]?.is_error === false;
+  const installedServed = served('installed');
+  const controlServed = served('control');
   const discovered = installedServed && Boolean(nonce)
     && (record?.installed?.answer ?? '').includes(nonce);
   const controlClean = controlServed && Boolean(nonce)

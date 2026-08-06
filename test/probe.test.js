@@ -38,11 +38,12 @@ const record = (over = {}) => ({
     stack_digest: null,
   },
   installed: {
-    answer: NONCE, model_id: 'claude-opus-4-6-20260514', home: '/tmp/a/home',
-    tree_digest: 'abc123', trace: null,
+    answer: NONCE, model_id: 'claude-opus-4-6-20260514', is_error: false,
+    home: '/tmp/a/home', tree_digest: 'abc123', trace: null,
   },
   control: {
-    answer: 'NONE', model_id: 'claude-opus-4-6-20260514', home: '/tmp/b/home', trace: null,
+    answer: 'NONE', model_id: 'claude-opus-4-6-20260514', is_error: false,
+    home: '/tmp/b/home', trace: null,
   },
   ...over,
 });
@@ -118,6 +119,20 @@ test('a probe the harness never served is a valid record that derives a failure'
   assert.equal(deriveOutcome(refused).passes, false);
 });
 
+// The installed arm can fail while the control succeeds. The tuple element
+// comes from whichever arm a build served, so that ordinary failed probe stays
+// the valid failure result the protocol keeps.
+test('a failed installed arm beside a served control is still a valid record', () => {
+  const half = record();
+  half.installed.answer = '';
+  half.installed.model_id = '';
+  half.installed.is_error = true;
+  assert.deepEqual(checkRecord(half), []);
+  assert.equal(deriveOutcome(half).installed_served, false);
+  assert.equal(deriveOutcome(half).control_served, true);
+  assert.equal(deriveOutcome(half).passes, false);
+});
+
 test('a record naming a build no arm reports is refused', () => {
   const bad = record();
   bad.installed.model_id = '';
@@ -158,6 +173,43 @@ test('a repeated flag is refused, and every occurrence is read', () => {
 // A control that never ran and a control that ran clean have the same empty
 // answer. Reading the second from the first hands a passing probe the very
 // comparison it exists to make.
+// A run can report an error and still carry answer text and a serving build.
+// Two failed invocations then read as a comparison, and if the failed installed
+// text happened to hold the nonce the probe derived a pass.
+test('an arm the harness reported as failed is not a served arm', () => {
+  const errored = record();
+  errored.installed.is_error = true;
+  assert.deepEqual(checkRecord(errored), []);
+  assert.equal(deriveOutcome(errored).installed_served, false);
+  assert.equal(deriveOutcome(errored).discovered, false);
+  assert.equal(deriveOutcome(errored).passes, false);
+  const both = record();
+  both.installed.is_error = true;
+  both.control.is_error = true;
+  assert.equal(deriveOutcome(both).control_clean, false);
+});
+
+test('a record with no failure byte is refused, because the byte is the evidence', () => {
+  const silent = record();
+  delete silent.installed.is_error;
+  assert.match(checkRecord(silent).join(' '), /installed.is_error records whether/);
+});
+
+test('a stray positional is refused, not skipped', () => {
+  const stray = ['-p', 'extra-prompt', '--model', 'opus', '--setting-sources', '',
+    '--strict-mcp-config', '--output-format', 'json'];
+  assert.match(isolationProblems(stray).join(' '),
+    /"extra-prompt" at position 1 is not part of the control arm's invocation/);
+  assert.equal(deriveOutcome({ ...record(), flags: stray }).isolated, false);
+});
+
+test('a value-taking flag with no value is refused', () => {
+  assert.match(isolationProblems(['-p', '--model', '--setting-sources', '',
+    '--strict-mcp-config', '--output-format', 'json']).join(' '), /--model carries no value/);
+  assert.match(isolationProblems(['-p', '--model', 'opus', '--setting-sources', '',
+    '--strict-mcp-config', '--output-format']).join(' '), /--output-format carries no value/);
+});
+
 test('a control that no build served does not count as a clean control', () => {
   const dead = record();
   dead.control.answer = '';
@@ -244,8 +296,13 @@ test('a missing probe directory holds no records and reports no problem', async 
 test('a pathway names a platform and a scope, and the harness that reads it', () => {
   assert.deepEqual(parsePathway('claude:user'),
     { platform: 'claude', scope: 'user', harness: 'claude' });
-  assert.throws(() => parsePathway('claude'), /Unknown scope/);
+  assert.throws(() => parsePathway('claude'), /A pathway is <platform>:<scope>/);
+  assert.throws(() => parsePathway('claude:sideways'), /Unknown scope/);
   assert.throws(() => parsePathway('emacs:user'), /Unknown platform/);
+  // A third component installed and paid for two live calls as `claude:user`
+  // while the record kept the malformed string.
+  assert.throws(() => parsePathway('claude:user:sub/record'),
+    /A pathway is <platform>:<scope>/);
   // Installing into `.codex/skills` and then asking Claude Code about it would
   // attribute one harness's answer to the other pathway.
   assert.throws(() => parsePathway('codex:user'), /needs its own runner/);

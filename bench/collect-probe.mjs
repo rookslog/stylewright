@@ -63,7 +63,16 @@ export const HARNESS_FOR = { claude: 'claude', cowork: 'claude', agents: 'claude
 
 /** `claude:user` into its two halves, refusing anything this collector cannot probe. */
 export function parsePathway(pathway) {
-  const [platform, scope] = String(pathway ?? '').split(':');
+  const parts = String(pathway ?? '').split(':');
+  // Exactly two. Destructuring ignored anything after the second, so
+  // `claude:user:sub/record` installed and paid for two live calls as
+  // `claude:user` while the record kept the malformed string — which then
+  // wrote the file below a nested directory the check never scans, or under a
+  // colon-bearing name Windows cannot check out.
+  if (parts.length !== 2) {
+    throw new Error(`A pathway is <platform>:<scope>, and "${pathway}" is not.`);
+  }
+  const [platform, scope] = parts;
   if (!PLATFORMS.includes(platform)) {
     throw new Error(`Unknown platform "${platform}". Known: ${PLATFORMS.join(', ')}`);
   }
@@ -118,9 +127,15 @@ export async function treeDigest(dir) {
   return sha(lines.join('\n'));
 }
 
-/** The record's filename. One probe, one file, named for what it covers. */
+/**
+ * The record's filename. One probe, one file, named for what it covers.
+ *
+ * Built from the PARSED pathway, never from the string an operator typed, so
+ * no separator an operator supplies can reach the filename.
+ */
 export function recordName({ date, pathway, nonce }) {
-  return `${date}-${pathway.replace(':', '-')}-${nonce.slice(-8)}.json`;
+  const { platform, scope } = parsePathway(pathway);
+  return `${date}-${platform}-${scope}-${nonce.slice(-8)}.json`;
 }
 
 /**
@@ -171,7 +186,7 @@ export function runArm({ harness, flags, cwd, home, ask }) {
     child.stderr.on('data', (d) => errs.push(d));
     const text = (chunks) => Buffer.concat(chunks).toString('utf8');
     child.on('error', (e) => resolve({
-      answer: '', model_id: '', stderr: `${text(errs)}${e.message}`, home,
+      answer: '', model_id: '', is_error: true, stderr: `${text(errs)}${e.message}`, home,
     }));
     child.on('close', () => {
       const raw = text(out);
@@ -181,13 +196,23 @@ export function runArm({ harness, flags, cwd, home, ask }) {
         run = JSON.parse(raw);
       } catch {
         resolve({
-          answer: '', model_id: '', stderr: `${err}\nnot JSON:\n${raw.slice(0, 400)}`, home,
+          answer: '',
+          model_id: '',
+          is_error: true,
+          stderr: `${err}\nnot JSON:\n${raw.slice(0, 400)}`,
+          home,
         });
         return;
       }
+      // The answer text is kept even when the run reported an error, because
+      // that text is the evidence — the refusal this probe first recorded was
+      // an `is_error` run whose result said the harness was not logged in. The
+      // failure byte travels beside it, and the derived outcome refuses to
+      // count an errored arm as served.
       resolve({
         answer: typeof run.result === 'string' ? run.result : '',
         model_id: servingBuild(run.modelUsage),
+        is_error: run.is_error === true,
         stderr: err,
         home,
       });
@@ -225,11 +250,51 @@ export async function writeRecord(outPath, record, baseDir) {
     throw new Error(`${baseDir} is a ${baseState}, and a record is never written through one.`);
   }
   await ensureDir(path.dirname(outPath), baseDir);
-  const state = await destinationState(outPath);
-  if (state !== 'absent') {
+
+  // Identity comes from the HANDLE that created the file, not from the path
+  // afterwards. `wx` protects the leaf alone, so a link appearing at an
+  // ancestor between the classification and the call sends the write outside
+  // the tree, and a path sampled after the write can name a file another
+  // process swapped in. The scaffold learned all of this first.
+  // `wx` IS the refusal, and the classification only explains it. Asking first
+  // and opening second left the answer stale by the time the call ran.
+  const fh = await fs.open(outPath, 'wx').catch(async (err) => {
+    if (err.code !== 'EEXIST') throw err;
+    const state = await destinationState(outPath);
     throw new Error(`${outPath} already holds a ${state}. A probe record is never replaced.`);
+  });
+  let identity;
+  try {
+    identity = await fh.stat();
+    await fh.writeFile(`${JSON.stringify(record, null, 2)}\n`);
+  } finally {
+    await fh.close();
   }
-  await fs.writeFile(outPath, `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx' });
+
+  // Re-read the chain after the write. Creating it level by level narrows the
+  // window and does not close it, and Node offers no way to open a path
+  // relative to a directory it has already checked, so detection after the
+  // fact is the honest end of what this can do.
+  const problems = [];
+  if (await destinationState(baseDir) !== 'directory') {
+    problems.push(`${baseDir} is no longer a directory.`);
+  }
+  let cur = baseDir;
+  for (const part of path.relative(baseDir, path.dirname(outPath))
+    .split(path.sep).filter((p) => p && p !== '.')) {
+    cur = path.join(cur, part);
+    if (await destinationState(cur) !== 'directory') problems.push(`${cur} is not a directory.`);
+  }
+  const now = await fs.lstat(outPath).catch(() => null);
+  if (!now?.isFile() || now.dev !== identity.dev || now.ino !== identity.ino) {
+    problems.push(`${outPath} no longer names the file this call created.`);
+  } else if (problems.length) {
+    // Ours by identity, so removing it destroys nothing another process made.
+    await fs.rm(outPath, { force: true });
+  }
+  if (problems.length) {
+    throw new Error(`The record was not written where it was meant to go. ${problems.join(' ')}`);
+  }
 }
 
 export function parseArgs(argv) {
@@ -330,7 +395,11 @@ async function main(argv) {
     flags,
     identity: {
       harness_build: build,
-      model: installedArm.model_id,
+      // From whichever arm a build served. Reading the installed arm alone
+      // wrote an empty tuple element when the installed invocation failed and
+      // the control succeeded, and the check then refused an ordinary failed
+      // probe that the protocol keeps as a result.
+      model: installedArm.model_id || controlArm.model_id,
       platform: `${process.platform}-${process.arch}`,
       pathway: opts.pathway,
       // This collector builds one environment: two empty homes, with the key
