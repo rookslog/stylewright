@@ -101,23 +101,31 @@ export async function installSkills({
   const installed = [];
   const skipped = [];
 
+  // The read side refuses these spellings, so the write side must never
+  // record one. A colon is a legal POSIX filename character: without this
+  // check, install writes a manifest that the very next read refuses, and
+  // the only exit is deleting the manifest by hand, orphaning every file
+  // it recorded. Preflighted over EVERY selected skill before the first
+  // copy, because a refusal thrown mid-loop would leave the earlier skills'
+  // files on disk with the manifest write after the loop never reached —
+  // unrecorded, so the next install refuses them as user-owned collisions.
+  const relsByName = new Map();
   for (const name of names) {
-    const skill = byName.get(name);
-    const destDir = path.join(targetDir, name);
-    const recorded = manifest.skills[name]?.files;
-    const rels = await walk(skill.dir);
-
-    // The read side refuses these spellings, so the write side must never
-    // record one. A colon is a legal POSIX filename character: without this
-    // check, install writes a manifest that the very next read refuses, and
-    // the only exit is deleting the manifest by hand, orphaning every file
-    // it recorded. Refusing here names the skill and the file instead.
+    const rels = await walk(byName.get(name).dir);
     for (const rel of rels) {
       if (!contained(rel)) {
         throw new Error(
           `Skill "${name}" ships a file whose name cannot be recorded portably: ${rel}`);
       }
     }
+    relsByName.set(name, rels);
+  }
+
+  for (const name of names) {
+    const skill = byName.get(name);
+    const destDir = path.join(targetDir, name);
+    const recorded = manifest.skills[name]?.files;
+    const rels = relsByName.get(name);
 
     // The skill's own directory is the outermost ancestor of every path it
     // ships, and it is the one `ancestorsOf` cannot name, because the paths it

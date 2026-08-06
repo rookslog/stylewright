@@ -608,3 +608,27 @@ test('refuses at the source a skill shipping a file no manifest can record', {
     /Skill "demo-craft" ships a file whose name cannot be recorded portably: notes:draft\.md/);
   assert.ok(!(await exists(path.join(target, MANIFEST_NAME))));
 });
+
+test('a bad name in a later skill leaves no earlier skill half-installed', async () => {
+  // The refusal must run before the first copy, over every selected skill.
+  // Thrown mid-loop, it would leave the earlier skills' files on disk with
+  // the manifest never written — unrecorded, so the next install refuses
+  // them as user-owned collisions.
+  const repo = await tmp();
+  for (const [name, extra] of [['good-craft', null], ['bad-craft', 'notes:draft.md']]) {
+    const dir = path.join(repo, 'skills', 'craft', name);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'SKILL.md'),
+      `---\nname: ${name}\ndescription: One of two.\n---\n\n# ${name}\n`);
+    if (extra) await fs.writeFile(path.join(dir, extra), 'draft\n');
+  }
+  const target = await tmp();
+  await assert.rejects(
+    () => installSkills({
+      repoRoot: repo, targetDir: target, names: ['good-craft', 'bad-craft'], now: NOW,
+    }),
+    /Skill "bad-craft" ships a file/);
+  assert.ok(!(await exists(path.join(target, 'good-craft'))));
+  assert.ok(!(await exists(path.join(target, MANIFEST_NAME))));
+});

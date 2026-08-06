@@ -154,6 +154,15 @@ function checkContained(manifest, targetDir) {
  * with backslashes is refused after the rewrite, exactly as it is spelled
  * with slashes. Two keys that rewrite onto one another are refused too,
  * because a silent merge would drop a recorded hash.
+ *
+ * The rewrite assumes every backslash key is a legacy Windows spelling. A
+ * pre-0.2.1 POSIX install of a file literally named a\b — a legal POSIX
+ * name — is misread as the nested path a/b by this assumption, and the
+ * manifest cannot say which platform wrote it. The trade is deliberate: no
+ * skill this repository ever shipped carries such a name, install now
+ * refuses to record one, and the alternative — refusing the ambiguous
+ * manifest — strands every real legacy Windows install to protect a
+ * population that is empty.
  */
 function migrateLegacyKeys(manifest, targetDir) {
   if (!manifest?.skills) return manifest;
