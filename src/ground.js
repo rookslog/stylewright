@@ -78,13 +78,16 @@ const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 const PIPE = /(?<!\\)\|/;
 const DELIMITER = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 const LEAD = /^[ \t]+/;
-const BLOCKQUOTE = /^[ \t]*>/;
-const HEADING = /^[ \t]+#{1,6}\s/;
 // A marker with nothing after it is an empty list item, and a child block under
 // it belongs to that item. Wanting content after the marker left the list shut,
 // so the child was read at the top level and no row noticed.
-const MARKER = /^[ \t]+(?:[-*+]|\d+[.)])(?:\s|$)/;
-const OPENS_LIST = /^(?:[-*+]|\d+[.)])(?:\s|$)/;
+//
+// Nine digits at most, because that is what a Markdown reader accepts as an
+// ordered marker. Any run of digits made `017966390.`, a trademark number that
+// ends a paragraph in a shipped skill, into an empty list item.
+const OPENS_LIST = /^(?:[-*+]|\d{1,9}[.)])(?:\s|$)/;
+const EMPTY_LIST = /^(?:[-*+]|\d{1,9}[.)])\s*$/;
+const EMPTY_HEADING = /^#{1,6}\s*$/;
 
 /**
  * The indent in columns, where a tab advances to the next stop of four. A
@@ -104,24 +107,67 @@ function indentOf(line) {
 }
 const isIndented = (line) => indentOf(line) >= TAB;
 
+/** What the line looks like. This names the refusal and nothing else. */
+function shapeOf(line) {
+  const t = line.trimStart();
+  if (t.startsWith('>')) return 'a blockquote';
+  if (/^#{1,6}(?:\s|$)/.test(t)) return 'a heading';
+  if (/^(?:`{3,}|~{3,})/.test(t)) return 'a fenced block';
+  if (OPENS_LIST.test(t)) return 'a list item';
+  if (PIPE.test(t)) return 'a table row';
+  return 'a paragraph';
+}
+
 /**
- * The extractor reads one line at a time, and it holds no stack of open
- * containers. So it reads a heading, a list item, a fence or a table nested
- * inside a blockquote or under an indent as the wrong unit, and a matrix over
- * that reading disposes of something the skill does not say.
+ * The grammar: the forms the extractor reads, stated as themselves. A line
+ * outside them is refused, and the refusal names the line.
  *
- * Five review rounds each found a fresh shape of this and each patched that
- * shape. The sixth arrived every time. So the extractor stops guessing: it
- * REFUSES what it does not model, names the line, and says what to write
- * instead. A construct outside the subset then fails loudly at the point of
- * use, rather than passing under a reading nobody checked.
+ * This was a list of the shapes to reject, and three review rounds each found
+ * a shape the list did not name. A rejection list is only as complete as the
+ * last round of review, and the shape it misses passes silently. So the test
+ * runs the other way now. These forms pass:
  *
- * The subset is every construct written at column 0, plus a wrapped
- * continuation line, plus an indented code block that stands on its own.
- * Refusing is not narrowing: every unit the extractor already saw it still
- * sees, and the refusal is an additional finding rather than a replacement.
- * ADR-0016 records the choice of the guard over a CommonMark parser.
+ * - a blank line,
+ * - any construct written at column 0, except a blockquote, an empty heading
+ *   and a marker with no content, none of which the extractor reads,
+ * - a line that continues the paragraph or list item above it, carrying prose
+ *   rather than opening a container,
+ * - an indented code block that stands on its own, with no list above it.
+ *
+ * Everything else is refused, including a shape nobody has thought of. That is
+ * the point of stating it this way round.
  */
+function outsideGrammar(line, { startsBlock, openText, listOpen, opensFence, opensTable }) {
+  if (!line.trim()) return null;
+  if (indentOf(line) === 0) {
+    // A blockquote is the one construct at column 0 whose contents the
+    // extractor reads as its own prose, so the quote and its container merge.
+    if (line.startsWith('>')) return 'a blockquote';
+    // An empty marker and an empty heading are refused where they begin a
+    // block. On a continuation line they are the prose of the line above, and
+    // a Markdown reader agrees: neither interrupts a paragraph.
+    if (!openText || startsBlock) {
+      if (EMPTY_HEADING.test(line)) return 'a heading with no text';
+      if (EMPTY_LIST.test(line)) return 'a list item with no content';
+    }
+    return null;
+  }
+  const shape = shapeOf(line);
+  // A continuation line carries prose. A container opened on one belongs to
+  // the block above it, which the extractor does not model.
+  if (openText && !startsBlock) {
+    return shape === 'a paragraph' || shape === 'a table row'
+      ? null
+      : `${shape} that does not begin at column 0`;
+  }
+  // An indented code block with no list above it is read here as a reader
+  // reads it, so it stands. A fence marker and a table row are not: the
+  // extractor claims each of those before it looks at the indent, so the
+  // indent hides a container rather than opening a block of code.
+  if (isIndented(line) && !listOpen && !openText && !opensFence && !opensTable) return null;
+  if (listOpen && shape === 'a paragraph') return 'a paragraph indented under a list item';
+  return `${shape} that does not begin at column 0`;
+}
 function unitsIn(body, anchor, refuse = () => {}) {
   const out = [];
   let para = [];
@@ -142,32 +188,6 @@ function unitsIn(body, anchor, refuse = () => {}) {
     para = [];
     item = null;
   };
-  /**
-   * The guard, in one place, because a table row can carry a container prefix.
-   * `> A | B` over `--- | ---` reached the table branch first and became a
-   * designator, so a blockquote passed with no refusal at all.
-   *
-   * `nested` is any indent under an open list, at ANY width. What separates a
-   * child block from a wrapped line is the blank line above it, and not how far
-   * the author indented. An indented construct with no list above it is an
-   * ordinary code block, which the extractor reads as a reader does, so it
-   * stands.
-   */
-  const container = (i, line, startsBlock) => {
-    const nested = listOpen && LEAD.test(line);
-    if (BLOCKQUOTE.test(line) && (nested || !isIndented(line))) {
-      refuse(i, 'a blockquote');
-    } else if (MARKER.test(line) && (nested || !isIndented(line))) {
-      refuse(i, 'a list item indented under another');
-    } else if (HEADING.test(line) && (nested || !isIndented(line))) {
-      refuse(i, 'a heading that does not begin at column 0');
-    } else if (nested && startsBlock) {
-      refuse(i, 'a paragraph indented under a list item');
-    } else {
-      return false;
-    }
-    return true;
-  };
   const lines = body.split('\n');
   for (const [i, line] of lines.entries()) {
     // An indented block is code too. Reading it as prose reported each line as
@@ -183,18 +203,32 @@ function unitsIn(body, anchor, refuse = () => {}) {
     // Close only on the SAME marker, at least as long. A four-backtick fence
     // around a three-backtick example was closed by the example's own opening
     // line, and the rest of the block was then read as prose.
-    if (block?.kind === 'code' && block.marker && fence
+    // A closer is a marker a reader sees as one. Indented four columns it is
+    // the block's own contents, and closing there left the directive below the
+    // block outside it.
+    if (block?.kind === 'code' && block.marker && fence && !isIndented(line)
       && fence[2][0] === block.marker[0] && fence[2].length >= block.marker.length
       && !fence[3].trim()) {
       closeBlock();
       continue;
     }
-    if (fence && block?.kind !== 'code') {
-      // An indented opener is read as a fence here and as a code block or as
-      // part of a list item by a parser, so the prose below it is swallowed.
-      if (fence[1]) refuse(i, 'a fenced block that does not open at column 0');
+    if (block?.kind === 'code') { block.lines.push(line); continue; }
+    // Everything above this line is the contents of a block. Everything below
+    // it is a line the grammar has to admit.
+    const startsBlock = afterBlank;
+    if (line.trim()) afterBlank = false;
+    const inTable = block?.kind === 'table';
+    const opensTable = !inTable && PIPE.test(line) && DELIMITER.test(lines[i + 1] ?? '');
+    const outside = outsideGrammar(line, {
+      startsBlock,
+      openText: Boolean(item) || para.length > 0,
+      listOpen,
+      opensFence: Boolean(fence),
+      opensTable: opensTable || (inTable && PIPE.test(line)),
+    });
+    if (outside) refuse(i, outside);
+    if (fence) {
       listOpen = false;
-      afterBlank = false;
       flush();
       closeBlock();
       // The info string governs how the block is read, so it is part of the
@@ -202,29 +236,22 @@ function unitsIn(body, anchor, refuse = () => {}) {
       block = { kind: 'code', lines: [fence[3].trim()], marker: fence[2] };
       continue;
     }
-    if (block?.kind === 'code') { block.lines.push(line); continue; }
     // A table row need not start with a pipe. `Name | Meaning` over
     // `--- | ---` is a table, and reading it as prose left it with no
     // designator and no way to be quoted in a cell.
-    const inTable = block?.kind === 'table';
-    if (PIPE.test(line) && (inTable || DELIMITER.test(lines[i + 1] ?? ''))) {
-      if (!container(i, line, afterBlank) && LEAD.test(line)
-        && (listOpen || isIndented(line))) {
-        refuse(i, 'a table under an indent');
-      }
+    // A table may not begin on a list-marker line. `- A | B` over `--- | ---`
+    // is a table inside the item, and reading it as one at the top level hid
+    // the item's own words in a digest. The item is read as an item instead.
+    const tableInItem = opensTable && OPENS_LIST.test(line);
+    if (tableInItem) refuse(i, 'a table inside a list item');
+    if (PIPE.test(line) && (inTable || opensTable) && !tableInItem) {
       if (!LEAD.test(line)) { listOpen = false; }
-      afterBlank = false;
       if (!inTable) { flush(); block = { kind: 'table', lines: [] }; }
       block.lines.push(line.trim());
       continue;
     }
     if (block) closeBlock();
     if (!line.trim()) { flush(); afterBlank = true; continue; }
-    const startsBlock = afterBlank;
-    afterBlank = false;
-    // Every shape the guard names reads as one unit here and as another to a
-    // reader, so the extractor refuses it instead of choosing.
-    container(i, line, startsBlock);
     if (isIndented(line) && !item && !para.length) {
       block = { kind: 'code', lines: [line] };
       block.kind = 'indented';

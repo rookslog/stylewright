@@ -273,6 +273,11 @@ test('an N row carries no rule, and an unknown prefix is refused', () => {
 // it does not model and names the line. Issue 37 carries the four shapes below,
 // and the ones after them are shapes nobody reported. A guard that closes the
 // class refuses those too, without a patch for each.
+//
+// The guard began as a list of shapes to reject, and three review rounds each
+// found a shape the list did not name. It states the forms it READS now, and
+// refuses everything else, so the test below for an unenumerated shape is the
+// one that says the class is closed.
 
 const refused = (text) => checkSkill({
   skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
@@ -289,7 +294,7 @@ test('a fence that does not open at column 0 is refused', () => {
   // Four leading spaces are a code block to a reader and a fence here, so the
   // prose below the opener was swallowed into the block.
   assert.match(refused('    ```js\nconst x = 1;\n```\n\nAlways preserve safety.'),
-    /a fenced block that does not open at column 0/);
+    /a fenced block that does not begin at column 0/);
 });
 
 test('a heading with leading spaces is refused, not merged into prose', () => {
@@ -308,7 +313,8 @@ test('a list inside a blockquote is refused, not flattened into one unit', () =>
 test('a list item indented under another is refused', () => {
   // Not a shape anyone reported. The extractor reads a nested item as a
   // sibling at the top level, which loses which item the guidance qualifies.
-  assert.match(refused('- Do first.\n  - Do second.'), /a list item indented under another/);
+  assert.match(refused('- Do first.\n  - Do second.'),
+    /a list item that does not begin at column 0/);
 });
 
 test('a fence inside a blockquote is refused', () => {
@@ -319,7 +325,7 @@ test('a table indented under a list item is refused', () => {
   // Read as a top-level table, its designator says nothing about the item it
   // belongs to, and the rest of the item disappears into the block.
   assert.match(refused('- Do first.\n\n    | a | b |\n    |---|---|\n    | c | d |'),
-    /a table under an indent/);
+    /a table row that does not begin at column 0/);
 });
 
 test('a child paragraph under a list item is refused at any indent', () => {
@@ -361,7 +367,7 @@ test('an empty list marker opens a list, so its child block is refused', () => {
     /a paragraph indented under a list item/);
   assert.match(refused('1.\n\n    Always preserve safety.'),
     /a paragraph indented under a list item/);
-  assert.match(refused('- Do first.\n  -'), /a list item indented under another/);
+  assert.match(refused('- Do first.\n  -'), /a list item that does not begin at column 0/);
 });
 
 test('a container prefix is refused before the line becomes a table', () => {
@@ -383,6 +389,59 @@ test('indentation is measured in columns, so a tab is four of them', () => {
   assert.equal(units.filter((u) => u.block).length, 1);
   assert.match(refused('- Context.\n\n \tAlways preserve safety.'),
     /a paragraph indented under a list item/);
+});
+
+test('a shape nobody enumerated is refused, because the grammar states what it reads', () => {
+  // The class-closing test. None of these is a shape any review round named,
+  // and no branch names them now either. They are refused because they are not
+  // among the forms the extractor reads.
+  assert.match(refused('Prose here.\n\n  <div>\n  </div>'),
+    /does not begin at column 0/);
+  assert.match(refused('Prose here.\n\n   Indented prose.'), /does not begin at column 0/);
+  assert.match(refused('- Do first.\n\n  > quoted'), /a blockquote/);
+});
+
+test('a table may not begin on a list-marker line', () => {
+  // `- A | B` over `--- | ---` became one table designator, so the item's own
+  // words went into a digest and no row had to quote them.
+  const found = checkSkill({
+    skillText: `${SKILL}\n## Later\n\n- A | B\n--- | ---\n`, matrixText: MATRIX,
+  });
+  assert.ok(found.some((f) => f.code === 'unmodelled-construct'
+    && /a table inside a list item/.test(f.message)));
+  // The item stays readable rather than vanishing into the block.
+  assert.ok(contentUnits(`${SKILL}\n## Later\n\n- A | B\n--- | ---\n`)
+    .some((u) => /A \| B/.test(u.text) && !u.block));
+});
+
+test('a marker with no content is refused where it begins a block', () => {
+  // A bare marker opened no item, so a child on the very next line merged with
+  // the marker into one paragraph and nothing said so.
+  assert.match(refused('-\n  Always preserve safety.'), /a list item with no content/);
+  assert.match(refused('#'), /a heading with no text/);
+  // A number that ends a paragraph is prose. `017966390.` is a trademark
+  // number in a shipped skill, and reading it as an empty marker failed the
+  // whole catalogue.
+  assert.equal(refused('The number is\n017966390.'), '');
+});
+
+test('a closing fence indented four columns is the block\'s own contents', () => {
+  // Closing there put the directive below the block outside it, and the
+  // extractor then read code as prose.
+  const text = '```js\ncode\n    ```\nAlways preserve safety.';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`);
+  assert.equal(units.filter((u) => u.block).length, 1);
+  // The directive is the block's contents, so it is no unit of its own. It
+  // became one when the indented marker closed the block.
+  assert.equal(units.filter((u) => /Always preserve safety/.test(u.text)).length, 0);
+});
+
+test('a table that does not begin at column 0 is refused at any width', () => {
+  // One to three spaces left `LEAD` true but every other test false, so an
+  // indented table passed a guard that asked only about four columns.
+  assert.match(refused('  | a | b |\n  |---|---|'), /a table row that does not begin at column 0/);
+  assert.match(refused('  #'), /a heading that does not begin at column 0/);
 });
 
 test('an indented construct with no list above it is code, and stands', () => {

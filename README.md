@@ -233,10 +233,12 @@ including the ones before the first heading. Front matter does not, because it
 is metadata for the agent harness rather than instruction for a reader.
 
 The check reads Markdown a line at a time, and it models no container. So it
-reads a subset: every construct written at column 0, a wrapped continuation
-line, and an indented code block that stands on its own. It refuses anything
-else and names the line, rather than reading a blockquote or a nested construct
-as the wrong unit. ADR-0016 records that decision.
+states the forms it reads: a blank line, any construct at column 0, a line that
+continues the paragraph above it, and an indented code block that stands on its
+own. It refuses every other line and names it, rather than reading a blockquote
+or a nested construct as the wrong unit. A blockquote is refused at column 0
+too, because the check reads its contents as our own prose. ADR-0016 records
+that decision.
 
 ## Licensing
 

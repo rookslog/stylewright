@@ -64,18 +64,26 @@ Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
 
 The checker reads Markdown a line at a time, and it models no container. So it
-reads a subset and refuses the rest: every construct written at column 0, a
-wrapped continuation line, and an indented code block that stands on its own.
-A blockquote, an indented fence opener, a heading that does not begin at column
-0, a nested list item, and anything indented under a list item fail as
-`unmodelled-construct`, with the line and what to write instead. ADR-0016
-records the decision, and it names the evidence that would flip it: a skill
-that needs a container to say what it means. Report such a skill on issue 37
-rather than as a new finding, and do not patch a sixth shape, because patching
-one variant produced the next one five rounds running.
+states the forms it reads and refuses every line outside them. Those forms are
+a blank line, any construct at column 0, a line that continues the paragraph
+above it while carrying prose, and an indented code block that stands on its
+own. A blockquote, an empty marker and an empty heading are the exceptions at
+column 0, because the checker does not read those either. Anything outside the
+forms fails as `unmodelled-construct`, with the line and what to write instead.
+
+The grammar is stated this way round on purpose. It began as a list of shapes
+to reject, and three review rounds each found a shape the list did not name.
+A rejection list is only as complete as its last review. Do not answer a new
+shape by adding a rule that names it. Ask instead which form the checker reads
+it as, and whether the grammar admits that form. ADR-0016 records the
+inversion and the evidence for it.
 
 Refusing is not narrowing. Every unit the checker saw before it still sees, and
-a refusal is one more finding rather than a replacement for one.
+a refusal is one more finding rather than a replacement for one. A test runs
+`checkAll` over the shipped catalogue and asserts no refusal, so a skill cannot
+drift outside the grammar without CI saying so. That test is also the flip
+condition ADR-0016 names: a refusal a skill author cannot write around reopens
+issue 37 for a Markdown parser, and it is not a sixth patch.
 
 ### A skill that substitutes for its source
 

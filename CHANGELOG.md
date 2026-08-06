@@ -38,7 +38,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   indented code block that stands on its own — and reports anything else as
   `unmodelled-construct` with its line. Every unit it saw before it still sees.
   ADR-0016 records the choice of a guard over a Markdown parser, and the
-  evidence that would flip it.
+  evidence that would flip it. The guard states the forms it reads rather than
+  the shapes it rejects, because a rejection list is only as complete as its
+  last review, and three review rounds each found a shape the list did not
+  name. A shape nobody has thought of is refused because the grammar does not
+  admit it.
 
 - **A skill name is unique across both tiers, and a collision is now an error
   that names both directories.** The two tiers share one flat namespace, and
