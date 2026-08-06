@@ -32,6 +32,18 @@ async function put(abs, body) {
   return sha(body);
 }
 
+/**
+ * Two spellings of one file. A case-folding target gives them for nothing, and
+ * a case-sensitive one gives them through a hard link. The resolver under test
+ * asks the filesystem which file a path reaches, so both answer it the same
+ * way, and the case tests below discriminate on every platform rather than
+ * passing vacuously on half of them.
+ */
+async function alias(dir, from, to) {
+  if (await exists(path.join(dir, to))) return;
+  await fs.link(path.join(dir, from), path.join(dir, to));
+}
+
 test('a file an interrupted run copied and never recorded goes', async () => {
   // The gap this closes: `installSkills` copied every file and wrote one record
   // at the end, so a run that died in between left files that nothing named.
@@ -248,14 +260,13 @@ test('a pending skill named constructor is judged by its record, not the prototy
 
 test('recovery keeps a file the record names in different case', async () => {
   // An interrupted case-only rename: recorded a.md, pending A.md, same
-  // content, one file on a case-folding filesystem. The exact-key ownership
-  // check said unrecorded, and recovery deleted the file the manifest still
-  // names. Discriminates on case-folding filesystems (macOS, Windows); on a
-  // case-sensitive one the stated path is absent and nothing was at risk.
+  // content, one file. The exact-key ownership check said unrecorded, and
+  // recovery deleted the file the manifest still names.
   const target = await tmp();
   const dir = path.join(target, 'demo-craft');
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'a.md'), 'same bytes\n');
+  await alias(dir, 'a.md', 'A.md');
   const manifest = {
     ...emptyManifest(),
     skills: {
@@ -268,7 +279,78 @@ test('recovery keeps a file the record names in different case', async () => {
     },
     pending: { 'demo-craft': { 'A.md': sha('same bytes\n') } },
   };
-  await recoverPending(target, manifest);
-  assert.ok(await exists(path.join(dir, 'a.md')),
+  const done = await recoverPending(target, manifest);
+  assert.deepEqual(done.removed, []);
+  assert.ok(await exists(path.join(dir, 'A.md')),
     'the file the record still names must survive recovery');
+  assert.ok(await exists(path.join(dir, 'a.md')), 'under the spelling the record uses');
+});
+
+test('recovery keeps a file the record names in another case only for its content', async () => {
+  // The completion of the rule above. A forced update that changes both a
+  // path's case and its bytes leaves one file holding the new bytes while the
+  // record at the other spelling still holds the old hash. Identity alone kept
+  // that file, and the manifest then disagreed with the disk for good: every
+  // later update and uninstall reads the file as one the user edited and
+  // refuses it. Deleting it costs nothing, because the record it contradicts is
+  // what the next update restores from.
+  const target = await tmp();
+  const dir = path.join(target, 'demo-craft');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'a.md'), 'the new bytes\n');
+  await alias(dir, 'a.md', 'A.md');
+  const manifest = {
+    ...emptyManifest(),
+    skills: {
+      'demo-craft': {
+        tier: 'craft',
+        pathway: 'engine',
+        installedAt: NOW,
+        files: { 'a.md': sha('the old bytes\n') },
+      },
+    },
+    pending: { 'demo-craft': { 'A.md': sha('the new bytes\n') } },
+  };
+
+  const done = await recoverPending(target, manifest);
+
+  assert.deepEqual(done.removed, ['demo-craft/A.md']);
+  assert.ok(!(await exists(path.join(dir, 'A.md'))), 'the stated spelling goes');
+  assert.ok(
+    Object.hasOwn(done.manifest.skills['demo-craft'].files, 'a.md'),
+    'and the record that restores it stays');
+});
+
+test('a staging leftover goes where the recorded spelling is another file', async () => {
+  // The mirror of the rule above, and the reason both ask the filesystem. A
+  // legacy manifest can record a path spelled with the staging suffix. On a
+  // case-sensitive target that record and the scratch file a pending copy of
+  // `A` leaves are two files, and protecting the scratch one by spelling left
+  // it standing for the next install to refuse as a collision with a file this
+  // engine created. Where the target folds case they are one file, and it stays
+  // whatever it holds.
+  const target = await tmp();
+  const dir = path.join(target, 'demo-craft');
+  await fs.mkdir(dir, { recursive: true });
+  const odd = await put(path.join(dir, 'A.STYLEWRIGHT-PART'), 'a real file\n');
+  const folds = await exists(path.join(dir, 'A.stylewright-part'));
+  if (!folds) await fs.writeFile(path.join(dir, 'A.stylewright-part'), 'half of a co');
+  const manifest = await interrupted(target, {
+    manifest: {
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', files: { 'A.STYLEWRIGHT-PART': odd } } },
+    },
+    pending: { 'demo-craft': { A: sha('what the release ships\n') } },
+  });
+
+  const done = await recoverPending(target, manifest);
+
+  assert.deepEqual(done.removed, []);
+  assert.equal(
+    await fs.readFile(path.join(dir, 'A.STYLEWRIGHT-PART'), 'utf8'), 'a real file\n',
+    'the recorded file is never this tool\'s scratch space');
+  if (!folds) {
+    assert.ok(!(await exists(path.join(dir, 'A.stylewright-part'))),
+      'and the scratch file beside it is this tool\'s to remove');
+  }
 });

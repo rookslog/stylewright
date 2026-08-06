@@ -4,24 +4,32 @@ import { hashFile } from './manifest.js';
 import { destinationState, removeAt, pruneEmpty, reachability } from './tree.js';
 
 /**
- * Does the stated path RESOLVE to a file a recorded key names in different
- * case? Asked of the filesystem, not guessed from the platform: on a
- * case-folding target the two spellings are one file, and deleting through
- * the stated one takes the file the record still names. Identity, not
- * spelling, is the comparison — the same rule the manifest read applies to
- * its own handle.
+ * Which recorded key, if any, names the file that `rel` RESOLVES to?
+ *
+ * Asked of the filesystem, not guessed from the platform. A case-folding target
+ * makes two spellings one file, so acting through the stated one acts on the
+ * file the record still names. A case-sensitive target makes them two files,
+ * where the record names one of them and the other is nobody's by that record.
+ * Identity, not spelling, is the comparison — the same rule the manifest read
+ * applies to its own handle.
+ *
+ * It answers with the key rather than with a verdict, because identity settles
+ * WHICH record reaches the file and not what that record says, and one caller
+ * has to read the content the record claims.
  */
-async function recordedThroughFold(destDir, rel, recorded) {
-  const aliases = Object.keys(recorded).filter(
-    (k) => k !== rel && k.toLowerCase() === rel.toLowerCase());
-  if (!aliases.length) return false;
+async function recordedAs(destDir, rel, recorded) {
+  const keys = Object.keys(recorded).filter((k) => k.toLowerCase() === rel.toLowerCase());
+  if (!keys.length) return null;
+  // A path names itself on every filesystem, so the record at that spelling
+  // needs no resolver and no file on disk to reach.
+  if (keys.includes(rel)) return rel;
   const here = await fs.lstat(path.join(destDir, rel)).catch(() => null);
-  if (!here) return false;
-  for (const k of aliases) {
+  if (!here) return null;
+  for (const k of keys) {
     const there = await fs.lstat(path.join(destDir, k)).catch(() => null);
-    if (there && here.dev === there.dev && here.ino === there.ino) return true;
+    if (there && here.dev === there.dev && here.ino === there.ino) return k;
   }
-  return false;
+  return null;
 }
 
 /**
@@ -109,9 +117,9 @@ export function clearPending(manifest, name) {
  * Anything else is left where it is: a fragment cannot exist at a destination,
  * because a copy is staged and renamed, and a directory or a link at a pending
  * path is something this engine did not put there. The staging path itself is
- * removed whatever it holds, because its name belongs to this tool — unless the
- * manifest records a file at that spelling, which install refuses to ship and
- * an older release may still have left.
+ * removed whatever it holds, because its name belongs to this tool — unless it
+ * resolves to a file the manifest records, which install refuses to ship and an
+ * older release may still have left.
  *
  * The paths are walked through `reachability` for the same reason every other
  * consumer is: a deletion must not travel through a symbolic link that appeared
@@ -125,7 +133,6 @@ export async function discardStated(targetDir, name, stated, manifest) {
   // property up.
   const recorded = Object.hasOwn(manifest.skills ?? {}, name)
     ? manifest.skills[name]?.files ?? {} : {};
-  const recordedFold = new Set(Object.keys(recorded).map((k) => k.toLowerCase()));
   const rels = Object.keys(stated ?? {});
   const { baseBlocked, reachable } = await reachability(destDir, rels);
   if (baseBlocked) return []; // The skill directory is not ours. Nothing under it is either.
@@ -138,23 +145,38 @@ export async function discardStated(targetDir, name, stated, manifest) {
     // A recorded file is never a staging leftover, whatever its name ends with.
     // The suffix belongs to this tool, but a manifest that records a path
     // spelled that way records an installed file, and removing it would leave
-    // the record naming nothing. Compared case-insensitively, because on a
-    // case-folding filesystem the staging path RESOLVES to a recorded file
-    // whose spelling differs only in case, and install refused new ones but a
-    // manifest an older release wrote can still record one.
-    if (!recordedFold.has(`${rel}${STAGING_SUFFIX}`.toLowerCase())
-      && await destinationState(staged) === 'file') {
+    // the record naming nothing. Install refuses to ship such a name in any
+    // case, so only a manifest an older release wrote can carry one.
+    //
+    // Through the resolver, because the spelling answers a different question.
+    // A case-folding target makes the staging path and a record spelled in
+    // another case one file, which has to stay. A case-sensitive target makes
+    // them two, where the record's file is not the one this removal reaches and
+    // the scratch file beside it is ours — protecting that one by spelling left
+    // it standing for the next install to refuse as a collision.
+    //
+    // No content test here, unlike the destination below. There the file is
+    // provably this engine's, so a record that disagrees is a record to restore
+    // from. Here the file is the record's own and deletion is the irreversible
+    // move, so identity alone decides.
+    if (await destinationState(staged) === 'file'
+      && await recordedAs(destDir, `${rel}${STAGING_SUFFIX}`, recorded) === null) {
       await removeAt(staged);
       took = true;
     }
+    // Which record, if any, reaches this file. An interrupted case-only rename
+    // leaves one file under two spellings on a case-folding target, and the
+    // resolver is what executes the deletion, so the record that can keep the
+    // file is the one at whichever spelling reaches it.
+    const owner = await recordedAs(destDir, rel, recorded);
     if (await destinationState(abs) === 'file'
       && await hashFile(abs) === stated[rel]
-      && recorded[rel] !== stated[rel]
-      // An interrupted case-only rename leaves one file under two spellings
-      // on a case-folding target. The exact-key check above says unrecorded,
-      // the resolver says this IS the recorded file, and the resolver is the
-      // one that executes the deletion.
-      && !(await recordedThroughFold(destDir, rel, recorded))) {
+      // Content decides, not identity. A record naming these bytes is one this
+      // deletion would leave pointing at nothing. A record naming other bytes
+      // already disagrees with the disk, and keeping the file is what makes
+      // every later update and uninstall refuse it as one the user edited —
+      // deleting it leaves that record free to restore what it does say.
+      && (owner === null || recorded[owner] !== stated[rel])) {
       await removeAt(abs);
       removed.push(`${name}/${rel}`);
       took = true;
