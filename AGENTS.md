@@ -316,12 +316,30 @@ Two consequences for a change you propose here:
   recorded. A file goes when it holds exactly what the statement said would be
   written there AND the manifest does not record that same content — the second
   half is what keeps a file another run committed.
-- **A copy is staged and renamed, never written into place.** `copyFile` can
-  stop half way, and a fragment at a destination is a file nothing can identify
-  afterwards. The staging name is derived from the destination, so recovery
-  finds it from the statement alone. A skill may not ship a path ending in that
-  suffix, and install refuses one that does: the copy of `A` would otherwise
-  clear a shipped `A.stylewright-part` as its own scratch space.
+- **A run states what it DESTROYS as well as what it writes, and holds the
+  bytes until it commits.** `pending[name]` has one shape with three parts.
+  `write` names each path the run will write and the bytes it will put there.
+  `keep` names each path the run will overwrite or retire and the bytes that
+  path held, which move to `.stylewright-prev` by rename before the destination
+  is touched. `committed` is set in the same manifest write that records the
+  skill, and it picks the direction: before it, recovery rolls the run back,
+  and after it, recovery only sweeps. A file comes back when the bytes under
+  the reserved name are exactly what the statement said stood there and the
+  destination is absent. Where those bytes are gone, the record stops naming
+  the path instead. ADR-0019 keeps the reasons.
+- **A copy is staged and renamed, never written into place, and so is the file
+  it replaces.** `copyFile` can stop half way, and a fragment at a destination
+  is a file nothing can identify afterwards. Both reserved names are derived
+  from the destination, so recovery finds them from the statement alone. A
+  skill may ship a path ending in neither suffix, and install refuses one that
+  does, over every named skill before the first is copied. The copy of `A`
+  would otherwise clear a shipped `A.stylewright-part` as its own scratch
+  space, and an update of `A` would bury a shipped `A.stylewright-prev`.
+- **A file at a reserved name that content cannot identify is left alone.** It
+  is named by the ordinary collision check and removed by a person, which is
+  the disposition `refuseStaleWrite` already gives the other file this tool
+  cannot prove it wrote. Deleting it on the strength of the name would destroy
+  bytes nothing can replace.
 - **One command at a time holds a target directory**, through
   `src/lock.js`. Three review rounds found three ways for two runs to spoil each
   other's reading of the tree, and each patch produced the next one: a recovery

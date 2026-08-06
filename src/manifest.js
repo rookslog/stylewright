@@ -109,18 +109,40 @@ function checkShape(manifest, targetDir) {
       if (typeof hash !== 'string') refuse(`"${name}" records no hash for "${rel}"`);
     }
   }
-  // `pending` is the record a run writes BEFORE it copies, and recovery reads
-  // it as a list of files to delete. That makes it the same kind of thing the
-  // `skills` map is — a delete instruction executed verbatim — so it is held to
-  // the same shape rule rather than trusted for being ours.
+  // `pending` is the record a run writes BEFORE it changes anything, and
+  // recovery reads it as an instruction to delete files, to move files back and
+  // to withdraw entries from the record. That makes it the same kind of thing
+  // the `skills` map is — acted on verbatim — so it is held to the same shape
+  // rule rather than trusted for being ours.
+  //
+  // One shape, with three named parts. `write` is what the run will put on
+  // disk, `keep` is what it will destroy and where the old bytes went, and
+  // `committed` says the record has landed and the rollback must not run. A
+  // statement missing `write` is one recovery cannot act on at all, so it is
+  // refused rather than read as an empty one.
   if (manifest.pending !== undefined) {
     if (!isObject(manifest.pending)) refuse('"pending" is not an object');
     for (const [name, stated] of Object.entries(manifest.pending)) {
-      if (!isObject(stated)) refuse(`"pending" lists no paths for "${name}"`);
-      for (const [rel, hash] of Object.entries(stated)) {
-        // The hash is what proves a file at that path is ours to delete, so a
-        // statement without one is a statement recovery cannot act on.
-        if (typeof hash !== 'string') refuse(`"pending" states no hash for "${name}/${rel}"`);
+      if (!isObject(stated)) refuse(`"pending" holds no statement for "${name}"`);
+      if (!isObject(stated.write)) refuse(`"pending" states no writes for "${name}"`);
+      if (stated.keep !== undefined && !isObject(stated.keep)) {
+        refuse(`"pending" states no kept files for "${name}"`);
+      }
+      // `true` and nothing else. A statement is rolled back unless it says
+      // otherwise, and any other value would have to be interpreted — which is
+      // the reading a file anyone can edit must never get.
+      if (stated.committed !== undefined && stated.committed !== true) {
+        refuse(`"pending" marks "${name}" committed as ${JSON.stringify(stated.committed)}, not true`);
+      }
+      for (const part of ['write', 'keep']) {
+        for (const [rel, hash] of Object.entries(stated[part] ?? {})) {
+          // The hash is what proves a file at that path is ours to delete or
+          // ours to put back, so a statement without one is a statement
+          // recovery cannot act on.
+          if (typeof hash !== 'string') {
+            refuse(`"pending" states no hash for "${name}/${rel}" under "${part}"`);
+          }
+        }
       }
     }
   }
@@ -162,7 +184,9 @@ function checkContained(manifest, targetDir) {
       throw new Error(
         `Manifest in ${targetDir} awaits a skill name that is not a directory name: "${name}".`);
     }
-    for (const rel of Object.keys(stated)) {
+    // Both halves. A path under `keep` is one recovery renames a file back
+    // over, so it is dereferenced exactly as a path under `write` is.
+    for (const rel of [...Object.keys(stated.write), ...Object.keys(stated.keep ?? {})]) {
       if (!contained(rel)) {
         throw new Error(
           `Manifest in ${targetDir} awaits a path outside "${name}": "${rel}".`);

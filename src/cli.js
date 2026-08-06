@@ -133,11 +133,15 @@ export async function run(argv, ctx) {
   const sayLocked = (dir) => say(
     `held: ${dir}. A stylewright command is working there, or one was killed. `
     + `Remove ${path.join(dir, '.stylewright-lock')} if no other run is active.`);
-  const sayCleared = ({ recovered, cleared }, dir) => {
+  const sayCleared = ({ recovered, restored, cleared }, dir) => {
     for (const name of cleared ?? []) {
       say(`cleared the unfinished install of ${name} in ${dir}`);
     }
     for (const rel of recovered ?? []) say(`  removed ${rel}`);
+    // Named separately, because it is the opposite kind of event. A file that
+    // came back is one the user still has, and a report that only ever says
+    // what went would describe a rollback as damage.
+    for (const rel of restored ?? []) say(`  restored ${rel}`);
   };
   let flags;
   try {

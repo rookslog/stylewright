@@ -608,11 +608,11 @@ test('the record names every path before the first byte is copied', async () => 
   }
 
   assert.deepEqual(
-    Object.keys(atFirstCopy.pending['demo-craft']).sort(),
+    Object.keys(atFirstCopy.pending['demo-craft'].write).sort(),
     ['LICENSE', 'SKILL.md', 'references/guide.md']);
   // And what it will write there, which is what proves the file is this run's
   // when the next command finds it.
-  for (const [rel, hash] of Object.entries(atFirstCopy.pending['demo-craft'])) {
+  for (const [rel, hash] of Object.entries(atFirstCopy.pending['demo-craft'].write)) {
     assert.equal(
       hash,
       await hashFile(path.join(REPO, 'skills', 'craft', 'demo-craft', rel)),
@@ -645,16 +645,18 @@ test('a finished install leaves no statement behind', async () => {
  * test exists to rule out. Killing from outside is also the truer model of the
  * thing being tested, which is a run that some other agent ends.
  */
-async function killedInstall(target, hook) {
+async function killedRun(target, hook, { repoRoot = REPO, when = null } = {}) {
+  // The default: any call that is not the manifest's own write, which uses the
+  // same two calls. That one is about a skill file reaching, or not reaching,
+  // its destination.
+  const test = when ?? '!String(args[args.length - 1]).includes(\'.stylewright-manifest\')';
   const script = `
     import fsp from 'node:fs/promises';
     import { installSkills } from ${JSON.stringify(new URL('../src/install.js', import.meta.url).href)};
     const real = fsp.${hook};
     fsp.${hook} = async (...args) => {
       const result = await real.apply(fsp, args);
-      // Not the manifest's own write, which uses the same two calls. This is
-      // about a skill file reaching, or not reaching, its destination.
-      if (!String(args[args.length - 1]).includes('.stylewright-manifest')) {
+      if (${test}) {
         // Say when, then never return. The install is suspended exactly here
         // until the parent ends the process, so nothing downstream of this call
         // ever runs.
@@ -664,7 +666,7 @@ async function killedInstall(target, hook) {
       return result;
     };
     await installSkills({
-      repoRoot: ${JSON.stringify(REPO)},
+      repoRoot: ${JSON.stringify(repoRoot)},
       targetDir: ${JSON.stringify(target)},
       names: ['demo-craft'],
       now: ${JSON.stringify(NOW)},
@@ -689,11 +691,31 @@ async function killedInstall(target, hook) {
     installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW }),
     /Another stylewright command is working/);
   await fs.rm(lock);
-  const left = await readManifest(target);
+  return readManifest(target);
+}
+
+async function killedInstall(target, hook) {
+  const left = await killedRun(target, hook);
   assert.deepEqual(left.skills, {}, 'the killed run recorded no skill');
   assert.deepEqual(
-    Object.keys(left.pending['demo-craft']).sort(),
+    Object.keys(left.pending['demo-craft'].write).sort(),
     ['LICENSE', 'SKILL.md', 'references/guide.md']);
+}
+
+/**
+ * A target holding `demo-craft`, and a repository whose next release ships
+ * different bytes for LICENSE. The setup every test about the second half of a
+ * statement needs: a run that must DESTROY something before it can write.
+ */
+async function readyToReplace() {
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW });
+  const licence = path.join(target, 'demo-craft', 'LICENSE');
+  const before = await fs.readFile(licence, 'utf8');
+  await fs.writeFile(path.join(repo, 'skills', 'craft', 'demo-craft', 'LICENSE'), 'a later licence\n');
+  return { repo, target, licence, before };
 }
 
 test('a run killed with a copy in flight leaves nothing the next command cannot reach', async () => {
@@ -731,6 +753,269 @@ test('a run killed with a file in place leaves nothing the next command cannot r
   assert.deepEqual(Object.keys((await readManifest(target)).skills), ['demo-standard']);
 });
 
+test('a run killed with a file moved aside puts that file back', async () => {
+  // The first new boundary. The run has stated what it will destroy, and it has
+  // moved one file's bytes under the reserved name — so the destination is
+  // absent and the record names bytes that are not where it says. Nothing in
+  // the killed process runs, and the next command puts the file back from the
+  // statement alone.
+  const { repo, target, licence, before } = await readyToReplace();
+
+  const left = await killedRun(target, 'rename', {
+    repoRoot: repo,
+    when: 'String(args[1]).endsWith(\'.stylewright-prev\')',
+  });
+  assert.ok(!(await exists(licence)), 'the destination is empty');
+  assert.equal(await fs.readFile(`${licence}.stylewright-prev`, 'utf8'), before,
+    'and the bytes it held are under the reserved name');
+  assert.equal(left.pending['demo-craft'].keep.LICENSE, await hashFile(`${licence}.stylewright-prev`),
+    'which the statement names by content');
+  assert.equal(left.pending['demo-craft'].committed, undefined, 'and nothing is committed');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
+  });
+
+  assert.deepEqual(res.restored, ['demo-craft/LICENSE']);
+  assert.equal(await fs.readFile(licence, 'utf8'), before, 'the file is back, byte for byte');
+  const after = await readManifest(target);
+  assert.equal(after.skills['demo-craft'].files.LICENSE, await hashFile(licence),
+    'and the record was true all along');
+  assert.equal(after.pending, undefined);
+  assert.ok(!(await exists(`${licence}.stylewright-prev`)));
+});
+
+test('a run killed after its record lands is finished, never rolled back', async () => {
+  // The second new boundary, and the one the mark exists for. The record and
+  // the mark went on disk in one write, so the new version is the recorded one
+  // — and a recovery that rolled this run back would delete the files the
+  // manifest names. It sweeps instead.
+  const { repo, target, licence } = await readyToReplace();
+
+  const left = await killedRun(target, 'rm', {
+    repoRoot: repo,
+    when: 'String(args[0]).endsWith(\'.stylewright-prev\')',
+  });
+  assert.equal(await fs.readFile(licence, 'utf8'), 'a later licence\n',
+    'the new version is in place');
+  assert.equal(left.skills['demo-craft'].files.LICENSE, await hashFile(licence),
+    'and recorded');
+  assert.equal(left.pending['demo-craft'].committed, true, 'under a statement turned forwards');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
+  });
+
+  assert.deepEqual(res.recovered, [], 'nothing this run wrote is taken back');
+  assert.deepEqual(res.restored, [], 'and nothing older is put back over it');
+  assert.deepEqual(res.cleared, ['demo-craft']);
+  assert.equal(await fs.readFile(licence, 'utf8'), 'a later licence\n');
+  const after = await readManifest(target);
+  assert.equal(after.pending, undefined);
+  for (const rel of Object.keys(after.skills['demo-craft'].files)) {
+    assert.ok(
+      !(await exists(`${path.join(target, 'demo-craft', rel)}.stylewright-prev`)),
+      `${rel} keeps nothing under the reserved name`);
+  }
+});
+
+test('an update that finishes leaves nothing under the reserved name', async () => {
+  // The ordinary path, which is the one that runs every time. The bytes a run
+  // sets aside are swept before it returns, so a successful update leaves the
+  // tree it would have left before this change existed.
+  const { repo, target, licence } = await readyToReplace();
+
+  const res = await installSkills({
+    repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+
+  assert.deepEqual(res.installed, ['demo-craft']);
+  assert.equal(await fs.readFile(licence, 'utf8'), 'a later licence\n');
+  assert.equal((await readManifest(target)).pending, undefined);
+  const under = await fs.readdir(path.join(target, 'demo-craft'));
+  assert.deepEqual(under.filter((e) => e.includes('.stylewright-')), []);
+});
+
+test('a release that turns a directory into a file is reversible as far as it can be', async () => {
+  // The one shipping path whose bytes this design cannot hold. A release that
+  // replaces a directory of files with a file of the same name must clear that
+  // directory, and clearing it takes the bytes moved aside beneath it. The
+  // statement still NAMES those paths, so a rollback that cannot put them back
+  // withdraws them from the record — which is the repair this engine already
+  // had, reached deliberately rather than by omission.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  const skillDir = path.join(repo, 'skills', 'craft', 'demo-craft');
+  await fs.rm(path.join(skillDir, 'references'), { recursive: true, force: true });
+  await fs.writeFile(path.join(skillDir, 'references'), 'now a file\n');
+
+  // The run fails on `references` itself, which is the copy that clears the
+  // directory — so the failure lands after the bytes beneath it are gone.
+  const original = fs.copyFile;
+  let swapped = false;
+  fs.copyFile = async (...args) => {
+    if (!swapped && String(args[0]).endsWith(`${path.sep}references`)) {
+      swapped = true;
+      await fs.writeFile(path.join(skillDir, 'references'), 'later still\n');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed in .* while this command was running/);
+  } finally {
+    fs.copyFile = original;
+  }
+
+  const after = await readManifest(target);
+  assert.equal(after.pending, undefined);
+  assert.ok(
+    !Object.hasOwn(after.skills['demo-craft'].files, 'references/guide.md'),
+    'the record stops naming the file the transition destroyed');
+  for (const [rel, hash] of Object.entries(after.skills['demo-craft'].files)) {
+    const abs = path.join(target, 'demo-craft', rel);
+    assert.equal(await hashFile(abs), hash, `${rel} is where the record says, byte for byte`);
+  }
+  const under = await fs.readdir(path.join(target, 'demo-craft'));
+  assert.deepEqual(under.filter((e) => e.includes('.stylewright-')), []);
+});
+
+test('a run whose tidying is refused keeps the record it committed', async () => {
+  // The guard on the undo. Once the record has landed, a failure while sweeping
+  // must not roll this run back — the manifest names the new files, and
+  // deleting them would strand that record. The statement stays on disk,
+  // turned forwards, and the next command finishes the sweep.
+  const { repo, target, licence } = await readyToReplace();
+
+  const original = fs.rm;
+  let raced = false;
+  fs.rm = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced && String(args[0]).endsWith('.stylewright-prev')) {
+      raced = true;
+      // Another run replaces the manifest, so this run's last write is refused.
+      const fresh = await readManifestWithIdentity(target);
+      await writeManifest(target, fresh.manifest, fresh.identity);
+    }
+    return result;
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed while this command was running/);
+  } finally {
+    fs.rm = original;
+  }
+
+  const after = await readManifest(target);
+  assert.equal(await fs.readFile(licence, 'utf8'), 'a later licence\n', 'the new version stands');
+  assert.equal(after.skills['demo-craft'].files.LICENSE, await hashFile(licence),
+    'and the record that names it survives');
+  assert.equal(after.pending['demo-craft'].committed, true,
+    'under a statement the next command reads forwards');
+
+  const res = await installSkills({
+    repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW,
+  });
+  assert.deepEqual(res.cleared, ['demo-craft']);
+  assert.deepEqual(res.recovered, []);
+  assert.equal(await fs.readFile(licence, 'utf8'), 'a later licence\n');
+});
+
+test('a run whose tidying is refused does not resurrect what it retired', async () => {
+  // The sharp edge of the same guard. A rollback after the record has landed
+  // would put a RETIRED file back, and the committed record does not name it —
+  // so the file would be an orphan no command could reach, which is the defect
+  // PR #54 closed, reopened by the mechanism that closes this one.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  // Two paths an older release shipped and this one drops. Two, because the
+  // sweep clears them in order and the race has to land between them.
+  const refs = path.join(target, 'demo-craft', 'references');
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  for (const leaf of ['aaa.md', 'zzz.md']) {
+    await fs.writeFile(path.join(refs, leaf), `from an older release: ${leaf}\n`);
+    manifest.skills['demo-craft'].files[`references/${leaf}`] = await hashFile(path.join(refs, leaf));
+  }
+  await writeManifest(target, manifest, identity);
+
+  // The sweep fails part way, so one file's old bytes are still under the
+  // reserved name when the failure reaches the catch.
+  const original = fs.rm;
+  let seen = 0;
+  fs.rm = async (...args) => {
+    if (String(args[0]).endsWith('.stylewright-prev')) {
+      seen += 1;
+      if (seen === 2) throw new Error('the disk gave out mid sweep');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /the disk gave out mid sweep/);
+  } finally {
+    fs.rm = original;
+  }
+  assert.equal(seen, 2, 'the sweep must have been cut short, not skipped');
+
+  const after = await readManifest(target);
+  for (const leaf of ['aaa.md', 'zzz.md']) {
+    assert.ok(
+      !Object.hasOwn(after.skills['demo-craft'].files, `references/${leaf}`),
+      `the record retired references/${leaf}`);
+    assert.ok(
+      !(await exists(path.join(refs, leaf))),
+      `so references/${leaf} must not come back with nothing to reach it`);
+  }
+
+  // And the next command finishes the sweep the refusal cut short.
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  const left = await fs.readdir(refs);
+  assert.deepEqual(left.filter((e) => e.includes('.stylewright-')), []);
+});
+
+test('a file at the reserved name for old bytes is a collision, not something to clear', async () => {
+  // The rename that moves a file aside replaces whatever stands at that name,
+  // so it is a destination like the staging one and the preflight sees it. A
+  // user file there was destroyed by a write no check had inspected.
+  const { repo, target, licence } = await readyToReplace();
+  await fs.writeFile(`${licence}.stylewright-prev`, 'my own notes\n');
+
+  const res = await installSkills({
+    repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW,
+  });
+
+  assert.deepEqual(res.installed, []);
+  assert.equal(res.skipped[0].reason, 'not-ours');
+  assert.ok(res.skipped[0].files.includes('LICENSE.stylewright-prev'));
+  assert.equal(await fs.readFile(`${licence}.stylewright-prev`, 'utf8'), 'my own notes\n');
+});
+
+test('a skill that ships a name this tool holds old bytes under is refused', async () => {
+  // The second reserved suffix, refused where the first is and for the same
+  // reason: an update of `A` would bury a shipped `A.stylewright-prev` under
+  // the version it was replacing.
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'odd');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, 'SKILL.md'), '---\nname: odd\ndescription: d\n---\n\n# odd\n');
+  await fs.writeFile(path.join(dir, 'A.STYLEWRIGHT-PREV'), 'shipped\n');
+  const target = await tmp();
+
+  await assert.rejects(
+    installSkills({ repoRoot: repo, targetDir: target, names: ['odd'], now: NOW }),
+    /A\.STYLEWRIGHT-PREV.*Rename the file/s);
+  assert.ok(!(await exists(path.join(target, 'odd'))), 'and nothing landed');
+});
+
 test('an interrupted update keeps an edit and clears its own copy', async () => {
   // The two files an interrupted update can leave at a recorded path, and the
   // proof that tells them apart. One holds what the run was going to write, so
@@ -751,8 +1036,10 @@ test('an interrupted update keeps an edit and clears its own copy', async () => 
     ...manifest,
     pending: {
       'demo-craft': {
-        LICENSE: await hashFile(ours),
-        'SKILL.md': await hashFile(path.join(source, 'SKILL.md')),
+        write: {
+          LICENSE: await hashFile(ours),
+          'SKILL.md': await hashFile(path.join(source, 'SKILL.md')),
+        },
       },
     },
   }, identity);
@@ -964,10 +1251,11 @@ test('a file at the staging name is a collision, not something to clear', async 
   assert.ok(!(await exists(mine)));
 });
 
-test('a retired file a refused run deleted is unrecorded, not left claimed', async () => {
-  // Retirement happens before the copies, so a commit that never lands leaves
-  // the surviving record naming a path this run has already removed. The record
-  // catches up, exactly as uninstall's does after it deletes.
+test('a retired file a refused run deleted comes back', async () => {
+  // Retirement happens before the copies, so a commit that never lands used to
+  // leave the surviving record naming a path this run had already removed. The
+  // run now states what it will destroy and moves the bytes aside first, so the
+  // rollback puts the file back and the record is true about the tree again.
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
   const retired = path.join(target, 'demo-craft', 'references', 'gone.md');
@@ -982,6 +1270,52 @@ test('a retired file a refused run deleted is unrecorded, not left claimed', asy
     const result = await original.apply(fs, args);
     if (!raced && String(args[1]).endsWith('guide.md')) {
       raced = true;
+      const fresh = await readManifestWithIdentity(target);
+      await writeManifest(target, fresh.manifest, fresh.identity);
+    }
+    return result;
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed while this command was running/);
+  } finally {
+    fs.rename = original;
+  }
+
+  assert.equal(
+    await fs.readFile(retired, 'utf8'), 'from an older release\n',
+    'the retired file is back, byte for byte');
+  const after = await readManifest(target);
+  assert.equal(
+    after.skills['demo-craft'].files['references/gone.md'], await hashFile(retired),
+    'and the record that names it is true again');
+  assert.equal(after.pending, undefined);
+  assert.ok(
+    !(await exists(`${retired}.stylewright-prev`)), 'and nothing is left at the reserved name');
+});
+
+test('a record stops naming a retired file whose bytes a rollback cannot find', async () => {
+  // The other half of the same statement, and the reason `keep` names the path
+  // as well as holding the bytes. Where the moved-aside file is gone, nothing
+  // can put the retirement back — so the record stops claiming a file that is
+  // not there, which is the deletion half issue 55 named.
+  const target = await tmp();
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-craft'], now: NOW });
+  const retired = path.join(target, 'demo-craft', 'references', 'gone.md');
+  await fs.writeFile(retired, 'from an older release\n');
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  manifest.skills['demo-craft'].files['references/gone.md'] = await hashFile(retired);
+  await writeManifest(target, manifest, identity);
+
+  const original = fs.rename;
+  let raced = false;
+  fs.rename = async (...args) => {
+    const result = await original.apply(fs, args);
+    if (!raced && String(args[1]).endsWith('guide.md')) {
+      raced = true;
+      // The bytes this run set aside, taken out from under it.
+      await fs.rm(`${retired}.stylewright-prev`, { force: true });
       const fresh = await readManifestWithIdentity(target);
       await writeManifest(target, fresh.manifest, fresh.identity);
     }
@@ -1013,7 +1347,7 @@ test('a run whose only work was the cleanup leaves the directory as it found it'
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(target, {
     ...(await readManifestWithIdentity(target)).manifest,
-    pending: { 'demo-craft': { 'SKILL.md': await hashFile(orphan) } },
+    pending: { 'demo-craft': { write: { 'SKILL.md': await hashFile(orphan) } } },
   }, null);
 
   const res = await installSkills({ repoRoot: REPO, targetDir: target, names: [], now: NOW });
@@ -1054,14 +1388,13 @@ test('a clean failure withdraws the statement it committed', async () => {
   assert.equal((await readManifest(target)).pending, undefined);
 });
 
-test('a failed update leaves a record that over-claims, and the next run repairs it', async () => {
+test('a failed update puts the version it was replacing back', async () => {
   // What a run that fails part way through an update leaves, stated so that a
-  // change to it is a change to a test. The files it had already replaced are
-  // removed — they are provably this run's bytes, and leaving them would read
-  // as an edit the user made — so the record names files that are absent. That
-  // is the direction this engine repairs rather than the one it cannot: install
-  // restores an absent recorded file, and uninstall tolerates one. Issue #55
-  // holds what it would take to leave the old bytes in place instead.
+  // change to it is a change to a test. The files it had already replaced hold
+  // this run's bytes, and they go — leaving them would read as an edit the user
+  // made. The version they replaced comes back in their place, because the run
+  // stated those bytes and moved them aside before it wrote. So the tree holds
+  // one release rather than half of two, and the record is true about it.
   const repo = await tmp();
   await fs.cp(REPO, repo, { recursive: true });
   const target = await tmp();
@@ -1090,14 +1423,23 @@ test('a failed update leaves a record that over-claims, and the next run repairs
 
   const after = await readManifest(target);
   const licence = path.join(target, 'demo-craft', 'LICENSE');
-  assert.ok(!(await exists(licence)), 'the bytes this run wrote are gone');
-  assert.ok(after.skills['demo-craft'].files.LICENSE, 'and the record still names the path');
+  assert.notEqual(
+    await fs.readFile(licence, 'utf8'), 'a later licence\n',
+    'the bytes this run wrote are gone');
+  assert.equal(
+    await hashFile(licence), after.skills['demo-craft'].files.LICENSE,
+    'and the record names what is actually there');
   assert.equal(after.pending, undefined);
+  assert.ok(
+    !(await exists(`${licence}.stylewright-prev`)), 'with nothing left at the reserved name');
 
+  // And the update runs again over a tree that is one whole release, rather
+  // than over a record that had to be repaired first.
   const again = await installSkills({
     repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW,
   });
   assert.deepEqual(again.installed, ['demo-craft'], JSON.stringify(again.skipped));
+  assert.equal(await fs.readFile(licence, 'utf8'), 'a later licence\n');
   assert.equal(
     await hashFile(licence),
     (await readManifest(target)).skills['demo-craft'].files.LICENSE);
@@ -1175,7 +1517,7 @@ test('a refused run withdraws its own statement, and never another\'s', async ()
   // names another run's files. Clearing that one would leave them with nothing
   // to reach them if that run were then killed — this defect, from the far side.
   const target = await tmp();
-  const theirs = { 'SKILL.md': 'f'.repeat(64) };
+  const theirs = { write: { 'SKILL.md': 'f'.repeat(64) } };
 
   const original = fs.rename;
   let raced = false;
@@ -1301,6 +1643,33 @@ test('a file at the manifest staging name is refused, never deleted', async () =
     () => installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW }),
     /is in the way/);
   assert.equal(await fs.readFile(tmpFile, 'utf8'), 'mine, not yours\n');
+});
+
+test('a reserved name in a later skill leaves no earlier skill installed', async () => {
+  // Issue 72. The reserved-segment rule ran per skill, inside the loop that
+  // copies them, so a valid skill named first was copied and committed before
+  // the later one was judged — and the command then threw without ever
+  // reporting the install that had happened. It is a rule about what a request
+  // may CONTAIN, so it runs over every named skill before the first is touched.
+  const repo = await tmp();
+  for (const [name, extra] of [['good-craft', null], ['bad-craft', 'A.stylewright-part']]) {
+    const dir = path.join(repo, 'skills', 'craft', name);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'SKILL.md'),
+      `---\nname: ${name}\ndescription: One of two.\n---\n\n# ${name}\n`);
+    if (extra) await fs.writeFile(path.join(dir, extra), 'draft\n');
+  }
+  const target = await tmp();
+
+  await assert.rejects(
+    () => installSkills({
+      repoRoot: repo, targetDir: target, names: ['good-craft', 'bad-craft'], now: NOW,
+    }),
+    /Skill "bad-craft" ships A\.stylewright-part/);
+
+  assert.ok(!(await exists(path.join(target, 'good-craft'))), 'the earlier skill is not on disk');
+  assert.ok(!(await exists(path.join(target, MANIFEST_NAME))), 'and no manifest records it');
 });
 
 test('a shipped name that aliases the staging suffix in any case is refused', async () => {

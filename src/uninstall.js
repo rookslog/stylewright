@@ -107,6 +107,7 @@ async function remove(options, { absent = false } = {}) {
       missing: [...(options.names ?? [])],
       skipped: [],
       recovered: [],
+      restored: [],
       cleared: [],
       emptied: false,
     };
@@ -121,6 +122,7 @@ async function remove(options, { absent = false } = {}) {
   const missing = [];
   const skipped = [];
   const recovered = [];
+  const restored = [];
   const cleared = [];
 
   // An install that did not come back left files it had stated it would write.
@@ -130,6 +132,7 @@ async function remove(options, { absent = false } = {}) {
   if (hasPending(manifest)) {
     const done = await recoverPending(targetDir, manifest);
     recovered.push(...done.removed);
+    restored.push(...done.restored);
     cleared.push(...done.cleared);
     manifest = done.manifest;
     identity = await writeManifest(targetDir, manifest, identity);
@@ -216,7 +219,7 @@ async function remove(options, { absent = false } = {}) {
     const spent = cleared.length && !Object.keys(manifest.skills).length
       && !hasPending(manifest) && identity !== null;
     if (spent) await removeManifest(targetDir, identity);
-    return { removed, missing, skipped, recovered, cleared, emptied: Boolean(spent) };
+    return { removed, missing, skipped, recovered, restored, cleared, emptied: Boolean(spent) };
   }
 
   // The files are gone by now, so the record has to catch up rather than
@@ -230,7 +233,7 @@ async function remove(options, { absent = false } = {}) {
   // command did: the entries for the skills it removed, and nothing else. A
   // skill another run installed meanwhile keeps its record.
   const emptied = await reapply(targetDir, removed);
-  return { removed, missing, skipped, recovered, cleared, emptied };
+  return { removed, missing, skipped, recovered, restored, cleared, emptied };
 }
 
 /** Does any file this entry records still stand where it says? */

@@ -100,7 +100,7 @@ test('an uninstall that removes nothing writes nothing', async () => {
   const target = path.join(await tmp(), 'skills');
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
   assert.deepEqual(res, {
-    removed: [], missing: ['demo-craft'], skipped: [], recovered: [], cleared: [],
+    removed: [], missing: ['demo-craft'], skipped: [], recovered: [], restored: [], cleared: [],
   });
   assert.ok(!(await exists(target)), 'no directory may be created');
 });
@@ -356,7 +356,7 @@ test('the last uninstall keeps a manifest that now holds another run\'s statemen
       const { manifest, identity } = await readManifestWithIdentity(target);
       await writeManifest(
         target,
-        { ...manifest, pending: { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } } },
+        { ...manifest, pending: { 'demo-standard': { write: { 'SKILL.md': sha256('half a copy\n') } } } },
         identity);
     }
     return result;
@@ -369,7 +369,7 @@ test('the last uninstall keeps a manifest that now holds another run\'s statemen
 
   const mf = await readManifest(target);
   assert.deepEqual(mf.skills, {});
-  assert.deepEqual(mf.pending, { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } });
+  assert.deepEqual(mf.pending, { 'demo-standard': { write: { 'SKILL.md': sha256('half a copy\n') } } });
 });
 
 test('the record catches up even when the manifest changes twice', async () => {
@@ -479,7 +479,7 @@ test('an uninstall whose only work was the cleanup leaves nothing behind', async
   await fs.mkdir(path.dirname(orphan), { recursive: true });
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(target, {
-    schema: 1, skills: {}, pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } },
+    schema: 1, skills: {}, pending: { 'demo-craft': { write: { 'SKILL.md': sha256('half a copy\n') } } },
   }, null);
 
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
@@ -497,7 +497,7 @@ test('a skill this command cleared is not also reported as never installed', asy
   await fs.mkdir(path.dirname(orphan), { recursive: true });
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(target, {
-    schema: 1, skills: {}, pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } },
+    schema: 1, skills: {}, pending: { 'demo-craft': { write: { 'SKILL.md': sha256('half a copy\n') } } },
   }, null);
 
   const res = await uninstallSkills({ targetDir: target, names: ['demo-craft'] });
@@ -519,7 +519,9 @@ test('an uninstall clears what an interrupted install left', async () => {
   await writeManifest(target, {
     ...manifest,
     pending: {
-      'demo-standard': { LICENSE: sha256('a licence\n'), 'SKILL.md': sha256('half a copy\n') },
+      'demo-standard': {
+        write: { LICENSE: sha256('a licence\n'), 'SKILL.md': sha256('half a copy\n') },
+      },
     },
   }, identity);
 

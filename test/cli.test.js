@@ -239,7 +239,7 @@ test('update clears what an interrupted first install left, and says it changed'
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
     target,
-    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    { ...emptyManifest(), pending: { 'demo-craft': { write: { 'SKILL.md': sha256('half a copy\n') } } } },
     null);
 
   const out = capture();
@@ -262,7 +262,7 @@ test('a cleanup that removed no file is still a change', async () => {
   const { writeManifest, emptyManifest } = await import('../src/manifest.js');
   await writeManifest(
     target,
-    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('never written\n') } } },
+    { ...emptyManifest(), pending: { 'demo-craft': { write: { 'SKILL.md': sha256('never written\n') } } } },
     null);
 
   const out = capture();
@@ -287,7 +287,7 @@ test('install reports a cleanup that wrote no skill as a change', async () => {
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
     target,
-    { ...emptyManifest(), pending: { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } } },
+    { ...emptyManifest(), pending: { 'demo-standard': { write: { 'SKILL.md': sha256('half a copy\n') } } } },
     null);
 
   const out = capture();
@@ -309,7 +309,7 @@ test('uninstall reports a cleanup that removed no skill as a change', async () =
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
     target,
-    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    { ...emptyManifest(), pending: { 'demo-craft': { write: { 'SKILL.md': sha256('half a copy\n') } } } },
     null);
 
   const out = capture();
@@ -458,7 +458,7 @@ test('install says what it cleared from an interrupted run', async () => {
   await fs.writeFile(orphan, 'half a copy\n');
   const { manifest, identity } = await readManifestWithIdentity(target);
   await writeManifest(target, {
-    ...manifest, pending: { 'demo-standard': { 'SKILL.md': sha256('half a copy\n') } },
+    ...manifest, pending: { 'demo-standard': { write: { 'SKILL.md': sha256('half a copy\n') } } },
   }, identity);
 
   const out = capture();
@@ -539,7 +539,7 @@ test('uninstall accepts a withdrawn name that only a statement carries', async (
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
     target,
-    { ...emptyManifest(), pending: { withdrawn: { 'SKILL.md': sha256('half a copy\n') } } },
+    { ...emptyManifest(), pending: { withdrawn: { write: { 'SKILL.md': sha256('half a copy\n') } } } },
     null);
 
   const out = capture();
@@ -598,7 +598,7 @@ test('a name only a statement carries is not unknown', async () => {
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
     target,
-    { ...emptyManifest(), pending: { withdrawn: { 'SKILL.md': sha256('half a copy\n') } } },
+    { ...emptyManifest(), pending: { withdrawn: { write: { 'SKILL.md': sha256('half a copy\n') } } } },
     null);
 
   const out = capture();
@@ -639,7 +639,7 @@ test('a targeted update clears a skill that exists only as a statement', async (
   await fs.writeFile(orphan, 'half a copy\n');
   await writeManifest(
     target,
-    { ...emptyManifest(), pending: { 'demo-craft': { 'SKILL.md': sha256('half a copy\n') } } },
+    { ...emptyManifest(), pending: { 'demo-craft': { write: { 'SKILL.md': sha256('half a copy\n') } } } },
     null);
 
   const out = capture();

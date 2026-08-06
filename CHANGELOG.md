@@ -53,6 +53,25 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An install is now reversible per skill, not merely orphan-free.** A run
+  that failed part way through an update used to leave the tree holding half of
+  one release and half of another, with the record naming files that were not
+  there. A run killed after retirement left the record naming a path it had
+  already deleted. A run now states what it will DESTROY as well as what it
+  will write, and moves those bytes to `.stylewright-prev` by rename before it
+  touches the destination. A recovery puts them back. Where they are gone, the
+  record stops naming the path. The statement carries a `committed` mark, set
+  in the same manifest write that records the skill, so no recovery can roll
+  back an install whose record has landed. A skill may ship a path ending in
+  neither reserved suffix. ADR-0019 records the decision, and
+  `test/install.test.js` kills a real process at each boundary the statement
+  adds.
+- **A reserved shipped name is refused before the first skill is copied.** The
+  rule ran per skill, inside the loop that installs them, so a later skill's
+  bad name was refused after an earlier skill had already been committed — and
+  the command then failed without ever reporting the install that had happened.
+  It joins the portability check in the preflight that runs over every named
+  skill.
 - **`ground --check` refuses the Markdown it cannot model, instead of reading it
   wrongly.** The extractor reads a line at a time and holds no stack of open
   containers, so a heading, a list item, a fence or a table nested inside a
