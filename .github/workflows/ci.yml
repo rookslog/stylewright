@@ -69,3 +69,26 @@ jobs:
       # never invokes the runner.
       - name: Every check
         run: npm run check
+
+  # macOS is where this tool is developed and where the Cowork install pathway
+  # runs, and until this job existed no run ever measured it. Same shape as the
+  # windows job, and separate from `check` for the same reason: a new job adds
+  # a name without renaming the ones the branch ruleset requires.
+  macos:
+    runs-on: macos-latest
+    strategy:
+      # A failure at one end of the range says nothing about the other.
+      fail-fast: false
+      matrix:
+        # Both ends of the supported range, matching the windows job.
+        node: ['20.11.0', '24']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+
+      - name: Every check
+        run: npm run check
