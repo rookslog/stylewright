@@ -377,7 +377,7 @@ test('a failed scaffold leaves no directory behind, so a retry works', async () 
   const written = await scaffoldSkill({
     repoRoot: repo, name: 'demo', tier: 'craft', description: 'd',
   });
-  assert.ok(written.includes(path.join('grounding', 'craft', 'demo.md')));
+  assert.ok(written.includes('grounding/craft/demo.md'));
 });
 
 test('a first write refuses a manifest that appeared meanwhile', async () => {

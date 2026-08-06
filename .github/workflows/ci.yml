@@ -47,6 +47,9 @@ jobs:
   windows:
     runs-on: windows-latest
     strategy:
+      # A failure at one end of the range says nothing about the other, and
+      # cancelling the second version hides half of what a Windows run knows.
+      fail-fast: false
       matrix:
         # Both ends of the supported range, because Node's own behaviour moves
         # inside it: releases after 20.11.0 refuse to spawn a `.cmd` without a
