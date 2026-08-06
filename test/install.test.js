@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { installSkills } from '../src/install.js';
 import {
   readManifest, readManifestWithIdentity, writeManifest, hashFile, MANIFEST_NAME,
@@ -637,6 +637,12 @@ test('a finished install leaves no statement behind', async () => {
  * the undo this module performs in its own process is skipped entirely. That
  * is the failure the deferred review finding named, and the only thing that
  * answers it is a record written before the copy.
+ *
+ * The parent does the killing, and the child only says when. A process cannot
+ * SIGKILL itself on Windows, where the signal has no meaning to raise: the call
+ * returns, the run carries on, and it finishes cleanly — the one outcome this
+ * test exists to rule out. Killing from outside is also the truer model of the
+ * thing being tested, which is a run that some other agent ends.
  */
 async function killedInstall(target, hook) {
   const script = `
@@ -648,7 +654,11 @@ async function killedInstall(target, hook) {
       // Not the manifest's own write, which uses the same two calls. This is
       // about a skill file reaching, or not reaching, its destination.
       if (!String(args[args.length - 1]).includes('.stylewright-manifest')) {
-        process.kill(process.pid, 'SIGKILL');
+        // Say when, then never return. The install is suspended exactly here
+        // until the parent ends the process, so nothing downstream of this call
+        // ever runs.
+        process.send('now');
+        await new Promise(() => {});
       }
       return result;
     };
@@ -660,9 +670,15 @@ async function killedInstall(target, hook) {
     });
   `;
   const died = await new Promise((resolve) => {
-    execFile(process.execPath, ['--input-type=module', '-e', script], (err) => resolve(err));
+    // A channel on the fourth descriptor, because the child has to say when and
+    // the first three carry nothing this test reads.
+    const child = spawn(
+      process.execPath, ['--input-type=module', '-e', script],
+      { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+    child.on('message', () => child.kill('SIGKILL'));
+    child.on('close', (code, signal) => resolve({ code, signal }));
   });
-  assert.equal(died?.signal, 'SIGKILL', 'the run must die rather than return');
+  assert.equal(died.signal, 'SIGKILL', 'the run must die rather than return');
   // A run killed mid-command leaves the directory locked, and the next command
   // refuses rather than guessing whether that run is still alive. Removing the
   // file is the one thing only a person can be sure about.
