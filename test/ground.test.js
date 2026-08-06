@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { parseMatrix, checkSkill, checkAll, contentUnits } from '../src/ground.js';
+import fs from 'node:fs';
+import {
+  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO,
+} from '../src/ground.js';
+import { sections } from '../src/markdown.js';
 
 const REPO = path.join(import.meta.dirname, 'fixtures', 'repo');
 
@@ -265,6 +269,303 @@ test('an N row carries no rule, and an unknown prefix is refused', () => {
   const bogus = withN.replace('| N-01 |', '| X-01 |');
   assert.ok(checkSkill({ skillText: narrative, matrixText: bogus })
     .some((f) => f.code === 'unknown-row-kind'));
+});
+
+// The extractor holds no stack of open containers, so it read a construct
+// nested in a blockquote or under an indent as the wrong unit. Five rounds
+// patched five shapes and the sixth arrived each time, so it now refuses what
+// it does not model and names the line. Issue 37 carries the four shapes below,
+// and the ones after them are shapes nobody reported. A guard that closes the
+// class refuses those too, without a patch for each.
+//
+// The guard began as a list of shapes to reject, and three review rounds each
+// found a shape the list did not name. It states the forms it READS now, and
+// refuses everything else, so the test below for an unenumerated shape is the
+// one that says the class is closed.
+
+const refused = (text) => checkSkill({
+  skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
+}).filter((f) => f.code === 'unmodelled-construct').map((f) => f.message).join(' ');
+
+test('a paragraph indented under a list item is refused, not read as code', () => {
+  // The extractor read the continuation as a code block, so a row could
+  // dispose of a directive by its digest without quoting a word of it.
+  assert.match(refused('- Context.\n\n    Always preserve safety.'),
+    /a paragraph indented under a list item/);
+});
+
+test('a fence that does not open at column 0 is refused', () => {
+  // Four leading spaces are a code block to a reader and a fence here, so the
+  // prose below the opener was swallowed into the block.
+  assert.match(refused('    ```js\nconst x = 1;\n```\n\nAlways preserve safety.'),
+    /a fenced block that does not begin at column 0/);
+});
+
+test('a heading with leading spaces is refused, not merged into prose', () => {
+  // `   ## Rules` opened no section, so the heading and the directive below it
+  // became one unit under the previous anchor.
+  assert.match(refused('   ## Rules\n\nAlways preserve safety.'),
+    /a heading that does not begin at column 0/);
+});
+
+test('a list inside a blockquote is refused, not flattened into one unit', () => {
+  // Two directives were read as one paragraph, so one row disposed of both.
+  const found = refused('> - Do first.\n> - Do second.');
+  assert.equal(found.match(/a blockquote/g).length, 2);
+});
+
+test('a list item indented under another is refused', () => {
+  // Not a shape anyone reported. The extractor reads a nested item as a
+  // sibling at the top level, which loses which item the guidance qualifies.
+  assert.match(refused('- Do first.\n  - Do second.'),
+    /a list item that does not begin at column 0/);
+});
+
+test('a fence inside a blockquote is refused', () => {
+  assert.match(refused('> ```js\n> const x = 1;\n> ```'), /a blockquote/);
+});
+
+test('a table indented under a list item is refused', () => {
+  // Read as a top-level table, its designator says nothing about the item it
+  // belongs to, and the rest of the item disappears into the block.
+  assert.match(refused('- Do first.\n\n    | a | b |\n    |---|---|\n    | c | d |'),
+    /a table row that does not begin at column 0/);
+});
+
+test('a child paragraph under a list item is refused at any indent', () => {
+  // The first guard asked for four spaces, which was the width the reported
+  // shape used. Two spaces passed it and became a top-level paragraph, so the
+  // matrix could anchor a directive outside the item that qualifies it. A
+  // blank line above separates a child block from a wrapped line, not a width.
+  assert.match(refused('- Context.\n\n  Always preserve safety.'),
+    /a paragraph indented under a list item/);
+  assert.match(refused('- Context.\n\n\tAlways preserve safety.'),
+    /a paragraph indented under a list item/);
+});
+
+test('a setext heading that does not begin at column 0 is refused', () => {
+  // The section split consumes a setext heading before the line walk sees it,
+  // so `Rules` over `-----` under a list item became a top-level section and
+  // moved the anchor of everything below it.
+  assert.match(refused('- Context.\n\n  Rules\n  -----\n\nAlways preserve safety.'),
+    /a heading that does not begin at column 0/);
+  assert.match(refused('  Rules\n  -----\n\nAlways preserve safety.'),
+    /a heading that does not begin at column 0/);
+  assert.equal(refused('Rules\n-----\n\nAlways preserve safety.'), '');
+});
+
+test('an indented code block holds whatever it contains', () => {
+  // A fence marker inside the block was read as an opener, which split one
+  // block into two designators and refused a line that is only an example.
+  const text = 'Prose here.\n\n    const x = 1;\n    ```\n    const y = 2;';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`);
+  assert.equal(units.filter((u) => u.block).length, 1);
+});
+
+test('an empty list marker opens a list, so its child block is refused', () => {
+  // The item pattern wants content after the marker, so `-` on its own left
+  // the list shut and the child block under it was read at the top level. The
+  // ordered case hid a directive inside a code digest.
+  assert.match(refused('-\n\n  Always preserve safety.'),
+    /a paragraph indented under a list item/);
+  assert.match(refused('1.\n\n    Always preserve safety.'),
+    /a paragraph indented under a list item/);
+  assert.match(refused('- Do first.\n  -'), /a list item that does not begin at column 0/);
+});
+
+test('a container prefix is refused before the line becomes a table', () => {
+  // `> A | B` over `--- | ---` reached the table branch first and became a
+  // designator, so a blockquote passed the guard with no refusal at all.
+  assert.match(refused('> A | B\n--- | ---\n> c | d'), /a blockquote/);
+  assert.match(refused('  ## A | B\n--- | ---'),
+    /a heading that does not begin at column 0/);
+  assert.equal(refused('| a | b |\n|---|---|\n| c | d |'), '');
+});
+
+test('indentation is measured in columns, so a tab is four of them', () => {
+  // A pattern over literal characters read ` \t` as one space. A code block
+  // written with a mixed indent closed at that line, the guard refused the
+  // block's own contents, and one block became two designators.
+  const text = 'Prose here.\n\n    const x = 1;\n \t> quoted';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`);
+  assert.equal(units.filter((u) => u.block).length, 1);
+  assert.match(refused('- Context.\n\n \tAlways preserve safety.'),
+    /a paragraph indented under a list item/);
+});
+
+test('a shape nobody enumerated is refused, because the grammar states what it reads', () => {
+  // The class-closing test. None of these is a shape any review round named,
+  // and no branch names them now either. They are refused because they are not
+  // among the forms the extractor reads.
+  assert.match(refused('Prose here.\n\n  <div>\n  </div>'),
+    /does not begin at column 0/);
+  assert.match(refused('Prose here.\n\n   Indented prose.'), /does not begin at column 0/);
+  assert.match(refused('- Do first.\n\n  > quoted'), /a blockquote/);
+});
+
+test('a table may not begin on a list-marker line', () => {
+  // `- A | B` over `--- | ---` became one table designator, so the item's own
+  // words went into a digest and no row had to quote them.
+  const found = checkSkill({
+    skillText: `${SKILL}\n## Later\n\n- A | B\n--- | ---\n`, matrixText: MATRIX,
+  });
+  assert.ok(found.some((f) => f.code === 'unmodelled-construct'
+    && /a table inside a list item/.test(f.message)));
+  // The item stays readable rather than vanishing into the block.
+  assert.ok(contentUnits(`${SKILL}\n## Later\n\n- A | B\n--- | ---\n`)
+    .some((u) => /A \| B/.test(u.text) && !u.block));
+});
+
+test('a marker with no content is refused where it begins a block', () => {
+  // A bare marker opened no item, so a child on the very next line merged with
+  // the marker into one paragraph and nothing said so.
+  assert.match(refused('-\n  Always preserve safety.'), /a list item with no content/);
+  assert.match(refused('#'), /a heading with no text/);
+  // A number that ends a paragraph is prose. `017966390.` is a trademark
+  // number in a shipped skill, and reading it as an empty marker failed the
+  // whole catalogue.
+  assert.equal(refused('The number is\n017966390.'), '');
+});
+
+test('a closing fence indented four columns is the block\'s own contents', () => {
+  // Closing there put the directive below the block outside it, and the
+  // extractor then read code as prose.
+  const text = '```js\ncode\n    ```\nAlways preserve safety.';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`);
+  assert.equal(units.filter((u) => u.block).length, 1);
+  // The directive is the block's contents, so it is no unit of its own. It
+  // became one when the indented marker closed the block.
+  assert.equal(units.filter((u) => /Always preserve safety/.test(u.text)).length, 0);
+});
+
+test('a table that does not begin at column 0 is refused at any width', () => {
+  // One to three spaces left `LEAD` true but every other test false, so an
+  // indented table passed a guard that asked only about four columns.
+  assert.match(refused('  | a | b |\n  |---|---|'), /a table row that does not begin at column 0/);
+  assert.match(refused('  ## Later'), /a heading that does not begin at column 0/);
+});
+
+test('an empty construct is refused for being empty, at any indent', () => {
+  // Indented, these were refused for the indent alone, and the remedy told the
+  // author to write at column 0 the very line the check refuses there.
+  const message = (text) => checkSkill({
+    skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
+  }).find((f) => f.code === 'unmodelled-construct').message;
+  assert.match(message('  #'), /a heading with no text/);
+  assert.match(message('  #'), /Give the heading its text/);
+  assert.match(message('  -'), /a list item with no content/);
+  assert.match(message('  -'), /Give the item its words/);
+});
+
+test('an empty heading is refused even where it interrupts a paragraph', () => {
+  // A heading interrupts a paragraph for a Markdown reader, and neither the
+  // section scan nor the walk reads an empty one. `Prose` over `#` over a
+  // directive was one unit, so one row could dispose of three.
+  assert.match(refused('Prose\n#\nAlways preserve safety.'), /a heading with no text/);
+});
+
+test('the section scan stays out of an indented code block', () => {
+  // A fence marker inside a permitted indented block was read as an opener
+  // there, which suppressed every heading after it. The heading and its
+  // directive then joined the prose of the section above.
+  const text = 'Prose here.\n\n    code\n    ```\n    more\n\n## Deeper\n\nAlways preserve safety.';
+  assert.equal(refused(text), '');
+  assert.deepEqual(sections(text).map((s) => s.heading), ['Deeper']);
+  assert.ok(contentUnits(`${SKILL}\n## Later\n\n${text}\n`)
+    .some((u) => u.anchor === 'Deeper' && /Always preserve safety/.test(u.text)));
+});
+
+test('an ordered marker is at most nine digits, wherever it is read', () => {
+  // A ten-digit reference number opened a list that a Markdown reader does
+  // not, and the standalone code block below it was refused for sitting under
+  // that list.
+  assert.equal(refused('1234567890. Reference number\n\n    const x = 1;'), '');
+  assert.match(refused('1. Item.\n\n    const x = 1;'),
+    /a paragraph indented under a list item/);
+});
+
+test('a marker that continues a paragraph opens no list', () => {
+  // `1.` under prose is the paragraph's own words to a Markdown reader, and an
+  // empty item cannot interrupt a paragraph. Opening a list there left it open
+  // across the blank line, so a standalone code block below was refused for
+  // sitting under a list that was never there.
+  assert.equal(refused('Prose\n1.\n\n    const x = 1;'), '');
+  assert.match(refused('1. Item.\n\n    const x = 1;'),
+    /a paragraph indented under a list item/);
+});
+
+test('one file has one reading, so the section scan closes a fence where the walk does', () => {
+  // `sections` closed on a marker indented four columns while the walk read
+  // that marker as the block's own contents. A heading below it then opened a
+  // section from inside a code block, and every anchor under it was wrong.
+  const text = '```js\ncode\n    ```\n## Later\n\nAlways preserve safety.';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`);
+  assert.equal(units.filter((u) => u.block).length, 1);
+  assert.equal(units.filter((u) => /Always preserve safety/.test(u.text)).length, 0);
+  assert.equal(sections(text).length, 0);
+});
+
+test('README names every construct refused at column 0', () => {
+  // It named the blockquote and not the other two, so a contributor could
+  // write a documented form and get a refusal for it.
+  const readme = fs.readFileSync(
+    path.join(import.meta.dirname, '..', 'README.md'), 'utf8').toLowerCase();
+  for (const shape of Object.values(AT_COLUMN_ZERO)) {
+    assert.ok(readme.includes(shape), `README does not name ${shape}`);
+  }
+});
+
+test('a refusal carries a remedy the author can follow', () => {
+  // Every refusal ended with "write it at column 0", which a blockquote, an
+  // empty marker and an empty heading already do. A remedy that cannot be
+  // followed reads as a check that misread the line.
+  const message = (text) => checkSkill({
+    skillText: `${SKILL}\n## Later\n\n${text}\n`, matrixText: MATRIX,
+  }).find((f) => f.code === 'unmodelled-construct').message;
+
+  for (const [text, remedy] of [
+    ['> quoted', /fenced block/],
+    ['#', /Give the heading its text/],
+    ['-', /Give the item its words/],
+    ['- A | B\n--- | ---', /Move the table out of the list/],
+  ]) {
+    assert.match(message(text), remedy);
+    assert.doesNotMatch(message(text), /Write it at column 0\./);
+  }
+  assert.match(message('  | a | b |\n  |---|---|'), /Write it at column 0\./);
+});
+
+test('an indented construct with no list above it is code, and stands', () => {
+  // Refusing is not narrowing. An indented block that begins its own paragraph
+  // is read here exactly as a reader reads it, so it needs no refusal, and a
+  // wrapped continuation line is not a container either.
+  assert.equal(refused('Prose here.\n\n    const x = 1;\n    > quoted'), '');
+  assert.equal(refused('- Do not use a semicolon,\n  because it joins two ideas.'), '');
+  assert.equal(refused('- Do not use a semicolon,\n    because it joins two ideas.'), '');
+  assert.equal(refused('```md\n> quoted\n```'), '');
+  assert.equal(refused('- Do first.\n\nProse here.\n\n    const x = 1;'), '');
+});
+
+test('a refusal names the line in the file, front matter counted', () => {
+  const skillText = `${SKILL}\n> Quoted.\n`;
+  const line = skillText.split('\n').indexOf('> Quoted.') + 1;
+  assert.deepEqual(unmodelled(skillText), [{ line, shape: 'a blockquote' }]);
+  assert.ok(checkSkill({ skillText, matrixText: MATRIX })
+    .some((f) => f.code === 'unmodelled-construct' && f.message.startsWith(`line ${line}:`)));
+});
+
+test('every shipped skill stays inside the Markdown the extractor models', async () => {
+  // The guard costs the author a subset to write in. This is the check that
+  // the subset is one the shipped skills already sit inside.
+  const all = await checkAll(path.join(import.meta.dirname, '..'));
+  const refusals = Object.entries(all)
+    .flatMap(([name, fs]) => fs.filter((f) => f.code === 'unmodelled-construct')
+      .map((f) => `${name}: ${f.message}`));
+  assert.deepEqual(refusals, []);
 });
 
 test('checkAll covers every skill in the repository', async () => {

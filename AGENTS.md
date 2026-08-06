@@ -63,12 +63,27 @@ thing outside the check, because it is metadata for the harness.
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
 
-The checker reads Markdown a line at a time, and it models no container. A list
-item, a heading or a fence nested inside a blockquote or under an indent is read
-as the wrong unit. Issue 37 carries the four shapes that reproduce, and it
-carries the design decision that closes the class. Report a fifth shape there
-rather than as a new finding, because patching one variant has produced the next
-one five rounds running.
+The checker reads Markdown a line at a time, and it models no container. So it
+states the forms it reads and refuses every line outside them. Those forms are
+a blank line, any construct at column 0, a line that continues the paragraph
+above it while carrying prose, and an indented code block that stands on its
+own. A blockquote, an empty marker and an empty heading are the exceptions at
+column 0, because the checker does not read those either. Anything outside the
+forms fails as `unmodelled-construct`, with the line and what to write instead.
+
+The grammar is stated this way round on purpose. It began as a list of shapes
+to reject, and three review rounds each found a shape the list did not name.
+A rejection list is only as complete as its last review. Do not answer a new
+shape by adding a rule that names it. Ask instead which form the checker reads
+it as, and whether the grammar admits that form. ADR-0016 records the
+inversion and the evidence for it.
+
+Refusing is not narrowing. Every unit the checker saw before it still sees, and
+a refusal is one more finding rather than a replacement for one. A test runs
+`checkAll` over the shipped catalogue and asserts no refusal, so a skill cannot
+drift outside the grammar without CI saying so. That test is also the flip
+condition ADR-0016 names: a refusal a skill author cannot write around reopens
+issue 37 for a Markdown parser, and it is not a sixth patch.
 
 ### A skill that substitutes for its source
 

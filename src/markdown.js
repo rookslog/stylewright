@@ -51,6 +51,25 @@ function maskFrontMatter(lines) {
 
 const SETEXT = /^\s{0,3}(=+|-+)\s*$/;
 
+/**
+ * The indent in columns, where a tab advances to the next stop of four. It
+ * lives here because both readings of a file need it and they must agree: the
+ * section scan closed a fence on a marker indented four columns while the
+ * grounding walk read that marker as the block's own contents, so one file had
+ * two readings and a heading inside a code block became a section.
+ */
+export const TAB = 4;
+export function indentOf(line) {
+  let n = 0;
+  for (const ch of line) {
+    if (ch === ' ') n += 1;
+    else if (ch === '\t') n += TAB - (n % TAB);
+    else break;
+  }
+  return n;
+}
+export const isIndented = (line) => indentOf(line) >= TAB;
+
 export function sections(text) {
   const lines = maskFrontMatter(text.split('\n'));
   const heads = [];
@@ -60,10 +79,17 @@ export function sections(text) {
   // a four-backtick block quoting a three-backtick one stays one block.
   let marker = null;
   lines.forEach((line, i) => {
-    const f = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+    // A marker indented four columns is code, not a fence. As a closer it is
+    // the block's own contents, and as an opener it is a line inside an
+    // indented code block. Reading either as a fence gave one file two
+    // readings: a heading below the marker opened a section from inside a code
+    // block, and a marker inside an indented example suppressed every heading
+    // after it.
+    const f = isIndented(line) ? null : /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
     if (f) {
       if (!marker) marker = f[1];
-      else if (f[1][0] === marker[0] && f[1].length >= marker.length && !f[2].trim()) marker = null;
+      else if (f[1][0] === marker[0]
+        && f[1].length >= marker.length && !f[2].trim()) marker = null;
       return;
     }
     if (marker) return;

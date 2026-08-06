@@ -232,9 +232,20 @@ does not. Every heading, paragraph, list item, table and code block counts,
 including the ones before the first heading. Front matter does not, because it
 is metadata for the agent harness rather than instruction for a reader.
 
-The check reads Markdown a line at a time. It does not model a blockquote or an
-indented container, so it can read what sits inside one as the wrong unit.
-Issue 37 tracks that gap.
+The check reads Markdown a line at a time, and it models no container. So it
+states the forms it reads: a blank line, any construct at column 0, a line that
+continues the paragraph above it, and an indented code block that stands on its
+own. It refuses every other line and names it, rather than reading a blockquote
+or a nested construct as the wrong unit.
+
+Three constructs are refused at column 0 as well, because the check reads none
+of them:
+
+- A blockquote, whose contents the check reads as our own prose.
+- A heading with no text, such as `#`, which opens no section.
+- A list item with no content, such as `-`, which opens no item.
+
+ADR-0016 records that decision.
 
 ## Licensing
 
