@@ -91,14 +91,13 @@ export function isolationProblems(flags) {
   for (const required of REQUIRED_FLAGS) {
     if (!flags.includes(required)) problems.push(`flags omit ${required}.`);
   }
-  const sources = flags.indexOf('--setting-sources');
-  if (sources === -1) {
-    problems.push('flags omit --setting-sources, so nothing suppressed the operator config.');
-  } else if (flags[sources + 1] !== '') {
-    problems.push(
-      `--setting-sources carried "${flags[sources + 1]}", and the control arm passes an `
-      + 'empty value.');
-  }
+  // EVERY occurrence, not the first. A set that opens with an empty
+  // `--setting-sources` and then repeats it with `user` passes a check that
+  // reads `indexOf`, and the later flag is the one the harness obeys. A
+  // repeated flag is refused outright for the same reason: the acceptance test
+  // is about the surface the arm actually ran under, and a duplicate makes that
+  // a question about the harness's precedence rules.
+  const seen = new Set();
   for (let i = 0; i < flags.length; i += 1) {
     const flag = flags[i];
     if (typeof flag !== 'string' || !flag.startsWith('-')) continue;
@@ -106,7 +105,17 @@ export function isolationProblems(flags) {
       problems.push(`${flag} is not a flag the control arm runs.`);
       continue;
     }
+    if (seen.has(flag)) problems.push(`${flag} appears twice, so the arm's surface is unclear.`);
+    seen.add(flag);
+    if (flag === '--setting-sources' && flags[i + 1] !== '') {
+      problems.push(
+        `--setting-sources carried "${flags[i + 1]}", and the control arm passes an `
+        + 'empty value.');
+    }
     if (FLAGS_TAKING_A_VALUE.includes(flag)) i += 1;
+  }
+  if (!seen.has('--setting-sources')) {
+    problems.push('flags omit --setting-sources, so nothing suppressed the operator config.');
   }
   return problems;
 }

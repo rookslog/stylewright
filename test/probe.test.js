@@ -133,6 +133,17 @@ test('the flags are the control arm\'s, and any other surface is refused', () =>
     /omit --strict-mcp-config/);
 });
 
+// The harness obeys the LAST spelling of a repeated flag, so a check reading
+// the first one accepts a record whose arm ran with the operator's config open.
+test('a repeated flag is refused, and every occurrence is read', () => {
+  const twice = ['-p', '--setting-sources', '', '--strict-mcp-config',
+    '--setting-sources', 'user'];
+  const problems = isolationProblems(twice).join(' ');
+  assert.match(problems, /--setting-sources appears twice/);
+  assert.match(problems, /--setting-sources carried "user"/);
+  assert.equal(deriveOutcome({ nonce: 'x', flags: twice }).isolated, false);
+});
+
 test('a probe run outside the isolation flags derives a failure', () => {
   const loose = record({ flags: ['-p', '--setting-sources', 'user', '--strict-mcp-config'] });
   const outcome = deriveOutcome(loose);
