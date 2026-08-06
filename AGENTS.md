@@ -7,16 +7,17 @@ This repository ships writing skills. Its own documents are written under one of
 those skills, and continuous integration checks them with its own tool. Hold a
 change here to the standard the repository sells.
 
-## Run these four before you claim a change is done
+## Run these five before you claim a change is done
 
 ```bash
 npm test              # unit and conformance tests
 npm run lint:docs     # our own writing rules, applied to our own documents
 npm run check:ground  # every grounding matrix still matches its skill
 npm run check:docs    # every document's front matter fits the schema
+npm run check:probes  # every probe record carries what a reader derives from
 ```
 
-`npm run check` runs all four.
+`npm run check` runs all five.
 
 ## What counts as a defect here
 
@@ -133,7 +134,7 @@ the authority and not this paragraph.
 ### A figure that outruns its study
 
 The measurement design (`docs/specs/2026-08-04-measurement-design.md`,
-ADR-0009 through ADR-0015) governs every number published in
+ADR-0009 through ADR-0015, and ADR-0017) governs every number published in
 `bench/README.md`.
 
 - A figure carries a `bench-study:<study>#<result>` marker, or the word
@@ -149,6 +150,11 @@ ADR-0009 through ADR-0015) governs every number published in
 - The measurement checks join `npm run check` as they are implemented,
   each as a named script. A check that exists locally and not in the CI
   gate is the defect PR #59's review caught. Do not reopen it.
+- A probe record states no outcome. `bench/probe.mjs` derives one from the
+  bytes the record retains, and `check:probes` prints what it derived. A
+  record that grades itself is refused, and so is one collected under any
+  flags but the control arm's. `bench/probes/README.md` carries the
+  protocol.
 
 ### A word list without rationale or a severity
 

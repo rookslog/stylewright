@@ -223,3 +223,7 @@ The bench also delivers a treatment by appending it to the system prompt, while
 the product installs a directory that a harness must choose to load. These
 figures therefore measure injection, and never installation. Issue #43 carries
 the installed-activation scenario.
+
+Installed delivery waits on one question, and `probes/` holds the answer when
+someone runs it. Can a harness see an installed skill under the flags the
+control arm runs? Read `probes/README.md` before collecting an installed arm.
