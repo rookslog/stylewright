@@ -85,6 +85,22 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   admitted operating discipline to this tier, and it forbids a measured claim
   until the bench can drive a multi-step session. No arm has been run, and the
   skill `SOURCE.md` says so.
+- The `de-slop` skill, in the craft tier, and the skill this repository is named
+  for. It names rhetorical moves rather than words. Every rule in it names a
+  structural or commitment defect, and no rule in it is enforced by matching a
+  word. It ships no word list, and no skill here does, because a list of
+  forbidden words teaches an agent to swap each word for its nearest neighbour
+  and leaves the defect behind a cleaner surface. No measurement stands behind
+  it, and ADR-0021 accepts that rather than holding the skill on structural
+  metrics the scorer does not have.
+- A `signatures` metric in `bench/score.mjs`, beside `hedges` and `menus`. It
+  counts listed words and short phrases per occurrence, and it ships with an
+  empty list, so it reads zero on every sample. The bench is where a count of
+  this kind belongs, because no install pathway copies it and a scorer tells an
+  agent nothing. An entry carries a stated reference distribution before it
+  counts against anything, in ADR-0021 and in a comment at the metric, because
+  a frequency with no denominator reads as evidence and is not evidence. A word
+  becomes a lint rule only after a promoted study says it should.
 - The `navigable-references` skill, in the craft tier. It asks a writer to give
   every named thing a form the reader can follow, in the form the medium
   renders, and to find a line at the moment of citing it rather than from

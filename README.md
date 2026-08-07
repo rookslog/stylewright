@@ -41,6 +41,7 @@ Install one tier, the other, or both.
 | `compressed-deliberation` | craft | None. Anthropic documents the defaults, and our own baseline traces the inflation to the instruction stack above them. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
 | `navigable-references` | craft | None. The rule is ours, and no measurement stands behind it yet. See the skill `SOURCE.md`. | Not applicable. Nothing is reproduced. |
 | `proportionate-execution` | craft | None. Anthropic documents the behaviours, and every rule answering them is ours. See the skill `SOURCE.md`. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
+| `de-slop` | craft | None. Every rule is ours, and no measurement stands behind it yet. See the skill `SOURCE.md`. | Not applicable. Nothing is reproduced. |
 
 A craft skill has no standard behind it, so measurement is the only evidence its
 rules can have. `bench/` holds that protocol, and `bench/README.md` states the
@@ -49,8 +50,13 @@ clean, which is how we learned the skill we were about to write would have been
 aimed at the wrong thing.
 
 Measurement is the evidence a craft rule can have, and not the evidence each one
-already has. `navigable-references` ships with none, and its `SOURCE.md` says so
-in those words. Read it as discipline that we assert.
+already has. `navigable-references` and `de-slop` ship with none, and each
+`SOURCE.md` says so in those words. Read both as discipline that we assert.
+
+`de-slop` names rhetorical moves and never words. No skill here ships a list of
+forbidden words, because a list of them teaches an agent to swap each word for
+its nearest neighbour. Counting words belongs in `bench/score.mjs`, which does
+not install. ADR-0021 records that decision.
 
 `proportionate-execution` ships with none either, and for a harder reason. Its
 rules govern a session of many steps, and the bench runner drives one prompt.

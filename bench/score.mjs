@@ -26,6 +26,32 @@ const HEDGE = [
   'that said', 'unchecked', 'caveat',
 ];
 
+/**
+ * Words and short phrases that recur in one setting and not another.
+ *
+ * It ships EMPTY, and that is the design rather than a backlog. ADR-0021 keeps
+ * every list of this kind out of `skills/`, because a list of forbidden words
+ * delivered to an agent teaches it to swap each word for its nearest
+ * neighbour, which leaves the defect and cleans the surface. A scorer counts.
+ * It never tells the agent anything.
+ *
+ * **An entry carries a stated reference distribution.** A count of a word
+ * against no baseline reads as evidence and is not evidence: the corpus here
+ * is a handful of task prompts times five reps, so topic dominates. So an
+ * entry names, in the ADR and in a comment on the line, the corpus its
+ * expected rate was measured against and what that rate was. Without one the
+ * metric cannot say a setting OVERUSES anything, and the number belongs
+ * nowhere. This rule is the one the owner added when ADR-0021 was adopted, and
+ * it is why the list below has a place to write it.
+ *
+ * A word leaves this file for a lint rule only after a promoted study under
+ * the measurement design says it should. Until then the scorer counts it and
+ * the product asserts nothing about it.
+ *
+ * Longest first, for the reason `HEDGE` is: the count consumes each match.
+ */
+export const SIGNATURE = [];
+
 // Each pattern is an offer made TO the reader. A bare `either ... or` was here
 // and is gone: it fired on "you can call it either before or after the guard",
 // which is a direct answer, not a choice handed back.
@@ -93,16 +119,38 @@ function lists(text) {
   return { bullets: total, longestList: longest };
 }
 
-/** Hedges, each phrase counted once. Longer phrases consume shorter ones. */
-function hedges(text) {
+/**
+ * Occurrences of a listed phrase, each counted once, longer phrases first.
+ *
+ * One body for both phrase metrics. `hedges` carried it alone, and a second
+ * copy for `signatures` would be a second thing to drift: the consuming split
+ * is the whole reason "it is worth noting" is one hedge rather than three.
+ */
+export function countPhrases(text, list) {
   let low = text.toLowerCase();
   let n = 0;
-  for (const h of HEDGE) {
+  for (const h of list) {
     const parts = low.split(h);
     n += parts.length - 1;
     low = parts.join(' ');
   }
   return n;
+}
+
+/** Hedges, each phrase counted once. Longer phrases consume shorter ones. */
+function hedges(text) {
+  return countPhrases(text, HEDGE);
+}
+
+/**
+ * Signature phrases, counted the way hedges are.
+ *
+ * The list is a parameter so that the definition is testable while the shipped
+ * list is empty. A metric with no test is a number nobody has checked, and an
+ * empty list would otherwise make every case vacuous.
+ */
+export function signatures(text, list = SIGNATURE) {
+  return countPhrases(text, list);
 }
 
 /** Offers, not offer TYPES. Three `Options:` lines are three decisions handed back. */
@@ -183,6 +231,9 @@ export function score(raw, prompt, legacy = false) {
     ...lists(prose),
     hedges: hedges(prose),
     menus: menus(prose),
+    // Prose, like every metric but `words`. A signature quoted inside a fence
+    // is the reader's material, not a phrase the writer reached for.
+    signatures: signatures(prose),
     // Prose, like every metric but `words`. It was reading raw text, so on
     // adjacent-bug a reply quoting the supplied code drew most of its overlap
     // from the code rather than from what the writer wrote.
@@ -400,7 +451,8 @@ async function main(argv) {
     });
   }
 
-  const keys = ['noise', 'words', 'scaffold', 'bullets', 'longestList', 'hedges', 'menus', 'echo'];
+  const keys = ['noise', 'words', 'scaffold', 'bullets', 'longestList', 'hedges', 'menus',
+    'signatures', 'echo'];
   process.stdout.write(`audit\tarm\tfile\t${keys.join('\t')}\n`);
   for (const r of rows) {
     process.stdout.write(`${r.audit}\t${r.arm}\t${r.file}\t${keys.map((k) => r[k] ?? '').join('\t')}\n`);
