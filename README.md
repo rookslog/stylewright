@@ -360,6 +360,8 @@ cannot work.
 - Each skill in `standards/` carries the license of its source. See the `LICENSE`
   file in the skill directory.
 - Each skill in `craft/` is MIT.
+- The resident fragment is MIT. It is generated from a `craft/` skill, and it
+  reproduces nothing else.
 
 ## Notices
 
