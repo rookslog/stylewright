@@ -277,7 +277,12 @@ test('a study built by a real promotion passes, and derives its figures', async 
   const { problems, results, summary } = await checkStudy(dir, '2026-08-06-demo');
   assert.deepEqual(problems, []);
   assert.ok(at(results, 'report.all.median.words'));
-  assert.match(summary, /16 result\(s\) derived, audited/);
+  // Two per metric the scorer prints, MEDIAN and RANGE, over one arm. So this
+  // literal moves whenever `keys` in `bench/score.mjs` gains or loses a metric,
+  // and it went 16 to 18 when `signatures` landed. A study derives every cell,
+  // which is the property worth holding, so the number stays literal rather
+  // than being computed from the same list it is checking.
+  assert.match(summary, /18 result\(s\) derived, audited/);
 });
 
 test('a retained scorer table edited after promotion is visible', async (t) => {

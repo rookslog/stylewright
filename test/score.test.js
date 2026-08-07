@@ -11,7 +11,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { score, auditable, readMeta, digest } from '../bench/score.mjs';
+import {
+  score, auditable, readMeta, digest, signatures, SIGNATURE, HEDGE,
+} from '../bench/score.mjs';
 
 const s = (text) => score(text, null, false);
 
@@ -51,6 +53,61 @@ test('menus counts offers, not the number of patterns that matched', () => {
 test('menus does not fire on a direct answer containing either/or', () => {
   assert.equal(s('You can call it either before or after the guard.').menus, 0);
   assert.equal(s('Let me know if you want the other shape.').menus, 1);
+});
+
+// `signatures` ships empty, so its cases inject a list. An empty list makes
+// every assertion about counting vacuous, and a vacuous test is how a metric
+// arrives with no definition anybody has checked. ADR-0021 decides the shape:
+// the list lives here and never in a skill, and an entry carries a reference
+// distribution before it counts against anything.
+
+test('signatures ships empty, so the metric reads zero on any sample', () => {
+  assert.deepEqual(SIGNATURE, []);
+  assert.equal(s('Delve into the rich tapestry of it.').signatures, 0);
+});
+
+test('signatures counts occurrences, not the number of entries that matched', () => {
+  assert.equal(signatures('delve, delve, and delve again', ['delve']), 3);
+  assert.equal(signatures('delve into the tapestry', ['delve', 'tapestry']), 2);
+});
+
+test('a longer signature consumes a shorter one inside it', () => {
+  // The same consuming split `hedges` needs, for the same reason: scored
+  // unsorted, one phrase counted twice.
+  assert.equal(signatures('a rich tapestry of detail', ['rich tapestry', 'tapestry']), 1);
+});
+
+test('signatures is case-blind, as every phrase metric here is', () => {
+  assert.equal(signatures('Delve and DELVE', ['delve']), 2);
+});
+
+// "Longest first" is what both lists say about themselves, and it is not the
+// property that matters. `for completeness` (16) sits after `i didn't check`
+// (14) in the shipped HEDGE list, so a strict length ordering is already
+// violated twice and nothing has ever gone wrong. What the consuming split
+// actually needs is that no entry is CONTAINED in a later one. Asserting the
+// wrong invariant here would fail a correct list and teach the next author to
+// reorder for the test rather than for the count.
+const containment = (list) => list.flatMap(
+  (a, i) => list.slice(i + 1).filter((b) => b.includes(a)).map((b) => [a, b]));
+
+test('no listed phrase is contained in a later one, in either list', () => {
+  assert.deepEqual(containment(HEDGE), [],
+    'a phrase that contains an earlier one must come first, or the earlier one eats it');
+  assert.deepEqual(containment(SIGNATURE), []);
+});
+
+test('signatures reads prose, so a phrase inside a fence is not counted', () => {
+  // The shipped list is the one `score` reads, so filling it is the only way
+  // to exercise the wiring. Restored in `finally`, because the next test in
+  // this file asserts the list is empty.
+  SIGNATURE.push('delve');
+  try {
+    assert.equal(s('We delve.').signatures, 1);
+    assert.equal(s('```md\ndelve\n```').signatures, 0);
+  } finally {
+    SIGNATURE.length = 0;
+  }
 });
 
 test('noise reports what it removed rather than cleaning silently', () => {

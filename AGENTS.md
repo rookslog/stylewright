@@ -104,7 +104,7 @@ declaration reads as `forbidden`, because a default of `permitted` turns the
 rule off for whoever forgot the line. A second declaration is refused and any
 `forbidden` among them governs, so lift a prohibition by editing it and never
 by adding a line under it. Every matrix here ships `unquoted` throughout, and
-four of the five forbid quotation outright. ADR-0020 records the decision.
+five of the six forbid quotation outright. ADR-0020 records the decision.
 
 A declaration is read where a reader finds it, and three placements are not
 that. It sits above the header row, because one under the table is a footnote
@@ -401,6 +401,26 @@ Hold it to three conditions:
   to swap one tell for another.
 
 Flag a list that fails these. Do not flag a list for existing.
+
+ADR-0021 splits word lists in two, and each half has its own gate.
+
+A **signature dictionary** is a list assembled from what a model or an
+instruction stack was observed to overuse. It traces to a setting and to
+nothing else. None ships under `skills/`. That layer lives in `bench/score.mjs`
+as the `signatures` metric, which no install pathway copies. An entry there
+carries a stated reference distribution before it counts against anything, and
+a word moves from the metric to a lint rule only after a promoted study under
+the measurement design says it should.
+
+A **controlled vocabulary** is a list whose word pairs trace to a published
+standard. Those pairs are method rather than expression, and they trace to a
+standard rather than to an observed setting, so they may ship. The gate is the
+three conditions above plus their own licence check, recorded in `SOURCE.md`,
+and not the promoted study. The ASD word-pair dictionary on
+issue #19 is that case.
+
+Which gate applies turns on where the list came from, and never on what it
+looks like.
 
 ## Known blind spots in the test suite
 

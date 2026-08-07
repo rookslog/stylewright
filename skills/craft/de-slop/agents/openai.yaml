@@ -1,0 +1,4 @@
+interface:
+  display_name: "de-slop"
+  short_description: "Use when prose reads as machine-written, whatever produced it."
+  default_prompt: "Use $de-slop to check this document."

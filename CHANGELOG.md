@@ -59,7 +59,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   inside a collapsed `<details>`, and again qualified into meaning both. An
   absent declaration reads as `forbidden`, so does an unreadable one, and a
   second one is refused rather than lifting the first. ADR-0020 records both
-  decisions. Every matrix ships `unquoted` throughout, and four of the five
+  decisions. Every matrix ships `unquoted` throughout, and five of the six
   forbid quotation.
 - The grounding check reads the matrix table as a reader sees it. The header and
   the delimiter carry seven columns, every heading is checked by name, and an
@@ -85,6 +85,30 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   admitted operating discipline to this tier, and it forbids a measured claim
   until the bench can drive a multi-step session. No arm has been run, and the
   skill `SOURCE.md` says so.
+- The `de-slop` skill, in the craft tier, and the skill this repository is named
+  for. It names rhetorical moves rather than words. The body is a positive
+  recipe, which the owner ruled on issue #1: it states the shape of a finished
+  passage in five parts, and the named defects sit beside it as departures from
+  that shape. A prohibition list is the right form for discipline under
+  pressure, which is the lane `proportionate-execution` carries, and forcing one
+  form onto both failure types was the error. No part of the shape is enforced
+  by matching a word. It ships no signature word list, and ADR-0021 keeps that kind of list
+  out of every skill directory, because a list of forbidden words teaches an
+  agent to swap each word for its nearest neighbour and leaves the defect
+  behind a cleaner surface. A controlled vocabulary from a published standard
+  is a different artefact and keeps its existing gate. The skill also states
+  what compression costs, and names the April 2026 Claude Code brevity revert
+  that Anthropic reported. No measurement stands behind it, and ADR-0021
+  accepts that rather than holding the skill on structural metrics the scorer
+  does not have.
+- A `signatures` metric in `bench/score.mjs`, beside `hedges` and `menus`. It
+  counts listed words and short phrases per occurrence, and it ships with an
+  empty list, so it reads zero on every sample. The bench is where a count of
+  this kind belongs, because no install pathway copies it and a scorer tells an
+  agent nothing. An entry carries a stated reference distribution before it
+  counts against anything, in ADR-0021 and in a comment at the metric, because
+  a frequency with no denominator reads as evidence and is not evidence. A word
+  becomes a lint rule only after a promoted study says it should.
 - The `navigable-references` skill, in the craft tier. It asks a writer to give
   every named thing a form the reader can follow, in the form the medium
   renders, and to find a line at the moment of citing it rather than from

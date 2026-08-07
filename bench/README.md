@@ -160,6 +160,7 @@ sample, a median row, and a range row.
 | `bullets`, `longestList` | Bullets in total, and the longest single run. | A long run means items of unequal weight presented as equals. |
 | `hedges` | Phrases that flag something unverified, each counted once. | One is often load-bearing. Four means the load-bearing one is buried. |
 | `menus` | Offers of a choice the reader did not request, counted per offer. | Each one is a decision handed back rather than made. |
+| `signatures` | Listed words and short phrases, counted per occurrence. | Zero on every sample, because the list ships empty. See below. |
 | `echo` | Share of the reply's prose word pairs that appear in the prompt's prose. | See the warning below. Not a restatement measure. |
 | `noise` | Harness lines stripped from an older sample. | Non-zero means that arm may not be comparable to one scored at zero. |
 
@@ -175,6 +176,33 @@ heading and a list item at once, and both are doing work.
 shipped without any, and a cross-vendor review then found six places where it
 did not measure what this table said. Change a definition here and change the
 test in the same commit, or the next reader is trusting prose over behaviour.
+
+### `signatures` ships empty, and an entry needs a baseline first
+
+A word that one setting overuses is the most countable part of the defect the
+`de-slop` skill treats. It is also the most dangerous part to ship. ADR-0021
+decides where it lives: here, and never in a skill directory.
+
+The reason is what each artefact does. A list of forbidden words delivered to
+an agent teaches it to swap each word for its nearest neighbour, which leaves
+the defect and cleans the surface. A scorer counts, and it tells the agent
+nothing.
+
+**An entry carries a stated reference distribution.** Naming a word is not
+enough. The entry states the corpus its expected rate was measured against and
+what that rate was, in ADR-0021 and in a comment beside the entry. Without a
+baseline, "this setting overuses W" is a count with nothing to compare against.
+That is the objection `compressed-deliberation/SOURCE.md` levels at the
+community reports it refuses to grade, and this metric may not earn it.
+
+The corpus today makes the point concrete. It is a handful of task prompts
+times five reps, so topic dominates any word frequency it produces.
+
+A word leaves this file for a lint rule only after a promoted study under the
+measurement design says it should. Until then the scorer counts it and the
+product asserts nothing about it. A count published outside this file is a
+figure like any other, so it carries a `bench-study:<study>#<result>` marker or
+the word unaudited.
 
 ### Only `words` separates every arm, and that was a surprise
 

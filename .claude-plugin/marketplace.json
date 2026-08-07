@@ -25,7 +25,7 @@
       "repository": "https://github.com/rookslog/stylewright",
       "license": "MIT",
       "category": "writing",
-      "keywords": ["anti-slop", "compressed-deliberation", "navigable-references", "proportionate-execution", "concision", "agent-output", "style"]
+      "keywords": ["anti-slop", "de-slop", "compressed-deliberation", "navigable-references", "proportionate-execution", "concision", "agent-output", "style"]
     }
   ]
 }
