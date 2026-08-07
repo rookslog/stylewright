@@ -349,6 +349,32 @@ Two consequences for a change you propose here:
   user's only copy silently, and it made the two halves disagree: the write
   half leaves an unmatched destination standing for the collision check, so the
   keep half must too.
+- **A rollback does its deletions first, and reads the tree again before the
+  kept half acts.** The ORDER is what carries this, not a count of readings. A
+  release transition makes the two halves of the statement change each other's
+  ground: while the copy of a new directory stands, the recorded FILE it
+  replaced has an occupied destination and cannot come back, and while a new
+  parent FILE stands it blocks the recorded children it replaced, so a reading
+  taken earlier drops them. In both cases the deletion that clears the way comes
+  later, and acting on the earlier reading left the record naming an absent file
+  exactly where the bytes could not be restored. One reading then serves the
+  restores and the reconciliation together: a statement cannot hold both `X` and
+  `X/y`, because `recordSkill` walks one source tree, so no restore can block
+  another kept path and a third reading would have no scenario to answer.
+- **An EMPTY directory is not an occupant.** A recovery killed between a
+  deletion and the prune that follows it leaves one standing at a recorded
+  file's path, and that state was a fixed point: the restore held its bytes, the
+  reconciliation never named the path, install and `--force` refused on the
+  reserved name, uninstall refused on the type mismatch, and the only exit
+  stranded an unrecorded `.stylewright-prev`. So a restore clears it first.
+  Removing an empty directory destroys nothing, which is the rule retirement
+  already applies — and only where the bytes are ours to put back, because one
+  this pass will not fill is not this pass's to remove.
+- **`keep` is built prototype-safely**, as a `Map` converted through
+  `Object.fromEntries`. `__proto__` is a legal filename, and assigning to it on
+  an ordinary object invokes the inherited setter instead of creating a
+  property, so the statement would not name a file the run had already moved
+  aside. The record and the write half already keep this discipline.
 - **`--force` does not dispose of a file at `.stylewright-prev`.** Force removes
   what stands in the way of a file it must WRITE, and nothing is written at that
   name. Choosing to preserve one file must never cost the user a different one,

@@ -90,6 +90,42 @@ the collision check names it at the next install.
 
 Nothing is ever written over a file standing at the destination.
 
+**A rollback does its deletions first, and reads the tree again before
+the kept half acts.** What is load-bearing is the ORDER, not a count of
+readings. The two halves of the statement change each other's ground
+during a release transition, so a reading taken before the deletions is
+wrong for the kept half by the time it is used.
+
+- A recorded FILE becoming a directory states the file under `keep` and
+  its new children under `write`. While the copy stands, the file's
+  destination is a DIRECTORY, so a restore has nowhere to go — and the
+  deletion that empties that directory comes later.
+- A recorded directory becoming a FILE is the mirror. While the new file
+  stands it BLOCKS its old children, so one reachability reading drops
+  them — and the deletion that removes the blocker comes later.
+
+So the deletions run first, then reachability is taken again for the
+restores, and again for the reconciliation. Both transitions are
+supported releases, and both left the record naming an absent file
+precisely where the saved bytes could not be restored.
+
+**An empty directory is not an occupant.** A recovery killed between a
+deletion and the prune that follows it leaves one standing at a recorded
+file's path. That was a fixed point, and the only exit stranded an
+unrecorded `.stylewright-prev` — the orphan class PR #54 exists to
+prevent, reached by a second kill rather than a first. A restore clears
+it, because removing an empty directory destroys nothing, which is the
+rule retirement already applies. Only where the bytes are ours to put
+back: an empty directory this pass will not fill is not this pass's to
+remove.
+
+**`keep` is built prototype-safely**, as a `Map` converted with
+`Object.fromEntries`. `__proto__` is a legal filename, and assigning to
+it on an ordinary object invokes the inherited setter instead of
+creating a property, so the statement would not name a file the run had
+already moved aside. The record and the write half already keep this
+discipline, for the same reason.
+
 **What a reading is still true about when it is acted on** comes from
 the lock. One run holds a target directory, so nothing of ours moves
 between the statement and its recovery. A person can still move

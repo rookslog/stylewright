@@ -417,7 +417,12 @@ async function installUnderLock(byName, {
     // The lock is what makes the reading still true when it is acted on: only
     // one run holds a target directory, so nothing of ours moves in between,
     // and everything else is content-proved when the time comes.
-    const keep = {};
+    // A Map, never an object literal, for the reason migrateLegacyKeys builds
+    // through fromEntries: `__proto__` is a legal filename, and assigning to it
+    // on an ordinary object invokes the inherited setter instead of creating a
+    // property. The statement would then not name a file this run had moved,
+    // and no rollback could reach it.
+    const keep = new Map();
     const setAside = [];
     const dropDirs = [];
     for (const rel of retired) {
@@ -441,7 +446,7 @@ async function installUnderLock(byName, {
       if (state !== 'file') continue; // A link. Nothing is written through it either.
       const held = await hashFile(abs);
       if (held !== recorded?.[rel]) continue;
-      keep[rel] = held;
+      keep.set(rel, held);
       setAside.push(rel);
     }
     // Only the leaves the walk could reach, for the reason every other consumer
@@ -465,17 +470,17 @@ async function installUnderLock(byName, {
       if (!open.has(rel)) continue;
       const abs = path.join(destDir, rel);
       if (await destinationState(abs) !== 'file') continue;
-      keep[rel] = await hashFile(abs);
+      keep.set(rel, await hashFile(abs));
       setAside.push(rel);
     }
     // The paths force razed. Stated with the hash the record holds and never
     // set aside, because the bytes went with the ancestor before this run could
     // reach them. The statement is what lets a rollback withdraw them.
     for (const rel of razed) {
-      if (!Object.hasOwn(keep, rel)) keep[rel] = recorded[rel];
+      if (!keep.has(rel)) keep.set(rel, recorded[rel]);
     }
 
-    manifest = addPending(manifest, name, stated, keep);
+    manifest = addPending(manifest, name, stated, Object.fromEntries(keep));
     // Held in its own binding, because `manifest` moves under it. The commit
     // below withdraws the statement in the same assignment that records the
     // skill, so a failure in that write left the catch reading `pending` off a
@@ -524,7 +529,7 @@ async function installUnderLock(byName, {
         // so it is left where it is and the copy overwrites it, which is what
         // --force asked for and what `alteredFiles` already refused without it.
         if (await destinationState(abs) !== 'file') continue;
-        if (await hashFile(abs) !== keep[rel]) continue;
+        if (await hashFile(abs) !== keep.get(rel)) continue;
         // The name belongs to this tool, and the collision check refused a
         // file the user had put there. What can still stand here is this
         // engine's own leftover, and recovery cleared those before this ran.

@@ -339,19 +339,47 @@ export async function rollBack(targetDir, name, stated, manifest, wrote = null) 
     ? manifest.skills[name]?.files ?? {} : {};
   const write = writesOf(stated);
   const keep = keepsOf(stated);
-  const rels = [...new Set([...Object.keys(write), ...Object.keys(keep)])].sort();
-  const { baseBlocked, reachable } = await reachability(destDir, rels);
-  // The skill directory is not ours. Nothing under it is either.
-  if (baseBlocked) return { removed: [], restored: [], missing: [] };
-
   const removed = [];
   const restored = [];
   const missing = [];
-  for (const rel of reachable) {
+  const writeRels = Object.keys(write).sort();
+  const keepRels = Object.keys(keep).sort();
+
+  // The deletions first, and THEN one reading for everything the kept half
+  // does. What is load-bearing is the ORDER, not the number of readings: a
+  // release transition makes the two halves of the statement change each
+  // other's ground, so a reading taken before the deletions is wrong for the
+  // kept half by the time it is used.
+  //
+  // A release that turns a recorded FILE into a directory states `references`
+  // under `keep` and `references/guide.md` under `write`. While the copy stands,
+  // the destination of `references` is a DIRECTORY, so the restore has nowhere
+  // to put the old file — and the deletion that empties that directory happens
+  // later in the same loop.
+  //
+  // A release going the other way, a recorded directory becoming a FILE, is the
+  // mirror. While the new `references` file stands it BLOCKS `references/guide.md`,
+  // so a single reachability reading drops the child, and the deletion that
+  // removes the blocker happens after the reading that needed it gone.
+  //
+  // Both left the record naming a file that was absent, which is the
+  // reconciliation this design promises, defeated exactly where the bytes could
+  // not be restored.
+  //
+  // ONE reading serves the restores and the reconciliation together. A third,
+  // taken between them, would have no scenario to answer: a statement cannot
+  // hold both `X` and `X/y`, because `recordSkill` walks one source tree and a
+  // path is a file or a directory there, not both. So no restore can block
+  // another kept path, and a mutant that splits this reading cannot be made to
+  // fail. It is not carried.
+  const first = await reachability(destDir, writeRels);
+  // The skill directory is not ours. Nothing under it is either.
+  if (first.baseBlocked) return { removed: [], restored: [], missing: [] };
+  for (const rel of first.reachable) {
     const abs = path.join(destDir, rel);
     const staged = stagingPath(abs);
     let took = false;
-    if (Object.hasOwn(write, rel)) {
+    {
       // A recorded file is never a staging leftover, whatever its name ends
       // with. The suffix belongs to this tool, but a manifest that records a
       // path spelled that way records an installed file, and removing it would
@@ -395,14 +423,43 @@ export async function rollBack(targetDir, name, stated, manifest, wrote = null) 
       }
     }
 
-    if (Object.hasOwn(keep, rel)) {
+    // Only where something went. Pruning after a path this pass left alone
+    // would take an empty directory that was standing before the run began.
+    if (took) await pruneEmpty(path.dirname(abs), destDir);
+  }
+
+  // Taken now that the deletions have happened and their emptied directories
+  // are pruned. Everything the kept half does reads this.
+  const kept = await reachability(destDir, keepRels);
+  const keptOpen = kept.baseBlocked ? [] : kept.reachable;
+  for (const rel of keptOpen) {
+    const abs = path.join(destDir, rel);
+    {
       const previous = previousPath(abs);
       // Content decides whether the file is ours. The destination decides
       // which way it goes. A file under the reserved name that does not match
       // is neither, and it is never touched.
       const mine = await destinationState(previous) === 'file'
         && await hashFile(previous) === keep[rel];
-      const state = await destinationState(abs);
+      let state = await destinationState(abs);
+      let took = false;
+      // An EMPTY directory is not an occupant. A recovery killed between a
+      // deletion and the prune that follows it leaves one standing at a
+      // recorded file's path, and that state was a fixed point: the restore saw
+      // "not absent" and held the bytes, the reconciliation saw "not absent"
+      // and never named the path, and every command then refused — install and
+      // `--force` on the reserved name, uninstall on the file-against-directory
+      // mismatch. The only exit left an unrecorded `.stylewright-prev` behind,
+      // which is the orphan class PR #54 exists to prevent.
+      //
+      // Removing it destroys nothing, which is exactly the rule retirement
+      // already applies to an empty directory, so this weakens no ownership
+      // proof. Only where the bytes are ours to put back: an empty directory
+      // this pass is not going to fill is not this pass's to remove.
+      if (mine && state === 'directory' && !(await fs.readdir(abs)).length) {
+        await fs.rmdir(abs);
+        state = 'absent';
+      }
       if (mine && state === 'absent') {
         // The deletion above can have pruned the directory out from under this,
         // and a retired path's directory may have gone with it. `ensureDir`
@@ -443,12 +500,17 @@ export async function rollBack(targetDir, name, stated, manifest, wrote = null) 
           took = true;
         }
       }
-      if (await destinationState(abs) === 'absent') missing.push(rel);
+      if (took) await pruneEmpty(path.dirname(abs), destDir);
     }
-    // Only where something went. Pruning after a path this pass left alone
-    // would take an empty directory that was standing before the run began.
-    if (took) await pruneEmpty(path.dirname(abs), destDir);
   }
+
+  // What could not come back. A path is reported only where the walk can reach
+  // it: below a blocker this cannot say whether the file is there, and
+  // withdrawing a record on a guess is the one move that cannot be undone.
+  for (const rel of keptOpen) {
+    if (await destinationState(path.join(destDir, rel)) === 'absent') missing.push(rel);
+  }
+
   // Only when no record keeps the directory alive. A skill the manifest still
   // holds keeps its directory even when every file under it went, because the
   // record is what the next install restores from. `hasOwn` for the same

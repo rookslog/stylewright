@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import { installSkills } from '../src/install.js';
 import { stagingName } from '../src/journal.js';
 import {
@@ -1031,6 +1032,145 @@ test('force states what it razes, so a refused run can withdraw it', async () =>
     assert.equal(await hashFile(abs), hash, `${rel} is where the record says`);
   }
   assert.deepEqual(await fs.readdir(outside), [], 'and nothing was written outside the tree');
+});
+
+test('a recorded file that becomes a directory comes back when the run fails', async () => {
+  // The two halves of the statement change each other's ground. While the copy
+  // stands, `references` is a DIRECTORY, so the restore has nowhere to put the
+  // old file — and the deletion that empties that directory came later in the
+  // same pass. One reading of the tree could not see both, so the old version
+  // was never restored and the record went on naming it.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const source = path.join(repo, 'skills', 'craft', 'demo-craft');
+  await fs.rm(path.join(source, 'references'), { recursive: true, force: true });
+  await fs.writeFile(path.join(source, 'references'), 'the previous version\n');
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  // The next release turns that file back into a directory, and fails AFTER
+  // the directory has landed — which is the only window where the restore has
+  // an occupied destination to contend with. `zz.md` sorts last, so tripping on
+  // it puts the failure after every other copy.
+  await fs.rm(path.join(source, 'references'));
+  await fs.mkdir(path.join(source, 'references'), { recursive: true });
+  await fs.writeFile(path.join(source, 'references', 'guide.md'), 'a guide\n');
+  await fs.writeFile(path.join(source, 'zz.md'), 'last\n');
+  const original = fs.copyFile;
+  let swapped = false;
+  fs.copyFile = async (...args) => {
+    if (!swapped && String(args[0]).endsWith('zz.md')) {
+      swapped = true;
+      await fs.writeFile(path.join(source, 'zz.md'), 'changed under the run\n');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed in .* while this command was running/);
+  } finally {
+    fs.copyFile = original;
+  }
+
+  const refs = path.join(target, 'demo-craft', 'references');
+  assert.equal(
+    await fs.readFile(refs, 'utf8'), 'the previous version\n',
+    'the file the directory replaced must come back');
+  const after = await readManifest(target);
+  assert.equal(after.pending, undefined);
+  for (const [rel, hash] of Object.entries(after.skills['demo-craft'].files)) {
+    assert.equal(
+      await hashFile(path.join(target, 'demo-craft', rel)), hash,
+      `${rel} is where the record says, byte for byte`);
+  }
+});
+
+test('a recorded child under a new parent file is withdrawn when the run fails', async () => {
+  // The mirror. While the new `references` FILE stands it blocks
+  // `references/guide.md`, so a reading taken once dropped the child and
+  // `missing` never named it — the reconciliation defeated exactly where the
+  // saved bytes could not be restored, because the copy took the directory that
+  // held them.
+  const repo = await tmp();
+  await fs.cp(REPO, repo, { recursive: true });
+  const source = path.join(repo, 'skills', 'craft', 'demo-craft');
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW });
+
+  // Failing AFTER the new parent file lands is the whole of the case: while it
+  // stands it blocks the child, so a reading taken once dropped the child and
+  // never revisited it. `zz.md` sorts last, so tripping on it gets there.
+  await fs.rm(path.join(source, 'references'), { recursive: true, force: true });
+  await fs.writeFile(path.join(source, 'references'), 'now a file\n');
+  await fs.writeFile(path.join(source, 'zz.md'), 'last\n');
+  const original = fs.copyFile;
+  let swapped = false;
+  fs.copyFile = async (...args) => {
+    if (!swapped && String(args[0]).endsWith('zz.md')) {
+      swapped = true;
+      await fs.writeFile(path.join(source, 'zz.md'), 'changed under the run\n');
+    }
+    return original.apply(fs, args);
+  };
+  try {
+    await assert.rejects(
+      installSkills({ repoRoot: repo, targetDir: target, names: ['demo-craft'], now: NOW }),
+      /changed in .* while this command was running/);
+  } finally {
+    fs.copyFile = original;
+  }
+
+  const after = await readManifest(target);
+  assert.equal(after.pending, undefined);
+  assert.ok(
+    !Object.hasOwn(after.skills['demo-craft'].files, 'references/guide.md'),
+    'the record stops naming the child the transition destroyed');
+  for (const [rel, hash] of Object.entries(after.skills['demo-craft'].files)) {
+    assert.equal(
+      await hashFile(path.join(target, 'demo-craft', rel)), hash,
+      `${rel} is where the record says, byte for byte`);
+  }
+});
+
+test('a file named __proto__ is named by the statement like any other', async () => {
+  // `__proto__` is a legal filename, and assigning to it on an ordinary object
+  // invokes the inherited setter instead of creating a property. The kept half
+  // then did not name a file this run had moved aside, so no rollback could
+  // reach it — the discipline the record and the write half already keep.
+  const repo = await tmp();
+  const dir = path.join(repo, 'skills', 'craft', 'proto');
+  await fs.mkdir(dir, { recursive: true });
+  const head = '---\nname: proto\ndescription: Ships an awkward name.\n---\n\n# proto\n';
+  await fs.writeFile(path.join(dir, 'SKILL.md'), head);
+  await fs.writeFile(path.join(dir, '__proto__'), 'the first version\n');
+  const target = await tmp();
+  await installSkills({ repoRoot: repo, targetDir: target, names: ['proto'], now: NOW });
+
+  await fs.writeFile(path.join(dir, '__proto__'), 'the second version\n');
+  let stated = null;
+  const original = fs.copyFile;
+  fs.copyFile = async (...args) => {
+    stated ??= (await readManifest(target)).pending?.proto;
+    return original.apply(fs, args);
+  };
+  try {
+    await installSkills({ repoRoot: repo, targetDir: target, names: ['proto'], now: NOW });
+  } finally {
+    fs.copyFile = original;
+  }
+
+  assert.ok(
+    Object.hasOwn(stated.keep, '__proto__'),
+    'the kept half must name it as an own property');
+  assert.equal(
+    stated.keep.__proto__,
+    crypto.createHash('sha256').update('the first version\n').digest('hex'),
+    'with the hash of the bytes it displaced');
+  assert.equal(
+    await fs.readFile(path.join(target, 'proto', '__proto__'), 'utf8'), 'the second version\n');
+  const under = await fs.readdir(path.join(target, 'proto'));
+  assert.deepEqual(under.filter((e) => e.includes('.stylewright-')), []);
 });
 
 test('force refuses a user file at the reserved name rather than deleting it', async () => {

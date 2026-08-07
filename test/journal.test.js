@@ -578,6 +578,63 @@ test('a file the user wrote at a destroyed path does not take the old bytes with
     'and the only copy of the old release must survive');
 });
 
+test('an empty directory a killed recovery left is not an occupant', async () => {
+  // The window a recovery leaves when it is killed between a deletion and the
+  // prune that follows it: an empty directory standing at a recorded FILE's
+  // path. That was a fixed point. The restore read "not absent" and held the
+  // bytes, the reconciliation read "not absent" and never named the path, and
+  // then install refused on the reserved name, `--force` refused with it, and
+  // uninstall refused on the file-against-directory mismatch. The only exit
+  // left an unrecorded `.stylewright-prev` on disk — the orphan class PR #54
+  // exists to prevent, reached by a second kill.
+  //
+  // Removing an empty directory destroys nothing, which is the rule retirement
+  // already applies, so this weakens no ownership proof.
+  const target = await tmp();
+  const dir = path.join(target, 'demo-craft');
+  const old = await put(previousPath(path.join(dir, 'references')), 'the previous version\n');
+  await fs.mkdir(path.join(dir, 'references'), { recursive: true });
+  const manifest = await interrupted(target, {
+    manifest: {
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', files: { references: old } } },
+    },
+    pending: {
+      'demo-craft': { write: { 'references/deep.md': sha('a child\n') }, keep: { references: old } },
+    },
+  });
+
+  const done = await recoverPending(target, manifest);
+
+  assert.deepEqual(done.restored, ['demo-craft/references']);
+  assert.equal(
+    await fs.readFile(path.join(dir, 'references'), 'utf8'), 'the previous version\n',
+    'the recorded file comes back where the empty directory stood');
+  assert.ok(!(await exists(previousPath(path.join(dir, 'references')))), 'and nothing is stranded');
+  assert.deepEqual(done.manifest.skills['demo-craft'].files, { references: old });
+});
+
+test('an empty directory is left alone where there are no bytes to put back', async () => {
+  // The other half of the same rule. An empty directory this pass is not going
+  // to fill is not this pass's to remove — the statement says nothing about it,
+  // and removing it would be acting on the name rather than on the bytes.
+  const target = await tmp();
+  const dir = path.join(target, 'demo-craft');
+  await fs.mkdir(path.join(dir, 'references'), { recursive: true });
+  const manifest = await interrupted(target, {
+    manifest: {
+      schema: 1,
+      skills: { 'demo-craft': { tier: 'craft', files: { references: sha('gone\n') } } },
+    },
+    pending: { 'demo-craft': { write: {}, keep: { references: sha('gone\n') } } },
+  });
+
+  const done = await recoverPending(target, manifest);
+
+  assert.deepEqual(done.restored, []);
+  assert.ok(await exists(path.join(dir, 'references')), 'the directory stands');
+});
+
 test('a record stops naming a path whose bytes a rollback cannot find', async () => {
   // The deletion half of the statement, on its own. The bytes are gone, so the
   // path cannot come back — and the record must stop claiming a file that is

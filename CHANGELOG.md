@@ -70,7 +70,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   interrupted run emptied never costs them the only copy of the old release.
   `--force` states what it razes before it razes it, refuses a user file at
   `.stylewright-prev` rather than deleting it, and completes a release that
-  changes only the case of a name.
+  changes only the case of a name. A rollback reads the tree three times rather
+  than once, so a release that turns a recorded file into a directory puts that
+  file back, and one that turns a directory into a file stops the record naming
+  the children it destroyed. An empty directory a killed recovery left behind no
+  longer traps a skill in a state no command could leave. A file named
+  `__proto__` is named by the statement like any other.
 - **`doctor` tells a recorded install apart from an unfinished one.** A
   statement left after the record landed reported as an install that did not
   finish, which told the user their skill was half installed when it is whole.
