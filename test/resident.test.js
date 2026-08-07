@@ -3,17 +3,18 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 import { run } from '../src/cli.js';
-import { doctor } from '../src/doctor.js';
+import { doctor, readsAsInstruction } from '../src/doctor.js';
 import { installSkills } from '../src/install.js';
 import { uninstallSkills } from '../src/uninstall.js';
 import { updateSkills } from '../src/update.js';
 import { readManifest } from '../src/manifest.js';
 import { instructionFiles } from '../src/targets.js';
 import {
-  RESIDENT_NAME, RESIDENT_FILE, RESIDENT_MARK, RESIDENT_SECTIONS, RESIDENT_TIER,
+  RESIDENT_NAME, RESIDENT_FILE, RESIDENT_SECTIONS, RESIDENT_TIER,
   checkResident, importLine, loadResidents, renderResident, residentPath, skillPath,
-  ResidentDrift,
+  writeResident, ResidentDrift,
 } from '../src/resident.js';
 
 // The real checkout, not the fixture. The fragment this repository publishes is
@@ -99,12 +100,12 @@ test('the import line is relative to the instruction file that holds it', () => 
     targetDir: '/home/u/.claude/skills',
     instructionFile: '/home/u/.claude/CLAUDE.md',
   });
-  assert.equal(line, `@skills/${RESIDENT_MARK}`);
+  assert.equal(line, `@skills/${RESIDENT_NAME}/${RESIDENT_FILE}`);
   const project = importLine({
     targetDir: '/w/proj/.claude/skills',
     instructionFile: '/w/proj/CLAUDE.md',
   });
-  assert.equal(project, `@.claude/skills/${RESIDENT_MARK}`);
+  assert.equal(project, `@.claude/skills/${RESIDENT_NAME}/${RESIDENT_FILE}`);
 });
 
 test('instructionFiles names the files a platform reads at a scope', () => {
@@ -250,7 +251,7 @@ test('doctor is quiet once the line is in the instruction file', async () => {
   });
   await fs.writeFile(
     path.join(home, '.claude', 'CLAUDE.md'),
-    `# My rules\n\n@skills/${RESIDENT_MARK}\n`);
+    `# My rules\n\n@skills/${RESIDENT_NAME}/${RESIDENT_FILE}\n`);
   assert.deepEqual(await doctor({ repoRoot: ROOT, home, cwd }), []);
 });
 
@@ -267,7 +268,7 @@ test('doctor accepts the import from a second instruction file the agent reads',
     now: NOW,
   });
   await fs.writeFile(path.join(cwd, 'CLAUDE.md'), '@AGENTS.md\n');
-  await fs.writeFile(path.join(cwd, 'AGENTS.md'), `@.claude/skills/${RESIDENT_MARK}\n`);
+  await fs.writeFile(path.join(cwd, 'AGENTS.md'), `@.claude/skills/${RESIDENT_NAME}/${RESIDENT_FILE}\n`);
   assert.deepEqual(await doctor({ repoRoot: ROOT, home, cwd }), []);
 });
 
@@ -280,7 +281,7 @@ test('doctor warns when both delivery forms of the one rule are active', async (
     names: [RESIDENT_NAME, 'navigable-references'],
     now: NOW,
   });
-  await fs.writeFile(path.join(home, '.claude', 'CLAUDE.md'), `@skills/${RESIDENT_MARK}\n`);
+  await fs.writeFile(path.join(home, '.claude', 'CLAUDE.md'), `@skills/${RESIDENT_NAME}/${RESIDENT_FILE}\n`);
 
   const findings = await doctor({ repoRoot: ROOT, home, cwd });
   const f = findings.find((x) => x.code === 'resident-double-delivery');
@@ -331,8 +332,115 @@ test('an import of a fragment nothing installed raises no finding', async () => 
   const cwd = await tmp();
   const file = path.join(home, '.claude', 'CLAUDE.md');
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, `@skills/${RESIDENT_MARK}\n`);
+  await fs.writeFile(file, `@skills/${RESIDENT_NAME}/${RESIDENT_FILE}\n`);
   assert.deepEqual(await doctor({ repoRoot: ROOT, home, cwd }), []);
+});
+
+test('a stale import beside the skill alone does not tell the user to remove it', async () => {
+  // The breaking case. Gating double delivery on the import alone fired here,
+  // where the skill is the ONLY delivery, and the advice is "keep one". A user
+  // whose instruction file still carried the line from a fragment they had
+  // uninstalled would have been told to remove what they had left.
+  const home = await tmp();
+  const cwd = await tmp();
+  await installSkills({
+    repoRoot: ROOT,
+    targetDir: path.join(home, '.claude', 'skills'),
+    names: ['navigable-references'],
+    now: NOW,
+  });
+  await fs.writeFile(
+    path.join(home, '.claude', 'CLAUDE.md'),
+    `Once upon a time this said @skills/${RESIDENT_NAME}/${RESIDENT_FILE}\n`);
+
+  assert.deepEqual(await doctor({ repoRoot: ROOT, home, cwd }), []);
+});
+
+test('a mark in one scope does not silence a fragment in the other', async () => {
+  // `importLine` spells the path relative to the file that holds it, so the
+  // line in the project file does not reach the user-scope fragment and cannot
+  // activate it. One flat set of imports let it silence the warning anyway,
+  // which is the exact state this check exists to find.
+  const home = await tmp();
+  const cwd = await tmp();
+  const userTarget = path.join(home, '.claude', 'skills');
+  await installSkills({ repoRoot: ROOT, targetDir: userTarget, names: [RESIDENT_NAME], now: NOW });
+  // A project instruction file carrying the PROJECT spelling.
+  await fs.writeFile(
+    path.join(cwd, 'CLAUDE.md'),
+    `@.claude/skills/${RESIDENT_NAME}/${RESIDENT_FILE}\n`);
+
+  const findings = await doctor({ repoRoot: ROOT, home, cwd });
+  const f = findings.find((x) => x.code === 'resident-not-imported');
+  assert.ok(f, JSON.stringify(findings));
+  assert.match(f.message, new RegExp(userTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('each installed fragment answers for itself', async () => {
+  // Two fragments, one imported and one not. The imported one must not answer
+  // for the other, and the finding must name the directory that is inactive.
+  const home = await tmp();
+  const cwd = await tmp();
+  const userTarget = path.join(home, '.claude', 'skills');
+  const projectTarget = path.join(cwd, '.claude', 'skills');
+  for (const dir of [userTarget, projectTarget]) {
+    await installSkills({ repoRoot: ROOT, targetDir: dir, names: [RESIDENT_NAME], now: NOW });
+  }
+  await fs.writeFile(
+    path.join(cwd, 'CLAUDE.md'),
+    `@.claude/skills/${RESIDENT_NAME}/${RESIDENT_FILE}\n`);
+
+  const findings = await doctor({ repoRoot: ROOT, home, cwd });
+  const notImported = findings.filter((x) => x.code === 'resident-not-imported');
+  assert.equal(notImported.length, 1, JSON.stringify(findings));
+  assert.ok(notImported[0].message.includes(userTarget));
+  assert.ok(!notImported[0].message.includes(`${projectTarget},`));
+});
+
+test('a directory at an instruction path reads as no import, and does not throw', async () => {
+  // `readFile` on a directory throws EISDIR. The guard is what keeps the
+  // reason visible, and the answer is the same one every structural refusal
+  // gives: a warning the user can dismiss.
+  const home = await tmp();
+  const cwd = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await installSkills({ repoRoot: ROOT, targetDir: target, names: [RESIDENT_NAME], now: NOW });
+  await fs.mkdir(path.join(home, '.claude', 'CLAUDE.md'), { recursive: true });
+
+  const findings = await doctor({ repoRoot: ROOT, home, cwd });
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.equal(findings[0].code, 'resident-not-imported');
+});
+
+test('only a regular file within the bound is read as an instruction file', () => {
+  // The type half of this guard keeps a FIFO at an instruction path from
+  // blocking `doctor` forever. It is asked HERE and not through a real named
+  // pipe, because a pipe makes the regression a hang: the suite stops, prints
+  // nothing, and the runner cannot even exit to report it. This fails in
+  // milliseconds instead.
+  assert.equal(readsAsInstruction({ isFile: () => true, size: 10 }), true);
+  assert.equal(readsAsInstruction({ isFile: () => false, size: 10 }), false);
+  assert.equal(
+    readsAsInstruction({ isFile: () => true, size: 1024 * 1024 + 1 }), false);
+  assert.equal(readsAsInstruction({ isFile: () => true, size: 1024 * 1024 }), true);
+});
+
+test('an instruction file above the size bound reads as no import', async () => {
+  // The other structural refusal, and it points the same way. A file this
+  // large is nobody's instruction file, and skipping it can only add a
+  // warning.
+  const home = await tmp();
+  const cwd = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await installSkills({ repoRoot: ROOT, targetDir: target, names: [RESIDENT_NAME], now: NOW });
+  const line = `@skills/${RESIDENT_NAME}/${RESIDENT_FILE}\n`;
+  await fs.writeFile(
+    path.join(home, '.claude', 'CLAUDE.md'),
+    line + 'x'.repeat(1024 * 1024 + 1));
+
+  const findings = await doctor({ repoRoot: ROOT, home, cwd });
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.equal(findings[0].code, 'resident-not-imported');
 });
 
 test('update refreshes the fragment rather than calling it withdrawn', async () => {
@@ -346,6 +454,76 @@ test('update refreshes the fragment rather than calling it withdrawn', async () 
   });
   assert.deepEqual(res.results.flatMap((r) => r.orphaned), []);
   assert.deepEqual(res.results.flatMap((r) => r.installed), [RESIDENT_NAME]);
+});
+
+test('a skill that takes the reserved name stops the install', async () => {
+  // The scaffold refuses this name, so reaching it takes a hand-written skill
+  // directory. Install joins the two sets by name, and the collision has to
+  // stop where they meet or the skill shadows the fragment in silence.
+  const root = await tmp();
+  const skillDir = path.join(root, 'skills', 'craft', RESIDENT_NAME);
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.mkdir(path.join(root, 'resident'), { recursive: true });
+  await fs.copyFile(residentPath(ROOT), residentPath(root));
+  await fs.writeFile(
+    path.join(skillDir, 'SKILL.md'),
+    `---\nname: ${RESIDENT_NAME}\ndescription: A squatter.\n---\n\n# ${RESIDENT_NAME}\n`);
+
+  await assert.rejects(
+    installSkills({
+      repoRoot: root, targetDir: path.join(await tmp(), 'skills'),
+      names: [RESIDENT_NAME], now: NOW,
+    }),
+    /reserved name/);
+});
+
+test('the generator writes through the tree checks, and refuses a link', async () => {
+  // A build step is a write surface, and it inherits the checks or it repeats
+  // the defect AGENTS.md names. A link at the destination is written THROUGH
+  // by a plain write, which is how a generated file lands outside the tree.
+  const root = await tmp();
+  await fs.mkdir(path.join(root, 'resident'), { recursive: true });
+  const outside = path.join(await tmp(), 'victim.md');
+  await fs.writeFile(outside, 'not ours\n');
+  await fs.symlink(outside, residentPath(root));
+
+  await assert.rejects(writeResident(root, 'generated\n'), /not a regular file/);
+  assert.equal(await fs.readFile(outside, 'utf8'), 'not ours\n');
+});
+
+test('the generator replaces a file whole', async () => {
+  const root = await tmp();
+  await fs.mkdir(path.join(root, 'resident'), { recursive: true });
+  await fs.writeFile(residentPath(root), 'old\n');
+  await writeResident(root, 'new\n');
+  assert.equal(await fs.readFile(residentPath(root), 'utf8'), 'new\n');
+  // Nothing is left at the staging name it wrote through.
+  const left = await fs.readdir(path.join(root, 'resident'));
+  assert.deepEqual(left, [RESIDENT_FILE]);
+});
+
+test('the check script prints a renamed section rather than a stack', async () => {
+  // `bin/stylewright.mjs` already ruled on this: a stack trace says where we
+  // were and not what to do.
+  const root = await tmp();
+  const skillDir = path.join(root, 'skills', 'craft', 'navigable-references');
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.mkdir(path.join(root, 'resident'), { recursive: true });
+  await fs.copyFile(residentPath(ROOT), residentPath(root));
+  await fs.writeFile(
+    path.join(skillDir, 'SKILL.md'),
+    '---\nname: navigable-references\n---\n\n# navigable-references\n\n## Renamed\n\n- A rule.\n');
+
+  const r = await new Promise((resolve) => {
+    execFile(
+      process.execPath,
+      [path.join(ROOT, 'scripts', 'check-resident.mjs')],
+      { cwd: root },
+      (err, stdout, stderr) => resolve({ code: err ? err.code ?? 1 : 0, stdout, stderr }));
+  });
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /has no section "## Give the reference a form/);
+  assert.doesNotMatch(r.stderr, /at .*resident\.js/);
 });
 
 test('the scaffold refuses the fragment name', async () => {

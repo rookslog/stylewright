@@ -74,20 +74,28 @@ instruction file:
 ```
 
 **This tool never writes to your instruction file.** It prints the line and
-stops. Run `stylewright doctor` afterwards, and it tells you whether an
-instruction file imports the fragment. A tool that wrote the line could only
-claim the rule is active. The check tells you whether it is.
+stops. Run `stylewright doctor` afterwards, and it looks in the instruction
+files your agent reads for that exact line. A tool that wrote the line could
+only claim the rule is active. The check looks.
+
+It looks for a line of text, and it reads no Markdown. So a copy of the line
+inside a code fence, or in a sentence saying you took it out, still counts as
+an import. A file it cannot read counts as no import, and so does one above a
+megabyte. Read the warning as a prompt to look, and not as a verdict.
+ADR-0022 states both directions and why they are the ones to accept.
 
 The fragment is generated from the skill, so the two cannot drift. A check in
 the pipeline fails when they do.
 
 The fragment is the recommended delivery for this rule, and the
 `navigable-references` skill stays as the alternate. Pick one. `doctor` warns
-when both are active, because one rule delivered twice costs context and says
-nothing new.
+when you have installed the fragment, imported it, and installed the skill as
+well, because one rule delivered twice costs context and says nothing new.
 
 No tier selects the fragment. `--tier all` installs every skill and not the
-fragment, so a plain install cannot deliver one rule twice. Ask for it by name.
+fragment, so a plain install cannot deliver one rule twice. Ask for it by name,
+as the command above does. `npx stylewright list` names it beside the skills
+and says the same thing.
 
 It installs for `claude` and `cowork` only. `@path` is a Claude Code feature,
 and we have verified no import form for Codex. Issue #24 holds that question

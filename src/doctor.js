@@ -7,9 +7,7 @@ import { readManifest } from './manifest.js';
 import { LOCK_NAME } from './lock.js';
 import { isCommitted } from './journal.js';
 import { destinationState } from './tree.js';
-import {
-  RESIDENT_NAME, RESIDENT_SKILL, RESIDENT_MARK, importLine,
-} from './resident.js';
+import { RESIDENT_NAME, RESIDENT_SKILL, importLine } from './resident.js';
 
 // A duplicate is a problem only when ONE agent would load two copies of the
 // same skill name at once. Grouping by directory instead of by agent reports
@@ -60,27 +58,47 @@ const labelsOf = (pairs) => pairs.map((pair) => describeTarget(pair));
 const MAX_INSTRUCTION_BYTES = 1024 * 1024;
 
 /**
- * Does an instruction file import the resident fragment?
+ * May this path be read as an instruction file at all?
  *
- * **The file's content is data.** This function asks the bytes one question —
- * do they contain one fixed substring — and nothing here interprets, executes,
- * or takes an instruction from what it reads. The file belongs to the user,
- * and this tool never writes to it. ADR-0022 records why detecting the state
- * beats asserting it.
+ * A named predicate over the `stat`, and not a clause inside the read below,
+ * because that clause could not be held by a test. Removing the type half lets
+ * a FIFO at an instruction path block `fs.readFile` forever, so the suite that
+ * would report the regression HANGS rather than failing, and a hang reports
+ * nothing. Asked here, the question has an answer a test gets in milliseconds.
  *
- * Every failure reads as "not imported". A file that is absent, unreadable, or
- * larger than the bound answers the same way, and the cost of being wrong is a
- * warning the user can dismiss rather than a file this tool damaged.
+ * The type half is for a FIFO, and not for a directory. `readFile` on a
+ * directory throws EISDIR and the caller's catch gives the same answer, so the
+ * guard changes nothing there. `src/tree.js` names the same hazard, for the
+ * same reason.
  */
-async function importsResident(abs) {
+export function readsAsInstruction(st) {
+  return st.isFile() && st.size <= MAX_INSTRUCTION_BYTES;
+}
+
+/**
+ * The text of an instruction file, or `null` when this tool will not read it.
+ *
+ * **The content is data.** Every caller below asks the bytes one question — do
+ * they contain one fixed string — and nothing here interprets, executes, or
+ * takes an instruction from what it reads. The file belongs to the user, and
+ * this tool never writes to it. ADR-0022 records why detecting the state beats
+ * asserting it.
+ *
+ * `null` and every failure read the same way to a caller, as "no import here".
+ * A file that is absent, unreadable, not a regular file, or larger than the
+ * bound all answer alike, and each of those answers can only ADD a warning the
+ * user dismisses. ADR-0022 states that direction, because a structural reason
+ * to skip a file is invisible in the finding it produces.
+ */
+async function instructionText(abs) {
   try {
     // `stat` and not `lstat`: a symbolically linked `CLAUDE.md` is ordinary in
     // a dotfiles repository, and this only ever reads.
     const st = await fs.stat(abs);
-    if (!st.isFile() || st.size > MAX_INSTRUCTION_BYTES) return false;
-    return (await fs.readFile(abs, 'utf8')).includes(RESIDENT_MARK);
+    if (!readsAsInstruction(st)) return null;
+    return await fs.readFile(abs, 'utf8');
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -160,32 +178,71 @@ export async function doctor({ home, cwd }) {
     // The thesis of ADR-0022. A write into an instruction file could only
     // ASSERT that the rule is resident. This detects whether it is, and the
     // inactive state is the one a user cannot see for themselves.
-    const imported = [];
-    for (const file of [...candidates].sort()) {
-      if (await importsResident(file)) imported.push(file);
-    }
-    if (residentDirs.size && !imported.length) {
-      for (const [dir, pairs] of residentDirs) {
-        const key = `resident :: ${dir}`;
-        if (reported.has(key)) continue;
-        reported.add(key);
-        // The line is spelled for the first instruction file the pair names,
-        // because the paste has to go somewhere and naming one beats naming
-        // four. Any of the files this check reads would satisfy it.
-        const [file] = instructionFiles({ ...pairs[0], home, cwd });
-        findings.push({
-          level: 'warn',
-          code: 'resident-not-imported',
-          message: `The resident fragment is installed in ${dir}, and no instruction `
-            + `file ${platform} reads imports it, so the rule is not active. `
-            + `Add this line to ${file}: ${importLine({ targetDir: dir, instructionFile: file })}`,
-        });
+    //
+    // Per INSTALLED FRAGMENT, and never one flat set over the group.
+    // `importLine` spells the path relative to the file that holds it, so the
+    // line that activates a user-scope fragment is not the line that activates
+    // a project-scope one. A single set let a mark in a project instruction
+    // file silence the warning about a user-scope fragment that nothing
+    // imports, which is the one state this check exists to find.
+    //
+    // Each candidate is read at most once, however many fragments it is
+    // compared against. Reading a file the user owns twice to ask two
+    // questions of the same bytes is not something to do casually.
+    const texts = new Map();
+    const textOf = async (file) => {
+      if (!texts.has(file)) texts.set(file, await instructionText(file));
+      return texts.get(file);
+    };
+    const importedFrom = new Map();
+    for (const dir of residentDirs.keys()) {
+      const hits = [];
+      for (const file of [...candidates].sort()) {
+        const text = await textOf(file);
+        // The exact line this tool told the user to paste, from this file, for
+        // this fragment. A substring and not a Markdown model, which is the
+        // same answer ADR-0016 gives everywhere else in this repository. So a
+        // fenced or negated occurrence of the correct spelling still reads as
+        // imported, and ADR-0022 records that residual direction.
+        if (text?.includes(importLine({ targetDir: dir, instructionFile: file }))) {
+          hits.push(file);
+        }
       }
+      importedFrom.set(dir, hits);
     }
+
+    for (const [dir, pairs] of residentDirs) {
+      if (importedFrom.get(dir).length) continue;
+      const key = `resident :: ${dir}`;
+      if (reported.has(key)) continue;
+      reported.add(key);
+      // The line is spelled for the first instruction file the pair names,
+      // because the paste has to go somewhere and naming one beats naming
+      // four. Any of the files this check reads would satisfy it.
+      const [file] = instructionFiles({ ...pairs[0], home, cwd });
+      findings.push({
+        level: 'warn',
+        code: 'resident-not-imported',
+        message: `The resident fragment is installed in ${dir}, and no instruction `
+          + `file ${platform} reads imports it, so the rule is not active. `
+          + `Add this line to ${file}: ${importLine({ targetDir: dir, instructionFile: file })}`,
+      });
+    }
+
     // Both forms of one rule at once. `update` does not retire a skill this
     // repository still ships, and the duplicate check above only ever compares
     // skill directories, so this state is silent on every existing install.
-    if (imported.length && skillDirs.length) {
+    //
+    // It reads `importedFrom`, which is empty unless a fragment is INSTALLED.
+    // Gating on the import alone fired where only the skill was installed and
+    // an instruction file happened to carry the spelling — a stale line, or a
+    // fenced example. The advice is "keep one delivery", so that finding told
+    // a user to remove the only delivery they had.
+    const active = [...importedFrom]
+      .filter(([, hits]) => hits.length)
+      .map(([dir, hits]) => `${dir} (imported by ${hits.join(', ')})`)
+      .sort();
+    if (active.length && skillDirs.length) {
       const key = `double :: ${platform} :: ${skillDirs.sort().join(', ')}`;
       if (!reported.has(key)) {
         reported.add(key);
@@ -193,8 +250,8 @@ export async function doctor({ home, cwd }) {
           level: 'warn',
           code: 'resident-double-delivery',
           message: `The "${RESIDENT_SKILL}" rule reaches ${platform} twice: the skill is `
-            + `installed in ${skillDirs.join(', ')}, and ${imported.join(', ')} `
-            + 'imports the resident fragment. Keep one delivery.',
+            + `installed in ${skillDirs.join(', ')}, and the resident fragment in `
+            + `${active.join('; ')} is active. Keep one delivery.`,
         });
       }
     }

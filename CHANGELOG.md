@@ -16,9 +16,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   already uses. The tool prints the one import line and never writes to your
   instruction file. `doctor` gains `resident-not-imported`, which reports a
   fragment that no instruction file imports, and `resident-double-delivery`,
-  which reports a rule delivered as both a skill and a fragment at once.
-  Detecting the inactive state is the thing a write into your instruction file
-  could never do. The fragment is generated from the skill, and
+  which reports a rule delivered as both an installed skill and an imported
+  fragment at once. Each check compares the exact line this tool told you to
+  paste, spelled for the file it reads, so a mark in one scope cannot answer
+  for a fragment in another. Detecting the inactive state is the thing a write
+  into your instruction file could never do. The check reads no Markdown, so a
+  copy of the line inside a code fence counts as an import, and a file it
+  cannot read counts as no import. ADR-0022 states both directions. The
+  fragment is generated from the skill, and
   `npm run check:resident` fails a checkout where the two disagree. No tier
   selects the fragment, and it installs for `claude` and `cowork` only, because
   this repository has verified no import form for Codex. ADR-0022 records the

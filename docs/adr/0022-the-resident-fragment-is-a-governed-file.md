@@ -1,7 +1,7 @@
 ---
 type: adr
 status: accepted
-decided: 2026-08-07
+decided: 2026-08-06
 issues: [24, 25, 18]
 ---
 
@@ -60,11 +60,19 @@ So the fragment takes a reserved subdirectory whose name says what it is, and
 it ships no `SKILL.md`. `loadCatalog` never sees it, so `ground --check` never
 grades it as a skill.
 
-The fragment carries no rule of its own. Every line but the header comment is
-copied out of `skills/craft/navigable-references/SKILL.md`, and the matrix at
-`grounding/craft/navigable-references.md` disposes of each of those lines
-already, as rows E-02 through E-11. A generated copy of graded text is not a
-new ungraded prohibition.
+The fragment carries no writing rule of its own. Every line but the header
+comment is copied out of `skills/craft/navigable-references/SKILL.md`, and the
+matrix at `grounding/craft/navigable-references.md` disposes of each of those
+lines already. The two rule sections are rows E-02 through E-11, and the
+document heading the fragment also carries is row N-03. A generated copy of
+graded text is not a new ungraded prohibition.
+
+The header comment is the one line no matrix covers, and it does carry an
+instruction. It tells a maintainer of this repository not to edit the generated
+file. That is deliberate and it is stated here rather than left for a reader to
+find: the line is addressed to a maintainer rather than to a writer, it asserts
+no writing rule, and a Markdown reader renders none of it. A second ungraded
+line would need a decision of its own.
 
 ## One source, and a check that holds it
 
@@ -86,15 +94,29 @@ one level in.
 file that platform reads imports it. This check is the thesis of the decision.
 Detecting the inactive state is the thing a region write could never do.
 
-It reads a file for one substring, so it needs no Markdown model, and a false
-negative costs a warning rather than a corrupted file. It behaves the same on
-every install pathway, including the four that copy skill directories whole.
+It reads a file for one substring, so it needs no Markdown model. It behaves
+the same on every install pathway, including the four that copy skill
+directories whole.
 
-`resident-double-delivery` warns when the fragment is imported and the
+**The comparison is per installed fragment, and never one set over the group.**
+`importLine` spells the path relative to the file that will hold it, so the
+line that activates a user-scope fragment is not the line that activates a
+project-scope one. A single set of imports let a mark in a project instruction
+file silence the warning about a user-scope fragment that nothing imports,
+which is the one state this check exists to find. Each candidate file is still
+read at most once, however many fragments it is compared against.
+
+`resident-double-delivery` warns when an installed fragment is imported and the
 `navigable-references` skill is installed for the same agent. `update` does not
 retire a skill this repository still ships, and the duplicate check compares
 skill directories only. So a double-delivered rule would otherwise stay silent
 on every existing install.
+
+**It requires an installed fragment, and not merely an import.** Gating on the
+import alone fired where the skill was the only delivery and an instruction
+file happened to carry the spelling, from a fragment the user had already
+removed. The finding's advice is to keep one delivery, so that state told a
+user to remove the only delivery they had.
 
 Both checks read instruction files, and they treat what they read as data.
 Nothing in `src/doctor.js` interprets that content, acts on it, or writes to
@@ -102,6 +124,33 @@ those files. `targets.js` names the files each platform reads, and the list is
 wide on purpose. This repository carries `CLAUDE.md` and `AGENTS.md` together,
 with one importing the other, and a check that read only the first would raise
 a false alarm against a user who did everything right.
+
+### What the checks get wrong, and in which direction
+
+A substring question has two error directions, and they are not symmetrical.
+Both are accepted deliberately, and neither is a defect to be reported.
+
+**A fenced or negated occurrence reads as imported.** The check asks whether
+the file contains the line, and it models no Markdown. So the correct spelling
+inside a code fence, inside a quotation, or in a sentence saying the line was
+removed all count as an import. ADR-0016 settled that this repository answers a
+new Markdown shape by asking what the reader read it as, rather than by adding
+a rule per shape, and the same answer applies here. The cost is a missing
+`resident-not-imported` warning, and a `resident-double-delivery` warning the
+user can dismiss. It is not a write, and it destroys nothing.
+
+**Every structural refusal reads as not imported.** A candidate file that is
+absent, unreadable, not a regular file, or larger than one megabyte answers the
+same way an ordinary file with no import answers. So a user whose instruction
+file is above the bound sees a `resident-not-imported` warning that their file
+contradicts, and nothing in the finding says why. That direction only ever adds
+a warning, which is why it is the one to fail towards.
+
+One of those refusals is not a bound but a hang. Reading a FIFO blocks until
+somebody writes, so a named pipe at an instruction path would stop `doctor`
+with nothing to report. `readsAsInstruction` is a named predicate rather than a
+clause inside the read, because a test cannot hold the clause: removing it
+makes the suite hang rather than fail, and a hang reports nothing.
 
 ## The skill stays, and the pilot is opt-in
 

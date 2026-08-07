@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { destinationState, ensureDir, removeAt } from './tree.js';
+import { stagingPath } from './journal.js';
 
 /**
  * The resident fragment: one rule, delivered as a file the agent always reads,
@@ -48,27 +50,23 @@ export const RESIDENT_SKILL = 'navigable-references';
  */
 export const RESIDENT_PLATFORMS = ['claude', 'cowork'];
 
-/**
- * What `doctor` looks for in an instruction file.
- *
- * A substring and not a Markdown model. The import line's own spelling varies
- * with where the user keeps their instruction file, and every spelling of it
- * ends in this. A false negative costs a warning, which is the trade this
- * design makes on purpose.
- */
-export const RESIDENT_MARK = `${RESIDENT_NAME}/${RESIDENT_FILE}`;
-
 export const RESIDENT_DESCRIPTION =
   'The navigable-references rule, as a file your instruction file imports. '
-  + 'Always in context, with no trigger to miss.';
+  + 'Always in context, with no trigger to miss. Install it by name, because '
+  + 'no tier selects it.';
 
 /**
  * The sections of `SKILL.md` the fragment carries, in this order.
  *
- * Both are graded in `grounding/craft/navigable-references.md`, as rows E-02
- * through E-11. The fragment therefore carries no rule that the matrix does
- * not already dispose of, which is what keeps a generated copy from becoming
- * an ungraded second skill.
+ * Both are graded in `grounding/craft/navigable-references.md`. Those two
+ * sections are rows E-02 through E-11, and the document heading the fragment
+ * also carries is row N-03. So every writing rule in the fragment is one the
+ * matrix already disposes of, and a generated copy does not become an ungraded
+ * second skill.
+ *
+ * The header comment below is the one line no matrix covers. It is provenance
+ * addressed to whoever opens the generated file, and it states no writing
+ * rule.
  */
 export const RESIDENT_SECTIONS = [
   'Give the reference a form the reader can follow',
@@ -131,9 +129,14 @@ function title(text) {
  * The fragment, derived from the skill.
  *
  * Every line but the header comment is copied verbatim out of `SKILL.md`, so
- * the fragment asserts nothing the grounding matrix has not already disposed
- * of. The header is a comment rather than prose for the same reason: it states
- * where the file came from and instructs nobody.
+ * every writing rule the fragment carries is one the grounding matrix has
+ * already disposed of.
+ *
+ * The header is a comment rather than prose, and it does carry an instruction:
+ * it tells a maintainer of this repository not to edit the generated file. It
+ * is deliberately the only line here that is not graded, it is addressed to a
+ * maintainer rather than to a writer, and a Markdown reader renders none of
+ * it. ADR-0022 states the same boundary.
  */
 export function renderResident(skillText) {
   const parts = RESIDENT_SECTIONS.map((h) => section(skillText, h));
@@ -194,6 +197,39 @@ export async function checkResident(repoRoot) {
     };
   }
   return { expected, actual, problems: [] };
+}
+
+/**
+ * Write the generated fragment into this repository.
+ *
+ * A new write surface inherits the tree checks or it repeats the defect
+ * AGENTS.md names, and this one is no exception for being a build step. The
+ * destination is classified before anything happens, every directory component
+ * goes through `ensureDir`, and the bytes land beside the destination and are
+ * renamed over it, so the file is whole or untouched. A link at the
+ * destination is refused rather than written through.
+ *
+ * The staging name comes from `journal.js`, so this surface reserves no name
+ * of its own.
+ */
+export async function writeResident(repoRoot, text) {
+  const dest = residentPath(repoRoot);
+  await ensureDir(path.dirname(dest), repoRoot);
+  const state = await destinationState(dest);
+  if (state !== 'absent' && state !== 'file') {
+    throw new Error(
+      `${RESIDENT_SOURCE}/${RESIDENT_FILE} is a ${state}, not a regular file. `
+      + 'Remove it and run again.');
+  }
+  const staged = stagingPath(dest);
+  // The name belongs to this tool: it is the destination plus a suffix nothing
+  // else writes. Anything there is a stopped run's own leftover.
+  await removeAt(staged);
+  // `wx`, so a file this tool creates refuses an existing path rather than
+  // truncating it, and does not follow a link.
+  await fs.writeFile(staged, text, { flag: 'wx' });
+  await fs.rename(staged, dest);
+  return dest;
 }
 
 /**

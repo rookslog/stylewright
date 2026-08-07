@@ -7,28 +7,42 @@
  * decision.
  *
  * `--write` regenerates the fragment instead of failing. It is how you fix
- * what this reports.
+ * what this reports, and it writes through `src/tree.js` like every other
+ * write surface in this repository.
  *
  * This lives in `scripts/` and not in `src/`, because it owns the exit code
  * and nobody who installs the package needs it.
  */
-import { writeFileSync } from 'node:fs';
-import { checkResident, residentPath } from '../src/resident.js';
+import { checkResident, writeResident, ResidentDrift } from '../src/resident.js';
+
+const fail = (message) => {
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
+};
 
 const write = process.argv.includes('--write');
 const repoRoot = process.cwd();
-const { expected, problems } = await checkResident(repoRoot);
+
+// A renamed section throws rather than emitting a shorter fragment, and that
+// throw reaches here on both paths. It is a message about this repository, so
+// it prints as one. `bin/stylewright.mjs` already ruled that a stack trace
+// says where we were and not what to do.
+let result;
+try {
+  result = await checkResident(repoRoot);
+} catch (err) {
+  if (!(err instanceof ResidentDrift)) throw err;
+  fail(err.message);
+}
+
+const { expected, problems } = result;
 
 if (write) {
-  if (expected === null) {
-    for (const p of problems) process.stderr.write(`${p}\n`);
-    process.exit(1);
-  }
-  writeFileSync(residentPath(repoRoot), expected);
+  if (expected === null) fail(problems.join('\n'));
+  await writeResident(repoRoot, expected);
   process.stdout.write('Resident fragment written from the skill.\n');
 } else if (problems.length) {
-  for (const p of problems) process.stderr.write(`${p}\n`);
-  process.exit(1);
+  fail(problems.join('\n'));
 } else {
   process.stdout.write('Resident fragment matches its skill.\n');
 }
