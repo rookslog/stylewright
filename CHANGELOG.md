@@ -91,7 +91,37 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   memory. No measurement stands behind it. Its `SOURCE.md` says so, and names
   the scenario a study would need.
 
+- **Retention has a mechanism.** `bench/samples/` was named as the store on
+  2026-08-04 and nothing could reach it, so every figure in `bench/README.md`
+  stayed unaudited. `bench/run.sh` now writes an arm manifest when an arm
+  stops, finished or aborted, naming every file the arm planned to hold and
+  the digest of every file it holds. The manifest states no verdict, and
+  `armState` derives whether the arm covered its plan. `bench/retain.mjs`
+  promotes whole arms into a committed study through `src/tree.js`, and it
+  refuses an arm with no manifest, an arm whose files disagree with it, an arm
+  collected under `--rules user`, a sidecar naming the operator's own rule
+  files or an absolute path to the system prompt, a retained file carrying
+  operator configuration or anything credential shaped, a prompt that changed
+  after the samples answered it, a promotion with no recorded license check,
+  and a study directory that already exists. Redaction is the design's other
+  option for a `--rules user` arm and nothing builds it, so that refusal is
+  total.
+
+- **A promoted study states no figure.** The scorer runs after the copy, over
+  the promoted bytes, one scenario at a time, and the study manifest retains
+  its command and its output verbatim. `npm run check:studies` derives one
+  figure per cell of the scorer's own table, under
+  `<scenario>.<arm>.<statistic>.<metric>`, and recomputes every digest, so an
+  edit to promoted evidence stops being silent. A manifest carrying a key that
+  states a figure is refused. ADR-0021 records the decision, the deferred
+  redaction, and the provenance a study cannot yet carry, which it names as
+  gaps rather than inventing.
+
 ### Changed
+
+- `bench/run.sh` records the system prompt as a path inside the repository
+  rather than as an absolute one. A sidecar is promoted into a public tree, and
+  an absolute path names the operator's own filesystem.
 
 - The purity test parses each module in `src/` and inspects the syntax tree. It
   matched text before, so `const bye = process.exit`, a `new Date` that spreads
@@ -105,6 +135,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and as an `fd` option that no argument position names.
 
 ### Fixed
+
+- **`node bench/score.mjs` did nothing on Windows.** Its entry guard compared
+  `import.meta.url` against a `file://` URL glued together from
+  `process.argv[1]`, and the two spellings can never match there. Nothing in
+  continuous integration ran the scorer as a command, so the defect stayed
+  invisible until promotion spawned it and a study derived no figure from a run
+  that reported success. Every entry point here now compares paths through
+  `fileURLToPath`, and a test holds the whole of `bench/` to it.
 
 - **An install is now reversible per skill, not merely orphan-free.** A run
   that failed part way through an update used to leave the tree holding half of

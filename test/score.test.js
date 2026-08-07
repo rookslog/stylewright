@@ -227,3 +227,35 @@ test('an arm that disagrees with itself about its size is caught', async () => {
   const b = await sample(dir, 'a-2.txt', 'text', cell({ rep: 2, reps: 3 }));
   assert.match((await audit([a, b])).join(' '), /disagrees with itself about its size/);
 });
+
+// The scorer is a command as well as a module, and nothing in CI ran it as one
+// until promotion did. Its entry guard compared `import.meta.url` against a
+// URL glued together from `process.argv[1]`, which can never match on Windows,
+// so `node bench/score.mjs` printed nothing there. A promoted study then
+// derived no figure from a run that had reported success.
+
+test('the scorer runs as a command, and prints its table', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const dir = await tmpdir();
+  const file = await sample(dir, 'a-1.txt', 'a short reply\n', cell({ rep: 1, reps: 5 }));
+  const scorer = path.join(path.dirname(import.meta.dirname), 'bench', 'score.mjs');
+  const { stdout } = await promisify(execFile)(process.execPath, [scorer, '--unaudited', file]);
+  assert.match(stdout, /^audit\tarm\tfile\t/m);
+  assert.match(stdout, /\tMEDIAN\t/);
+});
+
+test('every bench entry point compares its own path as a path', async () => {
+  const dir = path.join(path.dirname(import.meta.dirname), 'bench');
+  const names = (await fs.readdir(dir)).filter((n) => n.endsWith('.mjs'));
+  assert.ok(names.length > 1);
+  for (const name of names) {
+    const text = await fs.readFile(path.join(dir, name), 'utf8');
+    // A URL built by hand out of a Windows path never equals `import.meta.url`,
+    // so the module runs as a command on one platform and does nothing on the
+    // other. The comparison belongs to `fileURLToPath`.
+    assert.ok(
+      !/import\.meta\.url === `file:\/\/\$\{process\.argv\[1\]\}`/.test(text),
+      `${name} compares a hand-built file:// URL against import.meta.url`);
+  }
+});
