@@ -35,12 +35,12 @@ const IS_DELIMITER = (cells) => cells.length > 0
  * skip the header and the delimiter by pattern. Both halves leaked.
  *
  * The header and the delimiter were skipped rather than checked, so deleting
- * either one, or cutting either to five cells, or renaming the sixth heading
- * to `Notes`, left every row parsing and the coverage note printing full
- * marks. In GFM each of those either drops the rendered column or stops the
- * block being a table at all, so the person reading the matrix loses the audit
- * record while the check reports it intact. The record exists for the person,
- * so the column they see is the column that counts.
+ * either one, or cutting either short, or renaming a heading to `Notes`, left
+ * every row parsing and the coverage note printing full marks. In GFM each of
+ * those either drops the rendered column or stops the block being a table at
+ * all, so the person reading the matrix loses the record while the check
+ * reports it intact. The record exists for the person, so the column they see
+ * is the column that counts.
  *
  * A row inside a fenced block or indented four spaces is an EXAMPLE to a
  * reader and was a row to the checker, which is the same disagreement pointing
@@ -675,7 +675,7 @@ export function checkSkill({ skillText, matrixText, now }) {
   const findings = [];
 
   // The table itself, before any row in it. A matrix whose header or delimiter
-  // no longer carries six columns is not the file the audit record lives in,
+  // no longer carries every column is not the file the audit record lives in,
   // whatever its rows still say.
   const table = readMatrix(matrixText);
   for (const r of table.refusals) {
@@ -884,7 +884,7 @@ export function checkSkill({ skillText, matrixText, now }) {
         message: `${row.id}: only a G row quotes a source, because only a G row cites one.`,
       });
     }
-    // A seventh cell is read by nobody and was refused by nobody. GFM drops it
+    // A cell past the last is read by nobody and was refused by nobody. GFM drops it
     // from the render, so text could sit in a row that neither the checker nor
     // the person reading the matrix ever sees.
     if (row.extra.length) {
@@ -892,7 +892,7 @@ export function checkSkill({ skillText, matrixText, now }) {
         level: 'error',
         code: 'row-has-extra-cell',
         message: `${row.id}: the row carries ${MATRIX_COLUMNS.length + row.extra.length} columns, `
-          + `not ${MATRIX_COLUMNS.length}. Nothing reads past the sixth, and no reader sees it.`,
+          + `not ${MATRIX_COLUMNS.length}. Nothing reads past the last, and no reader sees it.`,
       });
     }
     if (kind !== 'G') {

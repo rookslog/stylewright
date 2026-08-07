@@ -385,7 +385,7 @@ test('a row that is not read is named, so the denominator cannot shrink quietly'
   assert.ok(quoted.some((f) => f.code === 'unread-matrix-row' && /blockquote/.test(f.message)));
 });
 
-test('a seventh cell is refused, because no reader and no check sees it', () => {
+test('a cell past the last is refused, because no reader and no check sees it', () => {
   const smuggled = FULLY.replace(
     `| Part 1, Section 5 | 2026-08-06 ${CURRENT} |`,
     `| Part 1, Section 5 | 2026-08-06 ${CURRENT} | INVISIBLE IN RENDER |`,
