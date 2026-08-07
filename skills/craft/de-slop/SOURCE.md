@@ -11,12 +11,45 @@ here has to be stated rather than left to be discovered.
   grounding matrix carries no `G` row.
 - Reproduction check: not required, because no source wording is carried into
   the skill. Anyone who later adds a quotation must record the check here first.
-- Recorded 2026-08-07.
+- Recorded 2026-08-06.
 
 A vendor page reporting that its own model writes at length would not become a
 source for this skill. Such a page describes a model and prescribes nothing.
 `compressed-deliberation` is the skill that carries that material, and its own
 `SOURCE.md` holds the record for it.
+
+## One row rests on a report nobody here has read
+
+`E-25` states that Anthropic reported an April 2026 revert of a strict brevity
+instruction in Claude Code, on the ground that it reduced coding quality. That
+report is real and it is first-party. Nobody on this branch opened it.
+
+The record it came from is `A6` in
+`skills/craft/compressed-deliberation/SOURCE.md`, which carries the URL, and
+the owner relayed the episode in a comment on issue #1 as the countertest this
+skill must keep. So the provenance is a relay, and the row is graded `E` rather
+than `G` for that reason alone. A `G` row would name a source location for a
+page this branch never opened, which is the reading-nobody-did defect that the
+`Audited` column exists to catch.
+
+Promoting the row takes one thing. Open the URL in `A6`, record the read here
+with its date and the sections read, and then the row may cite it. Until that
+happens the skill states the report as a report and claims nothing further from
+it.
+
+## What was considered and not graded
+
+The 2026-08-04 survey package on Claude Opus 5 default style shaped this skill
+without grounding any row in it. It informed `E-05`, on announced importance,
+and `E-11`, on invented opposition, and it is part of why the rules here are
+sorted into structure, commitment, and the shape of an opening and a closing.
+
+It grades nothing, and that is deliberate. The package rates its own prose
+findings at moderate to low confidence with prevalence unknown. It has no
+corpus study, no representative survey, and one matched prompt pair that it
+declines to call a benchmark. A reader who saw official citations inside it
+might take those rows for grounded ones, and they are not. Every row that
+package touched is an `E` row.
 
 ## What evidence stands behind the rules
 
@@ -71,5 +104,7 @@ release:
   says there is none, whichever way the result goes.
 - A study promotes a word to a rule under the measurement design. The sentence
   above saying that no word list ships then needs the exception written into it.
+- Somebody reads the `A6` report behind `E-25`. That read is recorded here, and
+  the row may then cite it.
 - A source turns up that supports one of these rules. A `G` row then needs the
   usual record, and this file is where it goes.

@@ -7,12 +7,9 @@ description: Use when prose reads as machine-written, whatever produced it. Symp
 
 ## Purpose
 
-Some prose reads as machine-written whatever produced it. The defect is a
-rhetorical move rather than a word, so every rule here names a move. A move
-survives a model release. A word does not.
-
-No measurement stands behind this skill. `SOURCE.md` beside this file records
-that, and it names where a measurement would live.
+The defect this skill treats is a rhetorical move rather than a word, so every
+rule here names a move. A move survives a model release. Whether a word does is
+not settled.
 
 ## Cut the structure that performs thoroughness
 
@@ -24,9 +21,6 @@ that, and it names where a measurement would live.
 A frame with no second idea reads like this. "Not just a parser bug but a
 design problem" promises two findings and delivers one, because the design
 problem named is the parser bug under another name.
-
-This skill names that move. It ships no pattern that matches it, and the
-section below says why.
 
 ## Commit to the claim, or lower it
 
@@ -49,16 +43,26 @@ The last rule is the one to reach for when the others do not fire. Remove the
 sentence, read the paragraph again, and keep the sentence only if something
 changed.
 
+## Compression has a cost, so name it
+
+- Cut a sentence for what it fails to carry, and never to reach a length.
+- Keep a finding that a shorter answer would have dropped.
+
+Anthropic reported in April 2026 that a system instruction imposing strict
+brevity in Claude Code reduced coding quality, and reverted it. That is a
+first-party report of compression paid for in correctness. It is why no rule
+above sets a word budget, and why every rule above names a move instead.
+
 ## No rule here matches a word
 
-Every rule above names a structure or a commitment. No rule here is enforced by
-matching a word, and this skill ships no word list.
+No rule here is enforced by matching a word, and this skill ships no word list.
 
 A word that one setting overuses is countable, and that makes it tempting to
 ship. Two things argue against carrying it in a skill. A list of forbidden
 words teaches an agent to swap each one for its nearest neighbour, which leaves
-the defect and cleans the surface. A word also recurs in a setting rather than
-in a model, so a shipped list dates faster than the moves above.
+the defect and cleans the surface. A word may also recur in a setting rather
+than in a model, which is the live reading here rather than a finding. On that
+reading a shipped list dates faster than the moves above.
 
 Counting belongs in `bench/score.mjs` in the stylewright repository, where a
 scorer counts and asserts nothing. A word becomes a rule in a skill only after

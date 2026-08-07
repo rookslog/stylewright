@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 // Longest first. `hedges` consumes each match, so "it is worth noting" must be
 // found as one hedge before "worth noting" and "it is worth" can each claim it.
 // Scored unsorted, that one phrase counted twice.
-const HEDGE = [
+export const HEDGE = [
   'i have not verified', "i haven't verified", 'it is worth noting',
   "it's worth noting", 'i did not check', "i didn't check", 'for completeness',
   'i should note', 'worth noting', "it's worth", 'it is worth', 'to be clear',

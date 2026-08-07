@@ -11,7 +11,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { score, auditable, readMeta, digest, signatures, SIGNATURE } from '../bench/score.mjs';
+import {
+  score, auditable, readMeta, digest, signatures, SIGNATURE, HEDGE,
+} from '../bench/score.mjs';
 
 const s = (text) => score(text, null, false);
 
@@ -77,6 +79,22 @@ test('a longer signature consumes a shorter one inside it', () => {
 
 test('signatures is case-blind, as every phrase metric here is', () => {
   assert.equal(signatures('Delve and DELVE', ['delve']), 2);
+});
+
+// "Longest first" is what both lists say about themselves, and it is not the
+// property that matters. `for completeness` (16) sits after `i didn't check`
+// (14) in the shipped HEDGE list, so a strict length ordering is already
+// violated twice and nothing has ever gone wrong. What the consuming split
+// actually needs is that no entry is CONTAINED in a later one. Asserting the
+// wrong invariant here would fail a correct list and teach the next author to
+// reorder for the test rather than for the count.
+const containment = (list) => list.flatMap(
+  (a, i) => list.slice(i + 1).filter((b) => b.includes(a)).map((b) => [a, b]));
+
+test('no listed phrase is contained in a later one, in either list', () => {
+  assert.deepEqual(containment(HEDGE), [],
+    'a phrase that contains an earlier one must come first, or the earlier one eats it');
+  assert.deepEqual(containment(SIGNATURE), []);
 });
 
 test('signatures reads prose, so a phrase inside a fence is not counted', () => {

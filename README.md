@@ -54,9 +54,10 @@ already has. `navigable-references` and `de-slop` ship with none, and each
 `SOURCE.md` says so in those words. Read both as discipline that we assert.
 
 `de-slop` names rhetorical moves and never words. No skill here ships a list of
-forbidden words, because a list of them teaches an agent to swap each word for
-its nearest neighbour. Counting words belongs in `bench/score.mjs`, which does
-not install. ADR-0021 records that decision.
+words gathered from what one setting overuses, because such a list teaches an
+agent to swap each word for its nearest neighbour. Counting those words belongs
+in `bench/score.mjs`, which does not install. ADR-0021 records that decision,
+and it leaves a published standard's own vocabulary under its existing gate.
 
 `proportionate-execution` ships with none either, and for a harder reason. Its
 rules govern a session of many steps, and the bench runner drives one prompt.

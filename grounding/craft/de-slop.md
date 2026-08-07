@@ -34,10 +34,28 @@ distinction `grounding/craft/compressed-deliberation.md` records for the seven
 `G` rows it does carry. A contributor who finds a real source for a rule here
 adds the source record before adding the row.
 
-Three section titles are graded `E` rather than `N`. `Cut the structure that
-performs thoroughness`, `Commit to the claim, or lower it` and `Open on the
-answer, and close when it is delivered` are written as instructions, so calling
-any of them a title would retire a rule from review by naming it scenery.
+Four section titles are graded `E` rather than `N`. `Cut the structure that
+performs thoroughness`, `Commit to the claim, or lower it`, `Open on the
+answer, and close when it is delivered` and `Compression has a cost, so name
+it` are written as instructions, so calling any of them a title would retire a
+rule from review by naming it scenery.
+
+`E-25` is the row where the `G` question was live, and it is the one row here
+that carries a fact we did not establish. Anthropic reported the Claude Code
+brevity revert, and the report reached this branch through the owner's comment
+on issue #1 rather than through anyone here opening the page. A `G` row would
+name a source location for a document nobody on this branch has read, which is
+the defect the `Audited` column exists to catch, one column over. So the row is
+`E`, the unit states the report as a report, and `SOURCE.md` records where it
+came from and what it would take to promote the row.
+
+## The IDs are labels, and a gap in them is a record
+
+An ID here names a row and never a position. Two rows were cut in review, so
+`N-04` and `N-05` are absent, and the four rows added in the same pass carry
+`E-22` through `E-25` while sitting in document order in the table. Renumbering
+the file would have moved every ID a reviewer had already cited, which is the
+same objection this repository makes to an ordinal that names a position.
 
 ## Where the line between an `E` row and an `N` row falls here
 
@@ -82,18 +100,20 @@ beside the skill records the same status.
 | E-15 | Do not close with a paragraph that re-says what the reader has just read. | Open on the answer, and close when it is delivered |  |  | Our own guidance |  |
 | E-16 | Delete a sentence that survives its own deletion. | Open on the answer, and close when it is delivered |  |  | Our own guidance |  |
 | E-17 | The last rule is the one to reach for when the others do not fire. Remove the sentence, read the paragraph again, and keep the sentence only if something changed. | Open on the answer, and close when it is delivered |  |  | Our own guidance, and it tells the reader how to apply E-16 |  |
+| E-22 | Compression has a cost, so name it | Compression has a cost, so name it |  |  | Our own guidance, written as a section title |  |
+| E-23 | Cut a sentence for what it fails to carry, and never to reach a length. | Compression has a cost, so name it |  |  | Our own guidance |  |
+| E-24 | Keep a finding that a shorter answer would have dropped. | Compression has a cost, so name it |  |  | Our own guidance |  |
+| E-25 | Anthropic reported in April 2026 that a system instruction imposing strict brevity in Claude Code reduced coding quality, and reverted it. That is a first-party report of compression paid for in correctness. It is why no rule above sets a word budget, and why every rule above names a move instead. | Compression has a cost, so name it |  |  | Our own guidance, on a report SOURCE.md records as unread here |  |
 | E-18 | Counting belongs in `bench/score.mjs` in the stylewright repository, where a scorer counts and asserts nothing. A word becomes a rule in a skill only after a promoted study says it should. | No rule here matches a word |  |  | Our own guidance, and ADR-0021 decided it |  |
 | E-19 | Read every rule here as discipline that we assert. Do not read any of it as an effect that we observed, and do not let a later summary say that this skill works. | What stands behind these rules |  |  | Our own guidance, and it instructs the reader how to read the skill |  |
 | E-20 | The disagreement is about repetition. Both standards ask a writer to repeat, in a summary, in a heading, or in one term used for one thing. This skill tells a writer to cut a closing that re-says the page. A procedure and a safety notice repeat on purpose, so the standard wins there and this skill yields. | How this differs from the other skills here |  |  | Our own guidance, and it rules on which skill wins |  |
 | E-21 | `compressed-deliberation` treats one model's documented defaults, and it expires when that model does. This skill carries no model pin and no expiry, because a rhetorical move outlives any one build. Follow both. | How this differs from the other skills here |  |  | Our own guidance, and it instructs the reader to follow both |  |
 | N-01 | de-slop | de-slop |  |  | Section title, asserts no rule |  |
 | N-02 | Purpose | Purpose |  |  | Section title, asserts no rule |  |
-| N-03 | Some prose reads as machine-written whatever produced it. The defect is a rhetorical move rather than a word, so every rule here names a move. A move survives a model release. A word does not. | Purpose |  |  | States what this skill treats, asserts no rule |  |
-| N-04 | No measurement stands behind this skill. `SOURCE.md` beside this file records that, and it names where a measurement would live. | Purpose |  |  | Points at SOURCE.md, asserts no rule |  |
-| N-05 | This skill names that move. It ships no pattern that matches it, and the section below says why. | Cut the structure that performs thoroughness |  |  | Describes this skill and points below, asserts no rule |  |
+| N-03 | The defect this skill treats is a rhetorical move rather than a word, so every rule here names a move. A move survives a model release. Whether a word does is not settled. | Purpose |  |  | States what this skill treats, asserts no rule |  |
 | N-06 | No rule here matches a word | No rule here matches a word |  |  | Section title, asserts no rule |  |
-| N-07 | Every rule above names a structure or a commitment. No rule here is enforced by matching a word, and this skill ships no word list. | No rule here matches a word |  |  | Describes this skill, asserts no rule |  |
-| N-08 | A word that one setting overuses is countable, and that makes it tempting to ship. Two things argue against carrying it in a skill. A list of forbidden words teaches an agent to swap each one for its nearest neighbour, which leaves the defect and cleans the surface. A word also recurs in a setting rather than in a model, so a shipped list dates faster than the moves above. | No rule here matches a word |  |  | Argues for the decision above, asserts no rule |  |
+| N-07 | No rule here is enforced by matching a word, and this skill ships no word list. | No rule here matches a word |  |  | Describes this skill, asserts no rule |  |
+| N-08 | A word that one setting overuses is countable, and that makes it tempting to ship. Two things argue against carrying it in a skill. A list of forbidden words teaches an agent to swap each one for its nearest neighbour, which leaves the defect and cleans the surface. A word may also recur in a setting rather than in a model, which is the live reading here rather than a finding. On that reading a shipped list dates faster than the moves above. | No rule here matches a word |  |  | Argues for the decision above at the strength ADR-0021 states it, asserts no rule |  |
 | N-09 | What stands behind these rules | What stands behind these rules |  |  | Section title, asserts no rule |  |
 | N-10 | Nothing measured. A craft rule has no standard behind it, so measurement is the only evidence it can ever have, and no arm has been run for this skill. | What stands behind these rules |  |  | States the evidence, asserts no rule |  |
 | N-11 | How this differs from the other skills here | How this differs from the other skills here |  |  | Section title, asserts no rule |  |

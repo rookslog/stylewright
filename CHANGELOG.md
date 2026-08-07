@@ -88,11 +88,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The `de-slop` skill, in the craft tier, and the skill this repository is named
   for. It names rhetorical moves rather than words. Every rule in it names a
   structural or commitment defect, and no rule in it is enforced by matching a
-  word. It ships no word list, and no skill here does, because a list of
-  forbidden words teaches an agent to swap each word for its nearest neighbour
-  and leaves the defect behind a cleaner surface. No measurement stands behind
-  it, and ADR-0021 accepts that rather than holding the skill on structural
-  metrics the scorer does not have.
+  word. It ships no signature word list, and ADR-0021 keeps that kind of list
+  out of every skill directory, because a list of forbidden words teaches an
+  agent to swap each word for its nearest neighbour and leaves the defect
+  behind a cleaner surface. A controlled vocabulary from a published standard
+  is a different artefact and keeps its existing gate. The skill also states
+  what compression costs, and names the April 2026 Claude Code brevity revert
+  that Anthropic reported. No measurement stands behind it, and ADR-0021
+  accepts that rather than holding the skill on structural metrics the scorer
+  does not have.
 - A `signatures` metric in `bench/score.mjs`, beside `hedges` and `menus`. It
   counts listed words and short phrases per occurrence, and it ships with an
   empty list, so it reads zero on every sample. The bench is where a count of

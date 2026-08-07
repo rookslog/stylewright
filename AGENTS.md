@@ -402,16 +402,23 @@ Hold it to three conditions:
 
 Flag a list that fails these. Do not flag a list for existing.
 
-ADR-0021 adds a fourth condition and a location. No skill here ships a word
-list today, and the signature layer lives in `bench/score.mjs` as the
-`signatures` metric, which no install pathway copies. A word moves from that
-metric to a lint rule only after a promoted study under the measurement design
-says it should, and an entry in the metric carries a stated reference
-distribution before it counts against anything.
+ADR-0021 splits word lists in two, and each half has its own gate.
 
-The word-pair dictionary on issue #19 is the case that decision does not
-settle. Those pairs trace to a published standard rather than to a setting, so
-the gate above may be the wrong one for them. Argue it on that issue.
+A **signature dictionary** is a list assembled from what one setting was
+observed to overuse. None ships under `skills/`. That layer lives in
+`bench/score.mjs` as the `signatures` metric, which no install pathway copies.
+An entry there carries a stated reference distribution before it counts against
+anything, and a word moves from the metric to a lint rule only after a promoted
+study under the measurement design says it should.
+
+A **controlled vocabulary** is the approved and non-approved word pairs of a
+published standard. Those are method rather than observation, and they may
+ship. The gate is the three conditions above plus a licence check recorded in
+`SOURCE.md`, and not the promoted study. The ASD word-pair dictionary on issue
+#19 is that case.
+
+Which gate applies turns on where the list came from, and never on what it
+looks like.
 
 ## Known blind spots in the test suite
 

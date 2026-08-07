@@ -1,7 +1,7 @@
 ---
 type: adr
 status: accepted
-decided: 2026-08-07
+decided: 2026-08-06
 issues: [1, 43]
 ---
 
@@ -25,7 +25,7 @@ another. These are the most countable part of slop, which is why they are the
 most tempting to ship and the most dangerous to bake in.
 
 **The setting that produces them.** The first `compressed-deliberation`
-baseline found a clean control across all fifteen runs. That moved the
+baseline found a clean control across all fifteen runs, unaudited. That moved the
 investigation off the model and onto the instruction stack above it, and
 `bench/README.md` records it under its rule to always run the control. So a
 signature is not known to be a property of a model. On the evidence this
@@ -36,8 +36,17 @@ structural or commitment defect, and no rule in it is enforced by matching a
 word. A rule may quote a phrase to illustrate the move it names. It may not
 ship a list that a checker matches.
 
-No dictionary ships anywhere under `skills/`. The signature layer re-homes to
-the bench, as a `signatures` metric in `bench/score.mjs`. That file already
+No signature dictionary ships anywhere under `skills/`. A signature dictionary
+is a list of words assembled from what one setting was observed to overuse, and
+it is the artefact this decision keeps out of every skill directory.
+
+A controlled vocabulary is a different artefact and this decision does not
+reach it. The approved and non-approved word pairs of a published standard are
+method rather than observation, and they stay governed by the three conditions
+in `AGENTS.md` and by a recorded licence check. Issue #19 carries that case.
+
+The signature layer re-homes to the bench, as a `signatures` metric in
+`bench/score.mjs`. That file already
 owns this shape in its `HEDGE` and `MENU` lists, it sits outside every install
 pathway, its change discipline is stated in `bench/README.md`, and
 `test/score.test.js` encodes each definition. The metric starts empty by
@@ -55,6 +64,11 @@ earn the same one.
 No entry exists yet, so this ADR records no distribution. The first entry
 amends this section rather than recording its baseline somewhere else.
 
+The shape of an entry is future work, and this ADR does not settle it. A bare
+string in a list has nowhere to hold a corpus name, an expected rate, and the
+study that produced them. The first entry therefore arrives with a shape
+proposal, and the rule above is what that proposal has to satisfy.
+
 A word becomes a lint rule only after it clears a promoted study under the
 measurement design, section 5. Until then it is something the scorer counts,
 and nothing the product asserts.
@@ -67,10 +81,10 @@ a first-class field, and a parallel one would record the same thing worse.
 
 **The boundary with `compressed-deliberation`.** That skill is the model-pinned
 lane, and it expires when the model it documents does. `de-slop` never grows a
-model-named layer. The owner settled this on issue #1. A skill called
-`de-slop-opus-5` would date as fast as a banned-word list and for the same
-reason, and the durable object is the rhetorical move. This ADR keeps that
-split intact rather than reopening it under the word "dictionary".
+model-named layer. The owner settled this on issue #1: a skill called
+`de-slop-opus-5` "would date exactly as fast as a banned-word list, and for the
+same reason", and the durable object is the rhetorical move. This ADR keeps
+that split intact rather than reopening it under the word "dictionary".
 
 ## Consequences
 
@@ -125,4 +139,4 @@ Given a list of forbidden words, an agent swaps each for its nearest neighbour
 and produces the same defects with a cleaner surface. A scorer counts. It never
 tells the agent anything.
 
-Decided on issue #1 (2026-08-07).
+Decided on issue #1 (2026-08-06).
