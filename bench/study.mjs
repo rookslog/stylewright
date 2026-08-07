@@ -247,7 +247,14 @@ export async function checkStudy(dir, name = path.basename(dir)) {
   // over the study as it stands rather than over what promotion saw, because a
   // later commit can put content into a file promotion already cleared.
   for (const rel of await walkStudy(dir)) {
-    const text = await fs.readFile(path.join(dir, rel), 'utf8').catch(() => '');
+    // A file that cannot be read is reported, never skipped. Treating an
+    // unreadable file as empty would let the one file nobody can open be the
+    // one that carries what this scan exists to refuse.
+    const text = await fs.readFile(path.join(dir, rel), 'utf8').catch(() => null);
+    if (text === null) {
+      say(`${rel} cannot be read, so nothing here can say what it carries.`);
+      continue;
+    }
     for (const found of contentProblems(text)) say(`${rel}: ${found}`);
   }
 

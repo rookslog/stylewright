@@ -42,6 +42,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { destinationState, ensureDir, isBelow, walk } from '../src/tree.js';
+// `chainProblems` is read from the collector rather than copied. Both files ask
+// the same question of a chain of directories before and after a write, and a
+// second copy is a second thing to drift — which here would mean one write
+// surface refusing a symbolic link and the other writing through it.
 import { chainProblems } from './collect-probe.mjs';
 import {
   MANIFEST_NAME, collectFiles, digestBytes, fileProblems, manifestProblems, readManifest,
@@ -194,6 +198,10 @@ export async function writeContained(baseDir, outPath, bytes) {
   if (baseState !== 'absent' && baseState !== 'directory') {
     throw new Error(`${baseDir} is a ${baseState}, and nothing is written through one.`);
   }
+  // `ensureDir` clears anything of another type below the base as it walks. It
+  // is safe here and nowhere else in this file: the study directory was created
+  // by the exclusive `mkdir` above, so nothing this run did not put there can
+  // stand inside it.
   await ensureDir(path.dirname(outPath), baseDir);
   const fh = await fs.open(outPath, 'wx').catch(async (err) => {
     if (err.code !== 'EEXIST') throw err;
