@@ -131,7 +131,11 @@ test('install records the fragment like any other file, and uninstall removes it
   assert.equal(await fs.readFile(abs, 'utf8'), await fs.readFile(residentPath(ROOT), 'utf8'));
 
   const manifest = await readManifest(target);
-  assert.equal(manifest.skills[RESIDENT_NAME].tier, RESIDENT_TIER);
+  // The literal, not the constant. Comparing the record against the value that
+  // wrote it asserts nothing, and a tier of `craft` would pass that comparison
+  // while putting the fragment inside a tier selection.
+  assert.equal(manifest.skills[RESIDENT_NAME].tier, 'resident');
+  assert.equal(RESIDENT_TIER, 'resident');
   assert.deepEqual(Object.keys(manifest.skills[RESIDENT_NAME].files), [RESIDENT_FILE]);
 
   const gone = await uninstallSkills({ targetDir: target, names: [RESIDENT_NAME] });
@@ -162,6 +166,29 @@ test('a tier selection never reaches the fragment', async () => {
   // The default install of everything must not deliver one rule twice.
   await assert.rejects(fs.access(path.join(home, '.claude', 'skills', RESIDENT_NAME)));
   await fs.access(path.join(home, '.claude', 'skills', 'navigable-references'));
+});
+
+test('a tier removal never reaches the fragment either', async () => {
+  // The fragment is generated from a craft skill, and it is not one. A tier
+  // recorded as `craft` would put it inside `uninstall --tier craft`, so a user
+  // clearing that tier would silently lose a rule they had imported by hand.
+  const home = await tmp();
+  const target = path.join(home, '.claude', 'skills');
+  await installSkills({
+    repoRoot: ROOT,
+    targetDir: target,
+    names: [RESIDENT_NAME, 'navigable-references'],
+    now: NOW,
+  });
+
+  const res = await uninstallSkills({ targetDir: target, tier: 'craft' });
+  assert.ok(res.removed.includes('navigable-references'));
+  assert.ok(!res.removed.includes(RESIDENT_NAME), JSON.stringify(res.removed));
+  await fs.access(path.join(target, RESIDENT_NAME, RESIDENT_FILE));
+
+  // `--all` still reaches it, because that names the whole target.
+  const all = await uninstallSkills({ targetDir: target, tier: null });
+  assert.ok(all.removed.includes(RESIDENT_NAME));
 });
 
 test('list names the fragment, because list is where a name is learned', async () => {
