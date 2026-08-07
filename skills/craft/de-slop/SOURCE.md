@@ -20,7 +20,7 @@ source for this skill. Such a page describes a model and prescribes nothing.
 
 ## One row rests on a report nobody here has read
 
-`E-25` states that Anthropic reported an April 2026 revert of a strict brevity
+`E-16` states that Anthropic reported an April 2026 revert of a strict brevity
 instruction in Claude Code, on the ground that it reduced coding quality. That
 report is real and it is first-party. Nobody on this branch opened it.
 
@@ -40,9 +40,9 @@ it.
 ## What was considered and not graded
 
 The 2026-08-04 survey package on Claude Opus 5 default style shaped this skill
-without grounding any row in it. It informed `E-05`, on announced importance,
-and `E-11`, on invented opposition, and it is part of why the rules here are
-sorted into structure, commitment, and the shape of an opening and a closing.
+without grounding any row in it. It informed `E-11`, on announced importance,
+and `E-10`, on invented opposition, and it is part of why the departures here
+are sorted the way they are.
 
 It grades nothing, and that is deliberate. The package rates its own prose
 findings at moderate to low confidence with prevalence unknown. It has no
@@ -62,11 +62,33 @@ Read every rule here as discipline that we assert. Do not read any of it as an
 effect that we observed, and do not let a later summary of this skill say that
 it works.
 
-ADR-0021 accepts that status deliberately. The rules here name structure and
-commitment, which is the half of writing that the current scorer cannot read.
-Its structural metrics are specific and insensitive, and `words` is the only
-metric that has separated every pair measured. Waiting for metrics that do not
-exist would hold the skill indefinitely.
+ADR-0021 accepts that status deliberately. The shape here is a matter of
+structure and commitment, which is the half of writing that the current scorer
+cannot read. Its structural metrics are specific and insensitive, and `words`
+is the only metric that has separated every pair measured. Waiting for metrics
+that do not exist would hold the skill indefinitely.
+
+Issue #1 blocked this skill on the efficacy test in issue #21, and ADR-0021
+lifts that block. The successor condition is that no rule here claims a
+measured effect, which this file and the skill both state. Issue #21 stays the
+bar for ever claiming that the skill works.
+
+## The form is a recipe, and that was a ruling
+
+The body states a shape to write toward, and the named defects sit beside it as
+departures from that shape. It is not a list of prohibitions, and an earlier
+draft of this skill was.
+
+The owner ruled on the form in a comment on issue #1. This skill treats
+wrong-shaped output, which takes a positive recipe, and discipline under
+pressure takes a prohibition with the rationalisation it answers.
+`proportionate-execution` is the skill that carries the second kind. Forcing
+one form onto both failure types is the error the ruling corrects.
+
+One cost comes with the choice, and the owner named it. A recipe constrains the
+skeleton and says nothing about the filler, and nothing can check whether a
+recipe was followed. The departures are what keep a named failure in view, and
+`bench/score.mjs` is where a mechanical check would live.
 
 ## Why no word list ships with this skill
 
@@ -104,7 +126,7 @@ release:
   says there is none, whichever way the result goes.
 - A study promotes a word to a rule under the measurement design. The sentence
   above saying that no word list ships then needs the exception written into it.
-- Somebody reads the `A6` report behind `E-25`. That read is recorded here, and
+- Somebody reads the `A6` report behind `E-16`. That read is recorded here, and
   the row may then cite it.
 - A source turns up that supports one of these rules. A `G` row then needs the
   usual record, and this file is where it goes.

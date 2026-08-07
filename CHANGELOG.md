@@ -86,9 +86,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   until the bench can drive a multi-step session. No arm has been run, and the
   skill `SOURCE.md` says so.
 - The `de-slop` skill, in the craft tier, and the skill this repository is named
-  for. It names rhetorical moves rather than words. Every rule in it names a
-  structural or commitment defect, and no rule in it is enforced by matching a
-  word. It ships no signature word list, and ADR-0021 keeps that kind of list
+  for. It names rhetorical moves rather than words. The body is a positive
+  recipe, which the owner ruled on issue #1: it states the shape of a finished
+  passage in five parts, and the named defects sit beside it as departures from
+  that shape. A prohibition list is the right form for discipline under
+  pressure, which is the lane `proportionate-execution` carries, and forcing one
+  form onto both failure types was the error. No part of the shape is enforced
+  by matching a word. It ships no signature word list, and ADR-0021 keeps that kind of list
   out of every skill directory, because a list of forbidden words teaches an
   agent to swap each word for its nearest neighbour and leaves the defect
   behind a cleaner surface. A controlled vocabulary from a published standard

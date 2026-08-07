@@ -53,7 +53,8 @@ Measurement is the evidence a craft rule can have, and not the evidence each one
 already has. `navigable-references` and `de-slop` ship with none, and each
 `SOURCE.md` says so in those words. Read both as discipline that we assert.
 
-`de-slop` names rhetorical moves and never words. No skill here ships a list of
+`de-slop` gives a shape to write toward, and names the departures from it. It
+governs rhetorical moves and never words. No skill here ships a list of
 words gathered from what one setting overuses, because such a list teaches an
 agent to swap each word for its nearest neighbour. Counting those words belongs
 in `bench/score.mjs`, which does not install. ADR-0021 records that decision,

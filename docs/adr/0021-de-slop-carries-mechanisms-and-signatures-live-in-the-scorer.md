@@ -2,7 +2,7 @@
 type: adr
 status: accepted
 decided: 2026-08-06
-issues: [1, 43]
+issues: [1, 21, 43]
 ---
 
 # ADR-0021 — De-slop carries mechanisms, and signatures live in the scorer
@@ -35,6 +35,21 @@ repository holds, the instruction stack is the live hypothesis.
 structural or commitment defect, and no rule in it is enforced by matching a
 word. A rule may quote a phrase to illustrate the move it names. It may not
 ship a list that a checker matches.
+
+**The body is a positive recipe.** The owner ruled this on issue #1 and it is
+recorded here. The skill states a shape a writer works toward, and the named
+defects sit beside it as departures from that shape.
+
+The ruling turns on a conditional the earlier reading had flattened. Match the
+form to the failure. De-slop treats wrong-shaped output, which takes a recipe.
+Discipline under pressure takes a prohibition with the rationalisation it
+answers, and `proportionate-execution` is the skill that carries that kind.
+Forcing one form onto two failure types is the error the ruling corrects.
+
+The cost travels with the choice, and the owner named it. A recipe constrains
+the skeleton and says nothing about the filler, and nothing can check whether a
+recipe was followed. So the departures stay in the skill, where a named failure
+is still visible, and the check layer stays where this ADR already puts it.
 
 No signature dictionary ships anywhere under `skills/`. The ban covers a list
 assembled from what a model or an instruction stack was observed to overuse.
@@ -95,6 +110,20 @@ So `de-slop` ships unmeasured. That is the plan here, and not an accident.
 ADR-0005 already holds that no craft rule claims measured effect until it is
 measured. The skill says so in its own text and in its `SOURCE.md`. Landing
 structural metrics first would hold the skill on work nobody has scheduled.
+
+Issue #1 carried a block, and it is lifted here. It read "None of it ships
+without the efficacy test in #21", and #21 is the efficacy test this skill has
+not had.
+
+The successor condition is ADR-0005's guard, which is narrower and enforceable
+today. No rule here claims a measured effect. The skill says so in its own
+text, `SOURCE.md` says so, and the matrix says so, so nothing ships that #21
+would have to underwrite.
+
+That lifts the block on shipping and it lifts nothing else. Issue #21 remains
+the bar for ever claiming that this skill works. A study clears it, and no
+amount of the skill being reasonable does. Read the two halves together or
+neither holds.
 
 `v0.3.0` therefore ships mechanism rules with no word list of any kind and no
 new lint machinery. `stylewright lint` gains nothing, its exit code keeps one
