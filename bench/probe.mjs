@@ -97,7 +97,6 @@ const ARMS = ['installed', 'control'];
  * reads.
  */
 const SECRET = /sk-ant-[a-z0-9_-]{8,}/i;
-const SECRET_ALL = /sk-ant-[a-z0-9_-]{8,}/gi;
 
 /**
  * Text with the noise a credential can hide behind removed, for matching only.
@@ -108,34 +107,46 @@ const SECRET_ALL = /sk-ant-[a-z0-9_-]{8,}/gi;
  * such a record passed `check:probes` end to end. The stderr field carries
  * hundreds of raw bytes of harness output, so the wrapping is realistic rather
  * than theoretical.
+ *
+ * The class covers what a log or a JSON encoder inserts: whitespace, quotes,
+ * backslashes, and the comma a list format adds. It stops there, and the
+ * residue is stated rather than implied — a credential split by some other
+ * separator, or encoded so its characters are not adjacent at all, is outside
+ * what this sees. Widening it to every non-credential character would glue the
+ * whole record into one string and refuse records that carry no credential.
  */
 function unwrap(text) {
-  return String(text).replace(/[\s"'\\]/g, '');
+  return String(text).replace(/[\s"',\\]/g, '');
 }
 
 /**
- * Text safe to print, with anything credential-shaped replaced.
+ * Text safe to print.
  *
  * EVERY message this module emits goes through it, at the point of emission
- * rather than per message. Redacting message by message is how the leak
+ * rather than per message. Redacting message by message is how the first leak
  * happened: the refusal for a bad flag quoted the flag's value verbatim, one
- * line above the refusal that promises nothing is quoted. A message written
- * next month would have had to remember the rule on its own.
+ * line above the refusal that promises nothing is quoted.
  *
- * Two passes, because one cannot do both jobs. The first replaces a credential
- * sitting in the text as the vendor issues it, surgically, leaving the rest of
- * the message readable. The second asks whether what remains still looks like a
- * credential once wrapping and escaping are removed, and withholds the WHOLE
- * message if it does. A single pattern loose enough to catch a wrapped
- * credential also eats whatever follows it, because a space and then a letter
- * is indistinguishable from a credential split across a line.
+ * ONE question, asked of the UNWRAPPED text, and the whole message is withheld
+ * when the answer is yes. An earlier version asked a surgical question first —
+ * replace what looks like a credential, then check what remains — and that
+ * order leaked. The surgical pass ate the HEAD of a wrapped credential and left
+ * the high-entropy tail standing, with nothing recognisable in front of it for
+ * the second pass to catch. Measured: a wrap eight characters in printed
+ * `[credential redacted]` followed by the rest of the token. A wrap that early
+ * withheld safely, and a wrap at a column a real log breaks on did not, so the
+ * realistic case was the leaking one.
+ *
+ * Withholding whole costs a readable message. That is the correct trade for a
+ * checker whose messages are diagnostics and whose records must never carry a
+ * credential at all. The caller keeps attribution outside this function, so a
+ * withheld line still says which record it came from.
  */
 export function redact(text) {
-  const surgical = String(text).replace(SECRET_ALL, '[credential redacted]');
-  if (SECRET.test(unwrap(surgical))) {
+  if (SECRET.test(unwrap(text))) {
     return '[a message here carried something credential-shaped, so it is withheld]';
   }
-  return surgical;
+  return String(text);
 }
 
 /** The auth routes a record may name, from `bench/collect-probe.mjs`. */
@@ -257,7 +268,10 @@ export function isolationProblems(flags) {
 export function checkRecord(record, name = 'record') {
   const problems = [];
   // Redaction at the point of emission, so no message has to remember the rule.
-  const say = (p) => problems.push(redact(`${name}: ${p}`));
+  // The name sits OUTSIDE the redaction, so a withheld line still says which
+  // record it came from. Redacting the whole line erased the attribution, and a
+  // run over several records could not say which one was withheld.
+  const say = (p) => problems.push(`${name}: ${redact(p)}`);
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     return [`${name}: not a JSON object.`];
   }
@@ -423,14 +437,23 @@ export function deriveOutcome(record) {
 /** One line per record, for a person reading the check's output. */
 export function describe(name, record) {
   const o = deriveOutcome(record);
-  const tuple = TUPLE.map((f) => `${f}=${record.identity?.[f] ?? '-'}`).join(' ');
+  // Each VALUE is asked about on its own. Redacting the assembled line let
+  // `unwrap` glue one field's tail to the next field's head and see a
+  // credential that no field carried, which withheld the filename, the verdict
+  // and the whole tuple from a run that was clean. A value is the unit a
+  // credential could actually occupy, so it is the unit that gets the question.
+  const tuple = TUPLE
+    .map((f) => `${f}=${redact(String(record.identity?.[f] ?? '-'))}`)
+    .join(' ');
   // `control_served` is printed beside `control_clean`, because a control that
   // never ran and a control that ran clean are opposite readings of the same
   // empty answer, and a line that showed only the second would hide the first.
-  return redact(`${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
+  // The name and the derived flags are this module's own words, so they carry
+  // nothing to redact and stay outside the question.
+  return `${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
     + `(installed_served=${o.installed_served} discovered=${o.discovered} `
     + `control_served=${o.control_served} control_clean=${o.control_clean} `
-    + `isolated=${o.isolated}) ${tuple}`);
+    + `isolated=${o.isolated}) ${tuple}`;
 }
 
 /** Reads every record under `dir`. A missing directory holds no records. */
@@ -463,7 +486,7 @@ export async function checkDirectory(dir) {
   const lines = [];
   for (const { name, record, unreadable } of await readRecords(dir)) {
     if (unreadable) {
-      problems.push(`${name}: not readable as JSON.`);
+      problems.push(`${name}: not readable as JSON.`);  // Our own words only.
       continue;
     }
     const found = checkRecord(record, name);

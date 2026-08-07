@@ -465,20 +465,57 @@ test('the environment class names the home, not the route', () => {
 
 // The refusal below the flag check promises nothing is quoted. The flag check
 // above it quoted its value verbatim, so a credential-shaped flag leaked.
-test('a credential-shaped value in any message is redacted at emission', () => {
+test('a credential-shaped value in any message is withheld at emission', () => {
   const leaky = record({
     flags: ['-p', '--model', 'opus', '--setting-sources', 'sk-ant-oat01-LEAKEDCREDENTIAL0123',
       '--strict-mcp-config', '--output-format', 'json'],
   });
-  const problems = checkRecord(leaky).join(' ');
-  assert.equal(problems.includes('LEAKEDCREDENTIAL'), false, 'no message may quote it');
-  assert.match(problems, /\[credential redacted\]/);
-  assert.equal(redact('a sk-ant-api03-AAAABBBBCCCC b'), 'a [credential redacted] b');
-  // A credential the surgical pass cannot see costs the whole message, because
-  // a pattern loose enough to catch it also eats whatever follows it.
-  assert.equal(redact('a sk-ant-oat\n01-DDDDEEEEFFFF b').includes('DDDDEEEEFFFF'), false);
-  assert.match(redact('a sk-ant-oat\n01-DDDDEEEEFFFF b'), /withheld/);
+  const problems = checkRecord(leaky, 'r.json');
+  const joined = problems.join(' ');
+  assert.equal(joined.includes('LEAKEDCREDENTIAL'), false, 'no message may quote it');
+  assert.match(joined, /withheld/);
+  // A withheld line still says which record it came from.
+  assert.ok(problems.every((line) => line.startsWith('r.json: ')),
+    'attribution belongs outside the withheld region');
+});
+
+// The first version replaced what it recognised and then asked whether anything
+// was left. That order ate the HEAD of a wrapped credential and printed the
+// tail, which is the half worth having. A log breaking a line at column eighty
+// lands far past the eight characters that made the early case safe.
+test('a wrapped credential never leaves its tail in the clear', () => {
+  for (const wrapped of [
+    'value was sk-ant-oat01-AAAA\nBBBBCCCCDDDD',
+    'value was sk-ant-oat\n01-AAAABBBBCCCC',
+    'value was sk-ant-oat01-AAAA,BBBBCCCCDDDD',
+    // The separator lands INSIDE the first eight characters, so the head alone
+    // is too short to recognise. Only stripping the comma catches this one.
+    'value was sk-ant-oa,t01AAAABBBBCCCC',
+    'value was sk-ant-oat01-AAAA"BBBBCCCCDDDD',
+  ]) {
+    const out = redact(wrapped);
+    assert.match(out, /withheld/, `${JSON.stringify(wrapped)} must be withheld`);
+    assert.equal(out.includes('BBBBCCCC'), false, 'no tail may survive');
+    assert.equal(out.includes('AAAABBBB'), false, 'no tail may survive');
+  }
+});
+
+test('a message carrying nothing credential-shaped is printed unchanged', () => {
   assert.equal(redact('nothing to see here'), 'nothing to see here');
+  assert.equal(redact('the arms ran on different builds: build-A and build-B.'),
+    'the arms ran on different builds: build-A and build-B.');
+});
+
+// `unwrap` glues, so asking the question of an assembled line let one field's
+// tail meet the next field's head and withheld a clean run's whole line.
+test('a clean record still prints its name, verdict and tuple', () => {
+  const glued = record();
+  glued.identity.pathway = 'claude:user-sk-ant-';
+  glued.identity.harness_build = 'AAAABBBBCCCC';
+  const line = describe('probe.json', glued);
+  assert.match(line, /^probe\.json: derives PASS/);
+  assert.match(line, /pathway=claude:user-sk-ant-/);
+  for (const field of TUPLE) assert.match(line, new RegExp(`${field}=`));
 });
 
 // Measured evasions: case, a newline inside the first characters, and a JSON
@@ -497,14 +534,22 @@ test('a credential survives no dressing the check can see through', () => {
   }
 });
 
+// The fixture has to fail at position 0. V8 quotes the offending text only for
+// that shape: a truncated object yields "Expected ',' or '}' ... at position
+// 37" and carries no content at all, so an earlier version of this test passed
+// whether the parser's message was repeated or not, and the mutation that was
+// supposed to pin the rule measured nothing.
 test('a record that cannot be parsed reports no bytes from the file', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-torn-'));
-  await fs.writeFile(path.join(dir, 'torn.json'), '{ "leak": "sk-ant-api03-AAAABBBBCCCC"');
+  await fs.writeFile(path.join(dir, 'torn.json'),
+    'NOTJSONMARKER sk-ant-api03-AAAABBBBCCCC and more');
   const { problems } = await checkDirectory(dir);
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /not readable as JSON/);
+  assert.match(problems[0], /^torn\.json: not readable as JSON\.$/);
+  // V8 quotes the first ten characters. Neither the marker nor anything after
+  // it may reach a printed line.
+  assert.equal(problems[0].includes('NOTJSONMAR'), false);
   assert.equal(problems[0].includes('sk-ant'), false);
-  assert.equal(problems[0].includes('leak'), false);
 });
 
 test('the routes are declared in precedence order, and name their variables', () => {

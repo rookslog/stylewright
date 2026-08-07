@@ -95,6 +95,12 @@ record named the API key. If your shell sets a variable that configures another
 route, the collector refuses by name rather than guessing, and it never reads
 what any of them hold.
 
+Two things about that list are unverified. Nobody has run the probe on a real
+Windows host, and nobody has checked that the list carries everything the
+harness needs to start. A variable it omits and the harness wants shows up as a
+probe that failed, in a committed record, which is the outcome this protocol
+prefers to a silent difference.
+
 Nothing here reads, prints, or records what either variable holds. The check
 refuses a record carrying anything shaped like a credential, by either route,
 and it never quotes back what it matched. A record is committed, and a leaked
