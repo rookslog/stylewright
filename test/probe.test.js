@@ -16,7 +16,7 @@ import path from 'node:path';
 import {
   TUPLE, ENV_CLASSES, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory,
   describe, redact, summarise, traceProblems,
-  REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG,
+  REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG, flagShapeProblems,
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
@@ -1058,4 +1058,25 @@ test('the probes README spells the flag set the constants define', async () => {
   }).join(' ');
   assert.ok(readme.includes(expected),
     `the README must spell the flag set as: ${expected}`);
+});
+
+// The trace flag's value is the one place a probe arm could reach into a real
+// configuration tree and still derive PASS, because nothing else in the record
+// shows the path. It is refused on either separator.
+test('a trace path inside a .claude directory is refused, and never quoted back', () => {
+  const inside = (p) => [...armFlags('opus'), TRACE_FLAG, p];
+  for (const p of ['/Users/someone/.claude/debug.log',
+    'C:\\Users\\someone\\.claude\\debug.log',
+    '/var/tmp/x/.claude/nested/debug.log']) {
+    const problems = isolationProblems(inside(p)).join(' ');
+    assert.match(problems, /writes into a .claude directory/, `refused: ${p}`);
+    assert.equal(problems.includes('someone'), false, 'the path is never quoted back');
+  }
+  // A throwaway path, which is what the collector builds, still passes.
+  assert.deepEqual(isolationProblems(inside('/tmp/sw-probe-ab12/harness-debug.log')), []);
+  // A directory merely NAMED .claude-something is not a .claude segment.
+  assert.deepEqual(isolationProblems(inside('/tmp/.claude-probe/debug.log')), []);
+  // The VALUE reading owns this, so such a record is a failed probe and not a
+  // broken file, the way every other wrong value is.
+  assert.deepEqual(flagShapeProblems(inside('/Users/someone/.claude/debug.log')), []);
 });

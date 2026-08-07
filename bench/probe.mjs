@@ -4,8 +4,9 @@
  *
  * The measurement design, section 4.1, defines the probe. Section 4.2 makes the
  * isolation probe a blocking prerequisite for installed delivery, with one
- * acceptance test: an installed skill is discoverable under the exact flag set
- * A PROBE ARM runs, in a redirected home the harness fully respects.
+ * acceptance test: an installed skill is discoverable under the acceptance flag
+ * set, plus at most the trace flag, in a redirected home the harness fully
+ * respects.
  *
  * That flag set is this file's own, and it is NOT `bench/run.sh`'s. The two
  * diverge on `--setting-sources`, deliberately, and the reason is the home each
@@ -78,6 +79,10 @@ export const STACK_CLASS = 'representative';
  * the arms differ by the installed skill and nothing else, and the one-variable
  * rule holds.
  *
+ * One residue in that argument: the harness also consults a machine-global
+ * managed skills path that `HOME` does not redirect, so `environment_class`
+ * names the home and never the machine.
+ *
  * `bench/run.sh` does NOT follow this change, and the difference is the home.
  * It SELECTS a spelling from `--rules`: `none` gives its no-guidance control
  * `''`, and `user` gives its treatment arm `user`. Both of those run in the
@@ -106,8 +111,17 @@ export const REQUIRED_FLAGS = [
  * or the model. `--debug` would have done the same job through stderr, and it
  * takes an OPTIONAL argument, so it swallowed the prompt and cost a call pair
  * that produced nothing. ADR-0024 records the decision.
+ *
+ * Its VALUE is checked, and that is the hardening the trace flag buys back.
+ * Accepting any path would let a run write its trace under a real `.claude`
+ * directory, which reaches into the configuration a redirected home exists to
+ * exclude — and that record would derive PASS, because nothing else in it shows
+ * the path. A `.claude` segment is refused on either separator. The collector
+ * builds its own path under a throwaway root and never produces one, so this
+ * closes a cell only a later caller or a hand-written record could reach.
  */
 export const TRACE_FLAG = '--debug-file';
+export const TRACE_PATH_REFUSED = /[/\\]\.claude[/\\]/;
 export const ALLOWED_FLAGS = [...REQUIRED_FLAGS, TRACE_FLAG];
 export const FLAGS_TAKING_A_VALUE = [
   '--model', '--setting-sources', '--output-format', TRACE_FLAG,
@@ -261,10 +275,10 @@ function keyPaths(value, prefix = '') {
 
 /**
  * Problems with the flag set the probe ran under. An unknown flag is refused
- * rather than ignored, because the acceptance test is that the probe ran a
- * probe arm's flags EXACTLY. A flag outside that set is a configuration surface
- * the arm never opened, and a probe that needed one has failed the test it
- * exists to run. `TRACE_FLAG` is the single exception, and it is named above.
+ * rather than ignored, because the acceptance test is that the probe ran the
+ * acceptance flag set, plus at most the trace flag. A flag outside that is a
+ * configuration surface the arm never opened, and a probe that needed one has
+ * failed the test it exists to run.
  */
 /**
  * The flag walk, in two readings.
@@ -344,6 +358,11 @@ function flagProblems(flags, values) {
       }
     } else if (typeof value !== 'string' || value === '' || value.startsWith('-')) {
       problems.push(`${flag} carries no value.`);
+    } else if (values && flag === TRACE_FLAG && TRACE_PATH_REFUSED.test(value)) {
+      // The value, never quoted. A path is where an operator's own directory
+      // names would appear, and this file quotes nothing it matched.
+      problems.push(`${flag} writes into a .claude directory, and a probe arm `
+        + 'touches no configuration tree.');
     }
     i += 2;
   }
@@ -539,6 +558,10 @@ export function checkRecord(record, name = 'record') {
  * `control_clean` is the empty-home control that catches a probe passing for
  * the wrong reason. `isolated` is section 4.2's acceptance test. A probe passes
  * only on all three, and a caller that wants one word reads `passes`.
+ *
+ * All three read the ANSWERS and the flags, and none reads the trace, so the
+ * better evidence a record now retains is not consulted here. Issue #94 carries
+ * that work, and the gap is stated rather than left to be discovered.
  */
 export function deriveOutcome(record) {
   const nonce = record?.nonce ?? '';

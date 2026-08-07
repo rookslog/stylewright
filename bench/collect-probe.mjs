@@ -6,11 +6,11 @@
  *
  * The measurement design, section 4.2, makes this probe a blocking prerequisite
  * for installed delivery. Its acceptance test: an installed skill is
- * discoverable under the exact flag set A PROBE ARM runs, in a redirected home
- * the harness fully respects. That set is the probe's own — `-p`, the model
- * alias, `--setting-sources user`, `--strict-mcp-config`, `--output-format
- * json` — and it lives in `probe.mjs`, next to the check that enforces it,
- * because a second copy is a second thing to drift.
+ * discoverable under the acceptance flag set, plus at most the trace flag, in a
+ * redirected home the harness fully respects. That set is the probe's own —
+ * `-p`, the model alias, `--setting-sources user`, `--strict-mcp-config`,
+ * `--output-format json` — and it lives in `probe.mjs`, next to the check that
+ * enforces it, because a second copy is a second thing to drift.
  *
  * It DIVERGES from `bench/run.sh` on one flag, deliberately. `run.sh` selects
  * `--setting-sources ''` for its no-guidance control, because that control runs
@@ -119,7 +119,7 @@ export function parsePathway(pathway) {
 }
 
 /**
- * The flag set both arms run. It is a PROBE ARM's, defined by `REQUIRED_FLAGS`
+ * The flag set both arms run. It is a probe arm's, defined by `REQUIRED_FLAGS`
  * and `FIXED_VALUES` in `probe.mjs`, with the model alias substituted.
  * `probe.mjs` refuses anything else.
  *

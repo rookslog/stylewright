@@ -212,12 +212,16 @@ failed, a line whose study matches no probe says unprobed, and the
 comparison is computed, never hand-tracked. One tuple can carry both
 outcomes, and that case needs its own rule before anything computes a
 status. A pass supersedes an earlier failure on the same tuple only
-when the instrument changed between them, which the records show
-directly: the failure derives `isolated=false` or names a different
-plant site, so the two answer different questions. Two records of the
-SAME instrument that disagree on one tuple are a different thing. That
-tuple reads as failed, because a probe that answers two ways is a probe
-whose result nobody knows, and a person decides what to do about it.
+when the instrument changed between them, and the rule keys on two
+things a check can read: the derived `isolated`, and the retained
+trace. It keys on nothing else. `nonce_plant` describes the instrument
+in free text, and one committed record describes its own method
+wrongly, so a rule resting on that field would rest on prose nothing
+validates. Where neither key separates two records, the tuple is
+unresolved. Two records of the SAME instrument that disagree on one
+tuple are unresolved for the same reason. Either way the tuple reads
+as failed, because a probe that answers two ways is a probe whose
+result nobody knows, and a person decides what to do about it.
 Nothing generalises across any element of the tuple. The copy pathways share one static conformance
 suite, which needs no live model, and each live pathway needs its own
 probe.
@@ -266,8 +270,8 @@ configuration surface the control suppresses, the arms differ by an
 invocation flag as well as by delivery mode, and the one-variable rule is
 unsatisfiable with the current runner. The isolation probe is therefore a
 blocking prerequisite, not a deferred item. Its acceptance test: an
-installed skill is discoverable under the exact flag set a probe arm runs,
-in a redirected home the harness fully respects. The design states, per
+installed skill is discoverable under the acceptance flag set, plus at
+most the trace flag, in a redirected home the harness fully respects. The design states, per
 pathway, which flags each installed arm runs under, and implementation
 does not start until the probe passes or fails.
 

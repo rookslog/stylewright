@@ -16,8 +16,8 @@ surface the control closes, the two arms differ by a flag as well as by
 delivery mode, and the one-variable rule fails.
 
 The acceptance test is that one sentence. An installed skill is discoverable
-under the exact flag set a probe arm runs, in a redirected home the harness
-respects. `bench/probe.mjs` holds that flag set, and a record collected under
+under the acceptance flag set, plus at most the trace flag, in a redirected home
+the harness respects. `bench/probe.mjs` holds that flag set, and a record collected under
 any other derives a failure rather than passing. It is kept, because a recorded
 failure is a result.
 
@@ -34,6 +34,12 @@ operator configuration in it to suppress, so `user` admits nothing but the tree
 the probe installed. Measured on the same pair: the empty-home control under
 `user` loaded zero skills, so the two arms differ by the installed skill and
 nothing else.
+
+One thing a redirected home does not control. The harness also consults a
+machine-global managed skills path, which `HOME` does not move, so the
+environment class names the home and never the machine. The `d80e11b7` trace
+shows `managed: 0` on both arms, which is a reading of that one run rather than
+a property of the design.
 
 `bench/run.sh` keeps `''`, and the difference is the home. Its control runs in
 the operator's real home, where `user` would load their CLAUDE.md and their
@@ -132,6 +138,10 @@ collector, and an empty list says a log was written and named no skill loading.
 Every record collected before 2026-08-07 carries `null`, and so would a record
 from a harness that offers no trace at all.
 
+The derivation reads the answers and not the trace, so the better evidence is
+retained and not consulted. That gap is named here rather than closed, and
+issue #94 carries the work that closes it.
+
 ## The records here, and what each one is
 
 `0969efef` derives FAIL. It is the first probe, collected under
@@ -146,8 +156,14 @@ this paragraph is the correction.
 
 `d80e11b7` derives PASS, describes its own method truthfully, and retains the
 trace. The harness logged `Loaded 1 unique skills` over the installed arm's home
-and `Loaded 0` over the control's, which is the evidence this protocol had been
-quoting from a scratchpad.
+and `Loaded 0` over the control's.
+
+Read that trace for what it settles, which is one half of the argument and not
+both. Both arms ran under `user`, so the pair corroborates that the redirected
+home is respected and that the two arms differ by the installed skill alone. It
+says nothing about the empty spelling. The measurement that `''` loads zero
+skills over an installed tree came from a scratchpad diagnostic, and no
+committed record carries it.
 
 One residue, stated. The record is the author's own file, like every other
 record in this protocol. The check derives the outcome from the bytes, and it

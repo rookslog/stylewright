@@ -15,8 +15,9 @@ owner ratified the first two together: a probe arm enables the user source, and
 the nonce goes in the frontmatter description. The third came out of repairing
 them — a record collected under the wrong flags is a failed probe rather than a
 broken file — and it is argued below, adversarially reviewed on the pull request
-that carries it, and ratified by the owner's merge of that pull request. It has
-no separate sign-off, and the section that states it names what would reopen it.
+that carries it, and the owner's merge of that pull request is what ratifies it.
+It has no separate sign-off, and the section that states it names what would
+reopen it.
 
 ## The flag set suppressed the thing under test
 
@@ -154,6 +155,16 @@ Both arms run through ONE path, one after the other, and the trace is read and
 the file removed between them. Two paths would put a different value in each
 arm's invocation, and a record carries one flag set, which would then be true of
 neither arm.
+
+Those three invariants are prose here and no test holds them, because the arm
+sequence lives inside a function that spawns a live harness. Issue #95 carries
+the extraction that makes them reachable, with the three surviving mutations
+named. The `--debug-file` VALUE is the one part already enforced.
+
+The derivation does not read the trace. `deriveOutcome` reads the answers and
+the flags, so the better evidence is retained and not consulted, and issue #94
+carries that work. A record whose control trace says `Loaded 1 unique skills`
+derives PASS today on the strength of its answers alone.
 
 ## Consequences
 
