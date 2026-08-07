@@ -39,9 +39,19 @@ CLI_VERSION="$(claude --version 2>/dev/null | head -1 | awk '{print $1}')"
 # guidance at all. It then scored like the control, which is the one result an
 # arm can produce that looks like a finding and is not.
 SYSTEM_SHA=none
+SYSTEM_REL=none
 if [ -n "$SYSTEM" ]; then
   SYSTEM="${SYSTEM:A}"
   [ -r "$SYSTEM" ] || { print -u2 "cannot read --system file: $SYSTEM"; exit 2 }
+  # The sidecar records a CONTAINED path, never the absolute one. A sidecar is
+  # promoted into a committed study, and an absolute path there publishes the
+  # operator's own filesystem layout. `bench/retain.mjs` refuses an arm whose
+  # sidecars carry one. The digest below is what identifies the treatment.
+  REPO="${HERE:h}"
+  case "$SYSTEM" in
+    "$REPO"/*) SYSTEM_REL="${SYSTEM#$REPO/}" ;;
+    *) SYSTEM_REL=outside-repo ;;
+  esac
   SYSTEM_TEXT="$(< "$SYSTEM")"
   # `print -u2 --`, because the message starts with `--system` and print would
   # otherwise read it as its own flags.
@@ -107,7 +117,8 @@ if [ "$REPS" -lt 5 ]; then
 fi
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+CLEAN_UP='rm -rf "$WORK"'
+trap "$CLEAN_UP" EXIT
 
 # Resuming an arm under the same name with a different configuration keeps the
 # old samples and generates only the missing ones, so the cell silently holds
@@ -141,6 +152,36 @@ if [ -n "$existing" ]; then
     exit 2
   fi
 fi
+
+# The runner's one retention duty, from section 3 of the measurement design.
+# When an arm STOPS, it leaves a manifest naming every expected file and the
+# digest of every file it holds. Without one, a partial arm is indistinguishable
+# from a finished one, and `bench/retain.mjs` refuses to promote either.
+#
+# It runs from the EXIT trap, so an abort leaves a manifest too. `STOPPED` is
+# the point of the abort, and the loop below clears it once the plan is covered.
+# The trap is armed HERE and not earlier, because the refusals above belong to
+# the invocation and not to the arm on disk.
+SCENARIOS=
+for p in "$HERE"/prompts/*.txt; do
+  SCENARIOS="${SCENARIOS:+$SCENARIOS,}${p:t:r}"
+done
+[ -n "$SCENARIOS" ] || { print -u2 "no scenarios in $HERE/prompts"; exit 2 }
+
+ARM_DIR="$HERE/out/$ARM"
+STOPPED="the runner exited before the arm covered its plan"
+write_arm_manifest() {
+  eval "$CLEAN_UP"
+  [ -d "$ARM_DIR" ] || return 0
+  if [ -n "$STOPPED" ]; then
+    node "$HERE/arm-manifest.mjs" "$ARM_DIR" --scenarios "$SCENARIOS" --reps "$REPS" \
+      --abort "$STOPPED" || print -u2 "could not write the arm manifest for $ARM"
+  else
+    node "$HERE/arm-manifest.mjs" "$ARM_DIR" --scenarios "$SCENARIOS" --reps "$REPS" \
+      || print -u2 "could not write the arm manifest for $ARM"
+  fi
+}
+trap write_arm_manifest EXIT
 
 for p in "$HERE"/prompts/*.txt; do
   scenario="${p:t:r}"
@@ -190,6 +231,7 @@ for p in "$HERE"/prompts/*.txt; do
     # confirmed the hypothesis.
     if ! MODEL_ID="$(node "$HERE/extract.mjs" "$raw" "$f.part" 2>"$f.extract.err")"; then
       print -u2 "FAILED $ARM/$scenario-$r — see $f.extract.err and ${f}.err"
+      STOPPED="the harness run for $scenario-$r produced nothing the extractor could read"
       exit 1
     fi
     rm -f "$f.extract.err"
@@ -205,6 +247,7 @@ for p in "$HERE"/prompts/*.txt; do
       print -u2 "  rules  $rules_before -> $rules_after"
       print -u2 "  prompt $prompt_before -> $prompt_after"
       print -u2 "Nothing may be edited while an arm is running. Rerun this arm."
+      STOPPED="the treatment moved during $scenario-$r, so that sample was discarded"
       exit 1
     fi
 
@@ -215,7 +258,10 @@ for p in "$HERE"/prompts/*.txt; do
     # correctly-named cell whose later reps measured different text. Differing
     # hashes within one arm mean that cell is contaminated; `score.mjs` refuses
     # such a set rather than trusting anyone to check.
-    print "arm=$ARM scenario=$scenario rep=$r reps=$REPS rules=$SOURCES system=${SYSTEM:-none} system_sha=$SYSTEM_SHA user_rules_sha=$rules_after user_rules=$(user_rules_manifest) prompt_sha=$prompt_after model_id=$MODEL_ID cli=$CLI_VERSION at=$(date -u +%FT%TZ)" > "$f.meta"
+    print "arm=$ARM scenario=$scenario rep=$r reps=$REPS rules=$SOURCES system=$SYSTEM_REL system_sha=$SYSTEM_SHA user_rules_sha=$rules_after user_rules=$(user_rules_manifest) prompt_sha=$prompt_after model_id=$MODEL_ID cli=$CLI_VERSION at=$(date -u +%FT%TZ)" > "$f.meta"
     print "$ARM/$scenario-$r $(wc -w < "$f") words [$MODEL_ID]"
   done
 done
+
+# The plan is covered, so the manifest the trap writes is the completion shape.
+STOPPED=

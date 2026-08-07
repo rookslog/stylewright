@@ -612,6 +612,16 @@ decision, taken only with ADR-0007's test extended first.
   class had to say how an arm authenticates. ADR-0017 settles it: a
   credential in the environment, over an empty home, under the class name
   `empty-home`.
+- Draft 13 records what building the promotion path found. The study
+  manifest carries the scorer's command and the scorer's output, and no
+  figure of its own, because a manifest that named a number beside the
+  output it came from can disagree with it and only one of the two is
+  evidence. A result identifier is a cell of the scorer's own table.
+  Redaction is not built, so an arm collected under `--rules user` is
+  refused outright. And a study promoted from a `run.sh` arm cannot carry
+  the platform, the environment class, the stack digest, the delivery mode
+  or the installed pathway, so its manifest names each as a gap.
+  ADR-0021 settles all three.
 - Draft 11 disposed of the confirmation round: four findings, all
   consistency audits against the ratified threat model, none contesting
   it. The principles page matched the ADR's wording instead of promising

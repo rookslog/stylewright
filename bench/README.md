@@ -64,6 +64,14 @@ when any of the following holds:
   collected against, which would score `echo` on text nobody answered.
 - a sample has a non-empty `.err` beside it.
 
+**The runner says when an arm stopped.** `run.sh` writes an arm manifest when
+the arm ends, whether it covered its plan or aborted. The manifest names every
+file the arm planned to hold and the digest of every file it holds, and it
+states no verdict. `bench/arm-manifest.mjs` derives whether the arm finished
+from those bytes, and `bench/retain.mjs` refuses to promote an arm that has no
+manifest. Without one, a partial arm and a finished arm look the same to
+anything downstream.
+
 **`--compare` is how two arms are read together.** Scoring one arm at a time can
 only establish consistency *within* a cell, so a control served by one build on
 one scenario and a treatment served by another on a different scenario each pass
@@ -192,8 +200,15 @@ Read every figure in this file as unaudited. The full arms behind them were
 not kept, because `.gitignore` excludes the whole of `bench/out/`. A partial
 subset survived on one machine, and a later pass over it put the control
 median at 171, without provenance sidecars. That pass is not the same
-measurement as the 173 above, so neither number corrects the other. Name a
-retained sample store before the next figure is published.
+measurement as the 173 above, so neither number corrects the other.
+
+The store is named now, and it is `bench/samples/`. `bench/out/` stays
+excluded, and a figure survives by promotion into a committed study.
+`bench/samples/README.md` carries the command and the refusals, ADR-0006
+records the owner's decision, and ADR-0021 records how a study is built. None
+of the figures above can be promoted, because no arm behind one kept a sidecar.
+They stay unaudited, and ADR-0014 retires them when the first retained study
+lands.
 
 ### `echo` runs backwards, and here is the measurement
 
@@ -222,7 +237,9 @@ correctness judgment, never instead of one.
 The bench also delivers a treatment by appending it to the system prompt, while
 the product installs a directory that a harness must choose to load. These
 figures therefore measure injection, and never installation. Issue #43 carries
-the installed-activation scenario.
+the installed-activation scenario, and it is still open. A promoted study says
+so in its own manifest: it names the delivery mode, the platform, the
+environment class and the installed pathway as gaps that no record carries.
 
 Installed delivery waits on one question, and `probes/` holds the answer when
 someone runs it. Can a harness see an installed skill under the flags the

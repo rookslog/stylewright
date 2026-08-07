@@ -143,10 +143,23 @@ function unwrap(text) {
  * withheld line still says which record it came from.
  */
 export function redact(text) {
-  if (SECRET.test(unwrap(text))) {
+  if (looksLikeCredential(text)) {
     return '[a message here carried something credential-shaped, so it is withheld]';
   }
   return String(text);
+}
+
+/**
+ * Does this text carry something credential-shaped?
+ *
+ * The one question, asked in one place, so the promotion path in
+ * `bench/retain.mjs` and the study check in `bench/study.mjs` ask exactly what
+ * this file asks. Both write or read committed bytes, and a second copy of the
+ * pattern is a second thing to drift — which here would mean one surface
+ * refusing a credential and another publishing it.
+ */
+export function looksLikeCredential(text) {
+  return SECRET.test(unwrap(text));
 }
 
 /** The auth routes a record may name, from `bench/collect-probe.mjs`. */

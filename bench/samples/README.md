@@ -17,3 +17,66 @@ an edit.
 
 `LEDGER.jsonl` is the append-only attempt ledger. Its ordering is attested
 by public push time, not by commit dates.
+
+## This directory is the store
+
+`bench/out/` stays excluded by `.gitignore`. A sample there survives nothing.
+This directory is committed, and a published figure names a study that lives
+here. ADR-0006 records the owner's decision, and ADR-0021 records how a study
+is built.
+
+One directory per study, named `<date>-<slug>`. It holds `study.json`, the
+promoted arms under `arms/`, and the prompt files under `prompts/`.
+
+## Promote an arm
+
+The runner writes an arm manifest when an arm stops. That manifest names every
+file the arm planned to hold and the digest of every file it does hold. An arm
+without one is live or dead, and promotion refuses both.
+
+```
+node bench/arm-manifest.mjs bench/out/<arm> --scenarios report --reps 5
+node bench/retain.mjs --study 2026-08-06-slug --arm control --arm with-skill \
+  --license-check "what you checked, and against what"
+npm run check:studies
+```
+
+`bench/retain.mjs` copies each arm whole, retains the prompt files the samples
+answered, and then runs the scorer over the promoted bytes. It records the
+scorer command and the scorer output verbatim.
+
+## A figure is derived, never declared
+
+`study.json` carries no number of its own. `npm run check:studies` reads the
+retained scorer output and derives one figure per cell of the scorer's own
+table, under an identifier of the form
+`<scenario>.<arm>.<statistic>.<metric>`. A marker beside a published figure
+names one of those identifiers. A reader recomputes every one of them from the
+committed bytes.
+
+The check also recomputes every digest. Promoted evidence is tamper-evident
+rather than immutable, so an edit to a retained sample stays possible and stops
+being silent.
+
+## What promotion refuses
+
+- An arm with no manifest, or an arm whose files disagree with its manifest.
+- An arm collected under `--rules user`, or a sidecar naming the operator's own
+  rule files. Redaction is the design's other option and nothing here builds
+  it, so this refuses outright.
+- A sidecar recording an absolute path to the system prompt, which names the
+  operator's filesystem.
+- A retained file carrying operator configuration or anything credential
+  shaped. That scan is a backstop over two families of text, and the refusal
+  above is the mechanism.
+- A prompt file that changed after the samples answered it.
+- A promotion with no recorded license check.
+- A study directory that already exists.
+
+## What a study cannot yet carry
+
+Section 4.2 of the measurement design asks a study to record the platform, the
+environment class, the stack digest, the delivery mode, and the installed
+pathway. The current runner collects none of them, because installed delivery
+has no runner. `study.json` names each of those as a gap rather than inventing
+a value, so no reader takes an injected figure for an installed one.
