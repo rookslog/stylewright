@@ -26,9 +26,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   quotation joins the row digest, so writing one voids a recorded audit.
   `ground --check` prints how many rows quote their source, beside the audited
   count and at the same level. No threshold enforces the substitution limit,
-  which is a judgment for the reader of that number. ADR-0020 records the
-  decision. Every matrix ships `unquoted` throughout, and each says why in its
-  own words.
+  which is a judgment for the reader of that number. Every pair holds
+  something, because an empty pair quotes nothing.
+- Every grounding matrix declares whether it may quote its source, as
+  `**Quotation:** permitted` or `**Quotation:** forbidden` at column 0, with
+  the reason beside it. Under `forbidden` the check refuses every `Source text`
+  cell but `unquoted`. A recorded prohibition used to live in prose alone, so
+  rule text substituted into the matrix whose owner forbade rule text left the
+  gate green. An absent declaration reads as `forbidden`, and a second one is
+  refused rather than lifting the first. ADR-0020 records both decisions. Every
+  matrix ships `unquoted` throughout, and three of the four forbid quotation.
 - The grounding check reads the matrix table as a reader sees it. The header and
   the delimiter carry seven columns, every heading is checked by name, and an
   eighth cell is refused. Every row begins at column 0, a fenced row is an

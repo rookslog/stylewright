@@ -130,8 +130,11 @@ and the check says so.
 The \`Source text\` cell of a \`G\` row carries the rule's own words, in quotation
 marks, beside the identifier that names them. Every row starts at \`unquoted\`.
 Quote the operative sentence where the exact wording is what a reader must
-check. Check the license first, and stop well short of a quoted set that could
-stand in for the source.
+check, and stop well short of a quoted set that could stand in for the source.
+
+**Quotation:** forbidden. No licence has been checked for this source yet, so
+this file starts where every file starts. Read the licence, record the check in
+\`SOURCE.md\`, and then edit this line.
 
 A row that tells the reader to do something is never an \`N\` row. The kinds
 below are a starting guess. Revise them as you write the skill.

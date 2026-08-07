@@ -1,8 +1,14 @@
 # Grounding: demo-standard
 
+The Demo Standard is invented for this fixture. Its clause identifiers belong to
+no published standard, so nothing here quotes or attributes anything real.
+
+**Quotation:** permitted. There is nothing to quote, because the source does not
+exist. The state is set here so the fixture exercises the permitted branch.
+
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|
 | N-01 | Demo Standard | Demo Standard |  |  | Section title |  |
 | N-02 | Rules | Rules |  |  | Section title |  |
-| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | unquoted | Part 1, Section 5 | unaudited |
-| G-02 | Do not use semicolons. | Rules | Rule 8.1 | unquoted | Part 1, Section 8 | unaudited |
+| G-01 | Use no more than 20 words in a sentence. | Rules | DEMO-4 | unquoted | The Demo Standard, clause 4 | unaudited |
+| G-02 | Do not use semicolons. | Rules | DEMO-5 | unquoted | The Demo Standard, clause 5 | unaudited |

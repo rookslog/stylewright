@@ -25,7 +25,13 @@ sits under a different heading, or when a statement in `SKILL.md` has no row.
 
 The `Source text` cell of a `G` row carries the words of the rule it cites, in
 quotation marks, beside the identifier that names them. Every row below reads
-`unquoted`.
+`unquoted`, and the declaration on the next line is what holds them there.
+
+**Quotation:** forbidden. ASD reserves all rights, and the owner approved
+publication on 2026-08-04 on the stated condition that no rule text is
+reproduced. The check refuses any cell in this file but `unquoted` while this
+line stands. Lifting it is the owner's decision, and it is made by editing this
+line and the record in `SOURCE.md`.
 
 **Provenance of the rule identifiers.** Read from the official PDF on 2026-07-26.
 This file cites rule numbers and section locations, and it carries no rule text.

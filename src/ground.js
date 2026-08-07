@@ -242,9 +242,59 @@ const AUDIT = /^(\d{4})-(\d{2})-(\d{2}) ([0-9a-f]{8})$/;
  * started republishing. No threshold here can decide that, so the run reports
  * how much of each matrix is quoted and leaves the judgment with the person
  * who reads the number.
+ *
+ * Every pair holds something. `""` and `"   "` opened and closed with a mark
+ * and passed, so a row could claim to quote its rule while quoting nothing,
+ * and the coverage count called it quoted. An empty pair is not a quotation of
+ * anything, and `unquoted` is the spelling for a row that carries no words.
  */
 const UNQUOTED = 'unquoted';
-const QUOTED = /^"[^"]*"(?:[^"]*"[^"]*")*$/;
+const PAIR = '"(?=[^"]*[^\\s"])[^"]*"';
+const QUOTED = new RegExp(`^${PAIR}(?:[^"]*${PAIR})*$`);
+
+/**
+ * Whether this matrix may quote its source at all.
+ *
+ * The cell grammar above says what a quotation looks like. It cannot say
+ * whether this source permits one, and three of the four matrices here do not.
+ * ASD reserves all rights, and the owner's publication decision turns on no
+ * rule text being reproduced. Nothing mechanical held that: substituting rule
+ * text into the forbidden matrix left `ground --check` green, so a prohibition
+ * recorded in prose was one cell away from being crossed by anybody who had
+ * not read the prose.
+ *
+ * So each matrix declares it, in a line a reader sees. `forbidden` refuses any
+ * cell but `unquoted`, whatever else is true of that cell. Crossing the
+ * owner's condition then takes an edit to the declaration and its stated
+ * reason, which is a decision about the source, rather than an edit to one row.
+ *
+ * The declaration is required, and its absence reads as `forbidden`. A default
+ * of `permitted` would turn the rule off for whoever forgot the line, which is
+ * a gate failing open on a missing argument and a defect this file already
+ * carries a fix for two checks over.
+ *
+ * A second declaration does not overrule the first. Both are refused, and any
+ * `forbidden` among them governs, because the way to lift a prohibition is to
+ * edit it rather than to add a line under it.
+ */
+const FORBIDDEN = 'forbidden';
+const DECLARATION = /^\*\*Quotation:\*\* (permitted|forbidden)\b/;
+
+export function readDeclaration(text) {
+  const found = [];
+  let fence = null;
+  for (const [i, line] of text.split('\n').entries()) {
+    const marker = MATRIX_FENCE.exec(line);
+    if (fence) {
+      if (marker && marker[2][0] === fence[0] && marker[2].length >= fence.length) fence = null;
+      continue;
+    }
+    if (marker) { fence = marker[2]; continue; }
+    const stated = DECLARATION.exec(line);
+    if (stated) found.push({ line: i + 1, state: stated[1] });
+  }
+  return found;
+}
 
 const LEAP = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
 
@@ -674,6 +724,27 @@ export function checkSkill({ skillText, matrixText, now }) {
   const { units: stmts, refusals } = extract(skillText);
   const findings = [];
 
+  // Whether this matrix may quote at all, before any row is read. An absent
+  // declaration reads as `forbidden`, and a second one lifts nothing.
+  const declared = readDeclaration(matrixText);
+  const forbids = !declared.length || declared.some((d) => d.state === FORBIDDEN);
+  if (!declared.length) {
+    findings.push({
+      level: 'error',
+      code: 'matrix-no-quotation-declaration',
+      message: 'the matrix does not declare whether it may quote its source. Write '
+        + '`**Quotation:** permitted` or `**Quotation:** forbidden` at column 0, with the '
+        + 'reason beside it. Until it does, no row here may carry anything but `unquoted`.',
+    });
+  } else if (declared.length > 1) {
+    findings.push({
+      level: 'error',
+      code: 'matrix-two-quotation-declarations',
+      message: `the matrix declares its quotation state ${declared.length} times, on line `
+        + `${declared.map((d) => d.line).join(', ')}. Lift a prohibition by editing it and its `
+        + 'reason, never by adding a line under it.',
+    });
+  }
   // The table itself, before any row in it. A matrix whose header or delimiter
   // no longer carries every column is not the file the audit record lives in,
   // whatever its rows still say.
@@ -860,6 +931,20 @@ export function checkSkill({ skillText, matrixText, now }) {
     // one, and the cell is present on every row either way.
     if (kind === 'G') {
       const remedyQuote = 'Write `unquoted`, or the rule\'s own words in quotation marks.';
+      // The prohibition first, and on its own. It is a fact about the source
+      // rather than about this cell, so it holds whatever else the cell is,
+      // and a well-formed quotation is exactly the case it exists to refuse.
+      if (forbids && row.quote && row.quote !== UNQUOTED) {
+        findings.push({
+          level: 'error',
+          code: 'quotation-forbidden-here',
+          message: `${row.id}: this matrix may not quote its source, so the Source text cell `
+            + `reads \`${UNQUOTED}\`. ${declared.length
+              ? `The declaration on line ${declared.find((d) => d.state === FORBIDDEN)?.line ?? declared[0].line} says so`
+              : 'The matrix declares nothing, which reads as forbidden'}. `
+            + 'Changing that is a decision about the source, and it is made in the declaration.',
+        });
+      }
       if (!row.quote) {
         findings.push({
           level: 'error',
@@ -995,7 +1080,11 @@ export function checkSkill({ skillText, matrixText, now }) {
     findings.push({
       level: 'note',
       code: 'quote-coverage',
-      message: `${sourced.filter((r) => r.quote && r.quote !== UNQUOTED).length} `
+      // A cell the check refused is not a quotation, so it is not counted as
+      // one. Counting every cell that merely differed from `unquoted` let a
+      // malformed cell — an empty pair, or our own unmarked paraphrase —
+      // raise the number that reports how much of the source this file carries.
+      message: `${sourced.filter((r) => r.quote && QUOTED.test(r.quote)).length} `
         + `of ${sourced.length} G rows carry the source's own words.`,
     });
   }

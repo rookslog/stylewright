@@ -155,24 +155,52 @@ empty on every other row. A reviewer then knows that nobody has put the rule's
 words beside your paraphrase yet.
 
 Quote the rule when the exact wording is what a reader must check. Write the
-operative sentence in quotation marks, and nothing else in the cell:
+operative sentence in quotation marks, and nothing else in the cell.
+
+The row below is invented. The Demo Standard does not exist, clause 4 says
+nothing, and the sentence between the marks is made up for this page. No
+example in this repository quotes a real standard, because a fabricated
+sentence attributed to a real rule is the defect this column exists to prevent.
 
 ```
-| G-01 | Use no more than 20 words in a sentence. | Procedures | Rule 5.1 | "Keep to a maximum of 20 words." | Part 1, Section 5 | unaudited |
+| G-01 | Use no more than 20 words in a sentence. | Procedures | DEMO-4 | "Keep to a maximum of 20 words." | The Demo Standard, clause 4 | unaudited |
 ```
 
 The marks are not decoration. Words inside a pair are the source's and words
-outside one are ours, so a row citing two rules writes `"a" and "b"`. A cell
-that carries neither the marks nor the word `unquoted` is refused, because our
-own paraphrase under a heading that reads `Source text` claims an authority the
-source never gave it.
+outside one are ours, so a row citing two rules writes `"a" and "b"`. Every
+pair holds something, because an empty pair quotes nothing. A cell that carries
+neither the marks nor the word `unquoted` is refused, because our own paraphrase
+under a heading that reads `Source text` claims an authority the source never
+gave it.
+
+## The matrix declares whether it may quote at all
+
+The cell grammar cannot say whether the source permits a quotation, and three
+of our four sources do not. So each matrix declares it, at column 0, in a line
+a reader sees:
+
+```
+**Quotation:** forbidden. The owner approved publication on the condition
+that no rule text is reproduced.
+```
+
+The word is `permitted` or `forbidden`, and the reason follows it. Under
+`forbidden` the check refuses every `Source text` cell but `unquoted`, whatever
+else is true of that cell.
+
+Every matrix carries the line, and a matrix that carries none is read as
+`forbidden`. A default of `permitted` would turn the rule off for whoever
+forgot the line. Two lines are refused, and any `forbidden` among them governs,
+so lift a prohibition by editing it rather than by writing a permitting line
+under it.
 
 Do three things before you write a quotation, in this order:
 
 1. Read `SOURCE.md` for that skill. It records what licence was checked and
    when. Some sources restrict reproduction beyond ordinary quotation, and one
    of ours does.
-2. Record the check you made, in the same `SOURCE.md`, with the date.
+2. Record the check you made, in the same `SOURCE.md`, with the date. Then edit
+   the declaration, and say there what changed.
 3. Ask whether the matrix has started to replace the source. A quoted operative
    sentence per row is citation. Every rule quoted in full is republishing, and
    no number in the checker decides where that line falls. `check:ground` prints

@@ -83,6 +83,65 @@ which cell they are reading. Renaming one is losing a record whichever
 column it is, so `matrix-header-column-name` replaces
 `matrix-header-not-audited` and covers all seven.
 
+## Amended 2026-08-06 — the matrix declares whether it may quote
+
+The first version of this decision left the prohibition in prose. Review
+substituted rule text into the matrix whose owner had forbidden exactly
+that, and the whole gate stayed green. The no-threshold reasoning above
+covers the substitution JUDGMENT, which is a question about a body of
+quotation. It does not cover a prohibition somebody has already recorded,
+which is a binary an owner decided and which any contributor who had not
+read the prose was one cell away from crossing.
+
+So each matrix declares its state, at column 0, in a line a reader sees:
+`**Quotation:** permitted` or `**Quotation:** forbidden`, with the reason
+beside it. Under `forbidden` the check refuses every `Source text` cell
+but `unquoted`, whatever else is true of that cell — a well-formed
+quotation of the real rule is the case it exists to refuse.
+
+The declaration is required, and an absent one reads as `forbidden`. A
+default of `permitted` would turn the rule off for whoever forgot the
+line, and a gate failing open on a missing argument is a defect this
+program has paid for once already. A second declaration is refused and
+any `forbidden` among them governs, because a prohibition that could be
+lifted by adding a line under it is worth no more than the cell it
+replaced. A declaration inside a fenced block is an example and not a
+state, so `CONTRIBUTING.md` can show the line without a matrix quoting
+that page declaring itself.
+
+Crossing the owner's condition now takes an edit to the declaration and
+its stated reason. That is a decision about the source, made where the
+reason lives, rather than an edit to one row among a hundred.
+
+**Every pair holds something.** `""` and `"   "` opened and closed with a
+mark and passed, so a row could claim to quote its rule while quoting
+nothing. The coverage count also counted any cell that merely differed
+from `unquoted`, so a refused cell raised the number that reports how
+much of the source the file carries. It counts well-formed quotations
+now.
+
+## What this decision still does not check
+
+**The marks carry a claim, not an accuracy.** A well-formed quotation of
+a sentence the source never wrote passes, and so does one rule's sentence
+placed beside another rule's identifier. Nothing here can tell either
+from a true quotation, because no program in this repository opens a
+source. The `Audited` cell is where a person records that they checked,
+and it is the only thing that speaks to accuracy. Read the marks as
+saying which words the row CLAIMS are the source's.
+
+**The checker pairs marks left to right, and a reader does not.** In
+`"he said "x" here"` a reader sees one quotation with a nested one. The
+checker sees two pairs with `x` between them, outside both. The reading
+disagrees with the reader's, which is the failure this file names in
+other places, so a nested mark is a shape to avoid rather than one the
+grammar handles. Nothing refuses it today.
+
+**A quoted row and an audited row are counted separately, and the pair is
+not.** A row can carry the source's words and no audit, which is a row
+whose quotation nobody has checked. The two notes report two numbers, and
+a reader who wants the overlap counts it by hand.
+
 ## What this decision does not do
 
 It quotes nothing. The column ships empty in every matrix in the

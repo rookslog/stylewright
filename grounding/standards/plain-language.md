@@ -32,12 +32,14 @@ Open a guideline at
 The `Source text` cell of a `G` row carries the words of the guideline it
 cites, in quotation marks. Every row below reads `unquoted`.
 
-The source is CC0 1.0 Universal, so the guidance in `SKILL.md` stays in our own
-words by doctrine rather than by licence, and quoting a guideline in the
-`Source text` column would raise no licence question at all. This is the one
-matrix here whose source places no limit on the column. Filling it is a
-content change and it belongs to its own pass, because each quotation is a
-claim a reader must be able to check against the guideline it names.
+**Quotation:** permitted. The source is CC0 1.0 Universal, which places no
+limit on it. This is the one matrix here whose column is empty for no reason
+but the work.
+
+The guidance in `SKILL.md` stays in our own words by doctrine rather than by
+licence. Filling the `Source text` column is a content change and it belongs to
+its own pass, because each quotation is a claim a reader must be able to check
+against the guideline it names.
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|

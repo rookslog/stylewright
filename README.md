@@ -260,11 +260,14 @@ So a `G` row carries the rule's own words too, in a `Source text` cell beside
 the identifier. You compare two texts in one row, instead of comparing our
 sentence against a 400-page PDF you have to find first. The cell says
 `unquoted` until somebody quotes the rule, and a quotation is written in
-quotation marks, so you can always tell the source's words from ours.
+quotation marks, so you can always tell which words the row claims are the
+source's. No program checked that claim either. The marks say where a
+quotation starts and stops, and the source says whether it is accurate.
 
-Every matrix here says `unquoted` in every row today. Each matrix says why in
-its own words, and the reasons differ by source. `stylewright ground --check`
-prints how many rows quote their source, beside the audited count.
+Every matrix here says `unquoted` in every row today. Each one declares whether
+it may quote its source at all, in a line you can read, and three of the four
+say it may not. `stylewright ground --check` prints how many rows quote their
+source, beside the audited count.
 
 So each `G` row records its own audit. The `Audited` cell says `unaudited`, or
 it carries the date a person read that row against the source and a digest of

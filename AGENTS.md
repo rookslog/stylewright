@@ -87,11 +87,29 @@ authority the source never granted, and nothing but the marks tells a reader
 which it is reading.
 
 Check the licence before writing in that column, and record what you checked in
-`SOURCE.md`. Every matrix here ships `unquoted` throughout, and each says why in
-its own words. The run prints how many `G` rows quote their source beside the
+`SOURCE.md`. The run prints how many `G` rows quote their source beside the
 audited count. It is a note, and no threshold enforces the substitution limit,
 because whether a body of quotation could replace the source is a judgment for
-the reader of that number. ADR-0020 records the decision.
+the reader of that number.
+
+A recorded prohibition is not that judgment, and prose did not hold it. Rule
+text substituted into the matrix whose owner forbade rule text left the gate
+green. So each matrix declares its state at column 0, as `**Quotation:**
+permitted` or `**Quotation:** forbidden`, with the reason beside it. Under
+`forbidden` the check refuses every `Source text` cell but `unquoted`, and a
+well-formed quotation of the real rule is the case it refuses. An absent
+declaration reads as `forbidden`, because a default of `permitted` turns the
+rule off for whoever forgot the line. A second declaration is refused and any
+`forbidden` among them governs, so lift a prohibition by editing it and never
+by adding a line under it. Every matrix here ships `unquoted` throughout, and
+three of the four forbid quotation outright. ADR-0020 records the decision.
+
+The marks say which words a row CLAIMS are the source's. They say nothing about
+whether the quotation is accurate, and no check here can: a well-formed
+quotation of a sentence the source never wrote passes. The `Audited` cell is the
+only thing that speaks to that. An example that quotes a real standard is a
+defect for the same reason, so every worked example in this repository names an
+invented standard and says so.
 
 Three things are defects. A date written for a reading nobody did is the worst
 of them, and it is the `G` row defect in its newest form. A digest that no

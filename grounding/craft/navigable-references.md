@@ -13,6 +13,10 @@ the source. The `Source text` cell carries the words of the rule it cites.
 There is no `G` row here, so every cell in both columns is empty, and both are
 waiting for the first row that cites anything.
 
+**Quotation:** forbidden. There is no source, so there is nothing to quote.
+Anyone who finds one for a rule here records the source and its licence first,
+and edits this line in the same pass.
+
 This file stays in the repository. It does not install with the skill.
 
 Checked by `stylewright ground --check --skill navigable-references`.

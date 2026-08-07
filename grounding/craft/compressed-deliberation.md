@@ -16,9 +16,10 @@ and the check says so.
 
 The `Source text` cell of a `G` row carries the words of the rule it cites, in
 quotation marks. Every row below reads `unquoted`, and that is not a backlog.
-`SOURCE.md` records that nobody has read the governing terms of the vendor
-pages these rows cite, so no sentence of one may be carried here until somebody
-does.
+
+**Quotation:** forbidden. `SOURCE.md` records that nobody has read the
+governing terms of the vendor pages these rows cite, so no sentence of one may
+be carried here. Read those terms and record the check, then edit this line.
 
 This file stays in the repository. It does not install with the skill.
 
