@@ -19,8 +19,8 @@ stands behind it, and of when it expires, is in `SOURCE.md` beside this file.
 Anthropic publishes these as behaviours of Claude Opus 5. They describe the
 model. They prescribe nothing, and no rule below inherits their authority.
 
-- Claude Opus 5 announces what it is about to do during agentic work.
-- It writes more per message in an agentic session than earlier models did.
+- Claude Opus 5 tends to announce what it is about to do during agentic work.
+- It often writes more per message in an agentic session than earlier models did.
 - It verifies its own work when nobody asked it to.
 - It can widen a task past the request, taking on steps nobody asked for.
 - It narrates a correction to its own earlier statement more often than earlier models did.
@@ -60,7 +60,7 @@ than it saves.
 
 - Say what you are about to do before an action the reader may want to stop.
 - Say what a step will cost before you spend the reader's money or their afternoon.
-- Keep narration a reader relies on to intervene, whatever the rules above would otherwise cut.
+- Keep the narration that lets a reader stop an action already underway, whatever the rules above would otherwise cut.
 
 ## What this skill does not ask for
 

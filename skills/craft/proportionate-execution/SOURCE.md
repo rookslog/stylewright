@@ -30,6 +30,10 @@ rule.
   https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5
   Sections read: User-facing progress updates, Task scope and over-verification,
   Self-correction, Controlling subagent spawning. Read 2026-08-06.
+  Both pages document a fourth behaviour, which is that the model delegates to
+  subagents more readily than earlier models. Both delegation sections were read
+  and no rule here answers them. The owner settled the scope of this skill at
+  three behaviours, and delegation is deliberately outside it.
 - `A2` — "What is new in Claude Opus 5", section Model behavior differences.
   https://platform.claude.com/docs/en/about-claude/models/whats-new-opus-5
   Read 2026-08-06. Carries the model id, and repeats the narration, delegation,
