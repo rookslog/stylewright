@@ -9,25 +9,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The `navigable-references` rule also ships as a resident fragment, installed
   by name as `stylewright-resident`. A skill loads when its trigger matches,
-  and this rule has no trigger that fires reliably, because it applies to every
-  sentence. The fragment is an ordinary manifest-recorded file under the target
-  directory, so it inherits the tree checks, the pending journal, drift
-  refusal, `--force`, and exact uninstall from the machinery every skill
-  already uses. The tool prints the one import line and never writes to your
-  instruction file. `doctor` gains `resident-not-imported`, which reports a
+  and this rule applies to every sentence, so no trigger fires reliably. The
+  fragment is an ordinary manifest-recorded file under the target directory, so
+  it inherits the tree checks, the pending journal, drift refusal, `--force`,
+  and exact uninstall. The tool prints the one import line and never writes to
+  your instruction file. `doctor` gains `resident-not-imported`, which reports a
   fragment that no instruction file imports, and `resident-double-delivery`,
   which reports a rule delivered as both an installed skill and an imported
   fragment at once. Each check compares the exact line this tool told you to
   paste, spelled for the file it reads, so a mark in one scope cannot answer
-  for a fragment in another. Detecting the inactive state is the thing a write
-  into your instruction file could never do. The check reads no Markdown, so a
-  copy of the line inside a code fence counts as an import, and a file it
-  cannot read counts as no import. ADR-0022 states both directions. The
-  fragment is generated from the skill, and
+  for a fragment in another. A write into your instruction file could never
+  detect the inactive state. The check reads no Markdown, so a copy of the line
+  inside a code fence counts as an import, and a file it cannot read counts as
+  no import. The fragment is generated from the skill, and
   `npm run check:resident` fails a checkout where the two disagree. No tier
   selects the fragment, and it installs for `claude` and `cowork` only, because
   this repository has verified no import form for Codex. ADR-0022 records the
-  decision, and issue #24 keeps what the pilot leaves open.
+  decision and states both directions, and issue #24 keeps what the pilot
+  leaves open.
 - Every grounding matrix carries an `Audited` column. A `G` row holds
   `unaudited`, or the date a person read that row against the source and a
   digest of the row they read. No run of the checker raises a row out of
@@ -35,9 +34,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stale. `ground --check` prints the audited count for each matrix beside its
   verdict, at a level that fails nothing. A clean check has never meant that a
   person confirmed a citation, and the count is what says so. The date is a UTC
-  day, and the check refuses one later than the day it runs on, because nobody
-  read a row on a day that has not arrived. ADR-0018 records the decision, and
-  every `G` row ships unaudited. A row of another kind carries the cell empty.
+  day, and the check refuses one later than the day it runs on. ADR-0018
+  records the decision, and every `G` row ships unaudited. A row of another
+  kind carries the cell empty.
 - Every grounding matrix carries a `Source text` column. A `G` row holds
   `unquoted`, or the rule's own words in quotation marks, beside the identifier
   that names them. A reader then checks the row in place instead of opening the
@@ -91,14 +90,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   passage in five parts, and the named defects sit beside it as departures from
   that shape. A prohibition list is the right form for discipline under
   pressure, which is the lane `proportionate-execution` carries, and forcing one
-  form onto both failure types was the error. No part of the shape is enforced
-  by matching a word. It ships no signature word list, and ADR-0021 keeps that kind of list
-  out of every skill directory, because a list of forbidden words teaches an
-  agent to swap each word for its nearest neighbour and leaves the defect
-  behind a cleaner surface. A controlled vocabulary from a published standard
-  is a different artefact and keeps its existing gate. The skill also states
-  what compression costs, and names the April 2026 Claude Code brevity revert
-  that Anthropic reported. No measurement stands behind it, and ADR-0021
+  form onto both failure types was the error. It ships no signature word list,
+  no part of the shape is enforced by matching a word, and ADR-0021 keeps that
+  kind of list out of every skill directory, because a list of forbidden words
+  teaches an agent to swap each word for its nearest neighbour and leaves the
+  defect behind a cleaner surface. A controlled vocabulary from a published
+  standard is a different artefact and keeps its existing gate. The skill also
+  states what compression costs, and names the April 2026 Claude Code brevity
+  revert that Anthropic reported. No measurement stands behind it, and ADR-0021
   accepts that rather than holding the skill on structural metrics the scorer
   does not have.
 - A `signatures` metric in `bench/score.mjs`, beside `hedges` and `menus`. It
@@ -141,12 +140,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   derives from it. That re-run executes a program, so the check runs
   `bench/score.mjs` by literal name and refuses a study or a command naming
   anything else. A scorer whose digest has moved refuses the re-run and names
-  both digests. Every child either spawn starts gets an environment built by
-  name, with no credential and no home directory, and the re-run gets a deadline
-  that kills it. A study already refused for any reason is never re-run, because
-  containment resolves no symbolic links. A command naming a file
-  outside the study is refused before it
-  runs, and so is a command element that is not a string. Stdout, stderr and the
+  both digests. Every child of either spawn gets an environment built by name,
+  with no credential and no home directory, and the re-run gets a deadline that
+  kills it. A study already refused for any reason is never re-run, because
+  containment resolves no symbolic links. A command naming a file outside the
+  study is refused before it runs, and so is a command element that is not a
+  string. Stdout, stderr and the
   exit code are all compared, because none of the three carries a digest.
   Every path the manifest names is checked for containment, every file
   the study holds is accounted for, and a symbolic link inside a study is
@@ -273,9 +272,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   temporary file with a fixed name holds off every other writer, and the rename
   that commits the manifest is what releases it. Creating and replacing take the
   same path, so the manifest is never half written: a run killed mid-write used
-  to leave a truncated file that every later command failed to parse. The same rule governs the
-  removal of the manifest when the last skill goes. `uninstall` reconciles
-  instead of refusing, because by then it has already deleted the files.
+  to leave a truncated file that every later command failed to parse. The same
+  rule governs the removal of the manifest when the last skill goes.
+  `uninstall` reconciles instead of refusing, because by then it has already
+  deleted the files.
 
 ## 0.2.1 — 2026-08-04
 

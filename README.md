@@ -21,7 +21,7 @@ time you ask.
 `stylewright` gives an agent writing rules that come from somewhere. Each rule in
 the `standards/` tier traces to a numbered rule in a published standard, and
 anything that is not such a rule says so rather than borrowing the standard's
-authority. You can check the trace. That is the point.
+authority. You can check the trace.
 
 ## The two tiers
 
@@ -49,7 +49,7 @@ one rule that matters most: run the no-guidance control first. Ours came back
 clean, which is how we learned the skill we were about to write would have been
 aimed at the wrong thing.
 
-Measurement is the evidence a craft rule can have, and not the evidence each one
+That is the evidence a craft rule can have, and not the evidence each one
 already has. `navigable-references` and `de-slop` ship with none, and each
 `SOURCE.md` says so in those words. Read both as discipline that we assert.
 
@@ -118,8 +118,6 @@ and says the same thing.
 It installs for `claude` and `cowork` only. `@path` is a Claude Code feature,
 and we have verified no import form for Codex. Issue #24 holds that question
 open, and an import line that silently fails is worse than no fragment at all.
-
-ADR-0022 records the decision.
 
 ### The standards disagree, and that is the point
 
@@ -274,8 +272,7 @@ clears up after the killed one. A command that finds a held directory while it
 works out what to do names it and moves on, rather than reading a record that
 another run may be changing. Whether a run is still alive is the one thing
 this tool cannot check for you, and guessing it wrong deletes files that a live
-run is still writing. `doctor` reports a held directory, so you can find one
-without hunting.
+run is still writing. `doctor` reports a held directory.
 
 Narrow it with `--skill`, `--platform`, or `--scope`. A skill that this
 repository no longer ships is reported and left alone. Uninstall it by name
@@ -321,8 +318,8 @@ Rows come in three kinds:
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
 - An **`N` row** is narrative. It orients you and asserts no rule.
 
-The distinction is the point of the file. It shows you which instructions carry
-the authority of the standard, and which carry only ours.
+The distinction shows you which instructions carry the authority of the
+standard, and which carry only ours.
 
 The check confirms that a `G` row names a rule. It cannot confirm that the rule
 says what the row says. A person read the source and wrote the row, and no
