@@ -53,6 +53,48 @@ in those words. Read it as discipline that we assert.
 
 More skills are in progress. See `CONTRIBUTING.md` to add one.
 
+## The resident fragment
+
+A skill loads when its trigger matches. Some rules have no trigger, because
+they apply to every sentence. `navigable-references` is one of them, and its
+worst moment is the moment you did not notice that it applied.
+
+So that rule also ships as a resident fragment. The fragment is a file your
+instruction file imports, so the rule is always in context.
+
+```
+npx stylewright install --skill stylewright-resident --platform claude
+```
+
+The command copies one file and prints one line. Paste that line into your own
+instruction file:
+
+```
+@skills/stylewright-resident/navigable-references.md
+```
+
+**This tool never writes to your instruction file.** It prints the line and
+stops. Run `stylewright doctor` afterwards, and it tells you whether an
+instruction file imports the fragment. A tool that wrote the line could only
+claim the rule is active. The check tells you whether it is.
+
+The fragment is generated from the skill, so the two cannot drift. A check in
+the pipeline fails when they do.
+
+The fragment is the recommended delivery for this rule, and the
+`navigable-references` skill stays as the alternate. Pick one. `doctor` warns
+when both are active, because one rule delivered twice costs context and says
+nothing new.
+
+No tier selects the fragment. `--tier all` installs every skill and not the
+fragment, so a plain install cannot deliver one rule twice. Ask for it by name.
+
+It installs for `claude` and `cowork` only. `@path` is a Claude Code feature,
+and we have verified no import form for Codex. Issue #24 holds that question
+open, and an import line that silently fails is worse than no fragment at all.
+
+ADR-0022 records the decision.
+
 ### The standards disagree, and that is the point
 
 `plain-language` tells you to use contractions. `simplified-technical-english`
@@ -142,6 +184,10 @@ cp -R stylewright/skills/standards/simplified-technical-english ~/.claude/skills
 
 Cowork reads the Claude directory. The two names resolve to one path.
 
+The resident fragment goes under the same path, in a directory of its own:
+`<skills>/stylewright-resident/`. It is a recorded file like any other, so
+`update` refreshes it and `uninstall` removes it exactly.
+
 ## Commands
 
 | Command | What it does |
@@ -150,7 +196,7 @@ Cowork reads the Claude directory. The two names resolve to one path.
 | `update` | Copy new versions. Stop when a file has local edits. |
 | `uninstall` | Remove only the files that the installer wrote. |
 | `list` | Show the skills in this repository. |
-| `doctor` | Report problems, such as one skill installed in two places. |
+| `doctor` | Report problems, such as one skill installed in two places, or a resident fragment that nothing imports. |
 | `lint` | Check a Markdown file against the mechanical rules below. |
 | `ground` | Check that each grounding matrix still matches its skill. |
 | `new-skill` | Scaffold a new skill that passes both checks from the start. |

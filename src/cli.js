@@ -1,7 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadCatalog, DuplicateSkillName, TIERS } from './catalog.js';
-import { resolveTarget, PLATFORMS } from './targets.js';
+import { resolveTarget, instructionFiles, PLATFORMS } from './targets.js';
+import {
+  loadResidents, importLine, RESIDENT_NAME, RESIDENT_PLATFORMS,
+} from './resident.js';
 import { installSkills } from './install.js';
 import { uninstallSkills } from './uninstall.js';
 import { updateSkills } from './update.js';
@@ -197,7 +200,11 @@ export async function run(argv, ctx) {
   }
 
   if (command === 'list') {
-    for (const s of await loadCatalog(repoRoot)) {
+    // The resident fragment is listed beside the skills, because `list` is
+    // where a user learns what a name is. No tier selection reaches it, so a
+    // list that left it out would leave it reachable only by reading the
+    // README.
+    for (const s of [...await loadCatalog(repoRoot), ...await loadResidents(repoRoot)]) {
       say(`${s.tier.padEnd(9)} ${s.name}  ${s.description}`);
     }
     return 0;
@@ -374,6 +381,10 @@ export async function run(argv, ctx) {
       if (command === 'install' || !(err instanceof DuplicateSkillName)) throw err;
       say(err.message);
     }
+    // A name both commands accept, and no tier selection produces. The pilot
+    // is opt-in: `--tier all` still means every skill, so a plain install of
+    // everything cannot deliver one rule twice. ADR-0022 records that choice.
+    const residents = await loadResidents(repoRoot);
 
     // The guided dialogue is the DEFAULT. Any flag that selects targets or
     // skills opts out of it, so a scripted command stays non-interactive.
@@ -490,11 +501,26 @@ export async function run(argv, ctx) {
     // directories are passed over, or a typo stayed hidden behind a lock the
     // user had to clear first to be told about it.
     if (command === 'install') {
-      const shipped = new Set(catalog.map((s) => s.name));
+      const shipped = new Set([...catalog, ...residents].map((s) => s.name));
       const wrong = [...new Set([...flags.skill, ...fromCatalog])].filter((n) => !shipped.has(n));
       if (wrong.length) {
         say(`Unknown skill: ${wrong.join(', ')}.`);
         say(`Available: ${[...shipped].sort().join(', ')}.`);
+        return 2;
+      }
+      // An import line that silently fails is worse than no resident layer,
+      // because the user then believes a rule is active when it is not. This
+      // repository has verified an import form for Claude Code and for nothing
+      // else, so the fragment is refused where it would be a file no
+      // instruction file can reach. Issue #24 carries the open question.
+      const unreached = flags.skill.includes(RESIDENT_NAME)
+        ? flags.platform.filter((p) => !RESIDENT_PLATFORMS.includes(p)) : [];
+      if (unreached.length) {
+        say(`"${RESIDENT_NAME}" installs for ${RESIDENT_PLATFORMS.join(', ')} only, `
+          + `and not for ${unreached.join(', ')}.`);
+        say('The fragment does nothing until an instruction file imports it, and this');
+        say('repository has verified no import form for those platforms. Issue #24 asks');
+        say('the question. Install the "navigable-references" skill there instead.');
         return 2;
       }
     }
@@ -527,14 +553,17 @@ export async function run(argv, ctx) {
     }
     if (!open.length) return 1;
 
+    // The platform travels with the directory. Install has to name the
+    // instruction file that would import the resident fragment, and only the
+    // platform and the scope decide which file that is.
     const selections = [];
-    for (const [, dir] of open) {
+    for (const [platform, dir] of open) {
       if (flags.skill.length) {
-        selections.push([dir, flags.skill]);
+        selections.push([dir, flags.skill, platform]);
         continue;
       }
       if (command === 'install') {
-        selections.push([dir, fromCatalog]);
+        selections.push([dir, fromCatalog, platform]);
         continue;
       }
       // No list, because this one is not ours to choose. A removal selected by
@@ -543,10 +572,10 @@ export async function run(argv, ctx) {
       // window had the stale name removed from the tier it had just joined.
       // `uninstall` derives the names from the manifest it reads under its own
       // lock, so the decision and the act cannot be separated by another run.
-      selections.push([dir, null]);
+      selections.push([dir, null, platform]);
     }
 
-    const known = new Set(catalog.map((s) => s.name));
+    const known = new Set([...catalog, ...residents].map((s) => s.name));
     // A skill this repository withdrew is still installed on the user's
     // machine, and `update` tells them to uninstall it. Validating uninstall
     // against the catalog alone made that advice impossible to follow, so
@@ -585,7 +614,7 @@ export async function run(argv, ctx) {
     // that wrote them all.
     let changed = 0;
     let refused = held;
-    for (const [targetDir, selected] of selections) {
+    for (const [targetDir, selected, platform] of selections) {
       // The probe above answered for the moment it ran. A directory taken
       // since gets the same treatment the probe would have given it — said,
       // counted, and passed over — instead of failing the whole command with
@@ -599,6 +628,19 @@ export async function run(argv, ctx) {
         for (const n of res.installed) say(`installed ${n} -> ${targetDir}`);
         for (const s of res.skipped) {
           saySkipped(s);
+        }
+        // The one step this tool refuses to take for the user. A write into
+        // an instruction file could only assert that the rule is resident,
+        // and `doctor` detects whether it is. ADR-0022 records the decision.
+        if (res.installed.includes(RESIDENT_NAME)) {
+          const [file] = instructionFiles({ platform, scope, home, cwd });
+          say('');
+          say(`Nothing reads that file until ${file} imports it. Paste this line in:`);
+          say('');
+          say(`  ${importLine({ targetDir, instructionFile: file })}`);
+          say('');
+          say('stylewright never writes to your instruction file. Run `stylewright doctor`');
+          say('to check that the line took.');
         }
         // Clearing what an interrupted run left is a change, and a command
         // that deleted files must not report that nothing happened.

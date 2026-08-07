@@ -1,9 +1,15 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
-import { CONSUMERS, SCOPES, resolveTarget, describeTarget } from './targets.js';
+import {
+  CONSUMERS, SCOPES, resolveTarget, describeTarget, instructionFiles,
+} from './targets.js';
 import { readManifest } from './manifest.js';
 import { LOCK_NAME } from './lock.js';
 import { isCommitted } from './journal.js';
 import { destinationState } from './tree.js';
+import {
+  RESIDENT_NAME, RESIDENT_SKILL, RESIDENT_MARK, importLine,
+} from './resident.js';
 
 // A duplicate is a problem only when ONE agent would load two copies of the
 // same skill name at once. Grouping by directory instead of by agent reports
@@ -33,12 +39,49 @@ function targetsByAgent({ home, cwd }) {
           continue;
         }
         if (!byPath.has(dir)) byPath.set(dir, []);
-        byPath.get(dir).push(describeTarget({ platform, scope }));
+        // The pair, not the rendered label. `describeTarget` is one consumer of
+        // it and `instructionFiles` is another, and rendering here left the
+        // second one parsing a string this module had just built.
+        byPath.get(dir).push({ platform, scope });
       }
     }
     byAgent.set(agent, byPath);
   }
   return byAgent;
+}
+
+const labelsOf = (pairs) => pairs.map((pair) => describeTarget(pair));
+
+/**
+ * An instruction file is large enough to be somebody's whole handbook, and
+ * this reads every candidate on every `doctor` run. A megabyte is far above
+ * any real one and far below a file worth refusing to hold in memory.
+ */
+const MAX_INSTRUCTION_BYTES = 1024 * 1024;
+
+/**
+ * Does an instruction file import the resident fragment?
+ *
+ * **The file's content is data.** This function asks the bytes one question —
+ * do they contain one fixed substring — and nothing here interprets, executes,
+ * or takes an instruction from what it reads. The file belongs to the user,
+ * and this tool never writes to it. ADR-0022 records why detecting the state
+ * beats asserting it.
+ *
+ * Every failure reads as "not imported". A file that is absent, unreadable, or
+ * larger than the bound answers the same way, and the cost of being wrong is a
+ * warning the user can dismiss rather than a file this tool damaged.
+ */
+async function importsResident(abs) {
+  try {
+    // `stat` and not `lstat`: a symbolically linked `CLAUDE.md` is ordinary in
+    // a dotfiles repository, and this only ever reads.
+    const st = await fs.stat(abs);
+    if (!st.isFile() || st.size > MAX_INSTRUCTION_BYTES) return false;
+    return (await fs.readFile(abs, 'utf8')).includes(RESIDENT_MARK);
+  } catch {
+    return false;
+  }
 }
 
 export async function doctor({ home, cwd }) {
@@ -47,7 +90,22 @@ export async function doctor({ home, cwd }) {
 
   for (const [platform, byPath] of targetsByAgent({ home, cwd })) {
     const seen = new Map();
-    for (const [dir, labels] of byPath) {
+    // Where this agent carries each delivery form of the one rule that has
+    // two. Collected across the whole group, because the question is about
+    // what ONE agent loads at once, exactly as the duplicate check is.
+    const residentDirs = new Map();
+    const skillDirs = [];
+    // Gathered from the layout rather than from any manifest, so a held
+    // directory does not hide an instruction file that has nothing to do with
+    // it. A file can be reached from two pairs, and a Set keeps one read.
+    const candidates = new Set();
+    for (const [, pairs] of byPath) {
+      for (const pair of pairs) {
+        for (const file of instructionFiles({ ...pair, home, cwd })) candidates.add(file);
+      }
+    }
+    for (const [dir, pairs] of byPath) {
+      const labels = labelsOf(pairs);
       // BEFORE the manifest is read. A run killed while it held the directory
       // leaves this behind, and it may have been killed mid-write, so reading
       // the manifest first reported a parse error where the answer the user
@@ -95,7 +153,52 @@ export async function doctor({ home, cwd }) {
         if (!seen.has(name)) seen.set(name, new Map());
         seen.get(name).set(dir, labels);
       }
+      if (RESIDENT_NAME in manifest.skills) residentDirs.set(dir, pairs);
+      if (RESIDENT_SKILL in manifest.skills) skillDirs.push(dir);
     }
+
+    // The thesis of ADR-0022. A write into an instruction file could only
+    // ASSERT that the rule is resident. This detects whether it is, and the
+    // inactive state is the one a user cannot see for themselves.
+    const imported = [];
+    for (const file of [...candidates].sort()) {
+      if (await importsResident(file)) imported.push(file);
+    }
+    if (residentDirs.size && !imported.length) {
+      for (const [dir, pairs] of residentDirs) {
+        const key = `resident :: ${dir}`;
+        if (reported.has(key)) continue;
+        reported.add(key);
+        // The line is spelled for the first instruction file the pair names,
+        // because the paste has to go somewhere and naming one beats naming
+        // four. Any of the files this check reads would satisfy it.
+        const [file] = instructionFiles({ ...pairs[0], home, cwd });
+        findings.push({
+          level: 'warn',
+          code: 'resident-not-imported',
+          message: `The resident fragment is installed in ${dir}, and no instruction `
+            + `file ${platform} reads imports it, so the rule is not active. `
+            + `Add this line to ${file}: ${importLine({ targetDir: dir, instructionFile: file })}`,
+        });
+      }
+    }
+    // Both forms of one rule at once. `update` does not retire a skill this
+    // repository still ships, and the duplicate check above only ever compares
+    // skill directories, so this state is silent on every existing install.
+    if (imported.length && skillDirs.length) {
+      const key = `double :: ${platform} :: ${skillDirs.sort().join(', ')}`;
+      if (!reported.has(key)) {
+        reported.add(key);
+        findings.push({
+          level: 'warn',
+          code: 'resident-double-delivery',
+          message: `The "${RESIDENT_SKILL}" rule reaches ${platform} twice: the skill is `
+            + `installed in ${skillDirs.join(', ')}, and ${imported.join(', ')} `
+            + 'imports the resident fragment. Keep one delivery.',
+        });
+      }
+    }
+
     for (const [name, places] of seen) {
       if (places.size < 2) continue;
       const where = [...places.entries()]

@@ -22,14 +22,15 @@
   "bugs": { "url": "https://github.com/rookslog/stylewright/issues" },
   "bin": { "stylewright": "./bin/stylewright.mjs" },
   "engines": { "node": ">=20.11.0" },
-  "files": ["bin", "src", "skills", "grounding", "README.md", "LICENSE"],
+  "files": ["bin", "src", "skills", "grounding", "resident", "README.md", "LICENSE"],
   "scripts": {
     "test": "node --test",
     "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md bench/README.md bench/samples/README.md bench/probes/README.md docs/ skills/",
     "check:ground": "node bin/stylewright.mjs ground --check --all",
     "check:docs": "node scripts/check-docs-meta.mjs",
     "check:probes": "node bench/probe.mjs",
-    "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs && npm run check:probes"
+    "check:resident": "node scripts/check-resident.mjs",
+    "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs && npm run check:probes && npm run check:resident"
   },
   "dependencies": { "@inquirer/prompts": "^7.0.0" },
   "devDependencies": { "acorn": "^8.18.0" }
