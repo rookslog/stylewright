@@ -122,14 +122,37 @@ test('a sidecar naming the operator\'s own rule files is refused', async (t) => 
   assert.match(result.stderr, /records the operator's own rule files/);
 });
 
+test('a sidecar whose own arm name is dotted or wrong is refused', async (t) => {
+  // The builder alone left this open: a hand-written sidecar reaches the scorer,
+  // which prints its arm column verbatim, and a dotted name then lands inside a
+  // derived result identifier that nothing can split back apart.
+  const dotted = await tempArm(t, { meta: { arm: 'control.v2' } });
+  await writeManifest(dotted.dir, dotted.name);
+  const first = await promote(dotted);
+  assert.equal(first.code, 1);
+  // The dotted-name message specifically. `records arm="control.v2"` also
+  // appears in the mismatch message below it, so the looser pattern passed with
+  // the name check removed entirely.
+  assert.match(first.stderr, /lands inside a derived result identifier/);
+
+  // And the same field disagreeing with the arm it sits in, which is how a
+  // second arm's samples would be credited to the first.
+  const wrong = await tempArm(t, { meta: { arm: 'with-skill' } });
+  await writeManifest(wrong.dir, wrong.name);
+  const second = await promote(wrong);
+  assert.equal(second.code, 1);
+  assert.match(second.stderr, /records arm="with-skill" and sits in the arm "control"/);
+});
+
 test('a sidecar carrying an absolute system-prompt path is refused', () => {
   const problems = sidecarProblems('report-1.txt', {
-    rules: '', system: '/Users/someone/skills/craft/x/SKILL.md', user_rules: 'none',
+    arm: 'control', rules: '', system: '/Users/someone/skills/craft/x/SKILL.md', user_rules: 'none',
   });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /absolute system-prompt path/);
   assert.deepEqual(
-    sidecarProblems('report-1.txt', { rules: '', system: 'skills/craft/x/SKILL.md', user_rules: 'none' }),
+    sidecarProblems('report-1.txt',
+      { arm: 'control', rules: '', system: 'skills/craft/x/SKILL.md', user_rules: 'none' }),
     [],
   );
   assert.match(sidecarProblems('report-1.txt', null)[0], /no \.meta sidecar/);

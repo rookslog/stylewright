@@ -48,10 +48,10 @@ import { destinationState, ensureDir, isBelow, walk } from '../src/tree.js';
 // surface refusing a symbolic link and the other writing through it.
 import { chainProblems } from './collect-probe.mjs';
 import {
-  MANIFEST_NAME, collectFiles, digestBytes, fileProblems, manifestProblems, readManifest,
+  MANIFEST_NAME, NAME, collectFiles, digestBytes, fileProblems, manifestProblems, readManifest,
 } from './arm-manifest.mjs';
 import { digest as sidecarDigest, readMeta } from './score.mjs';
-import { STUDY_MANIFEST, STUDY_NAME, checkStudy, contentProblems } from './study.mjs';
+import { SCORER, STUDY_MANIFEST, STUDY_NAME, checkStudy, contentProblems } from './study.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -104,9 +104,21 @@ export function provenanceGaps(metas) {
  * instead, so this refuses an arm collected before that and any arm whose
  * treatment sat outside the repository.
  */
-export function sidecarProblems(file, meta) {
+export function sidecarProblems(file, meta, arm = null) {
   const problems = [];
   if (!meta) return [`${file} has no .meta sidecar, so nothing records what produced it.`];
+  // The sidecar's own arm name, held to the same shape the manifest builder
+  // holds an arm to, and to the arm actually being promoted. The builder alone
+  // left the hand-built case open: a sidecar carrying `arm=control.v2` reaches
+  // the scorer, which prints it in the arm column, and a dotted name lands
+  // inside a derived result identifier that nothing can then split.
+  if (!NAME.test(String(meta.arm))) {
+    problems.push(`${file} records arm="${meta.arm}", and a dot or a space there lands `
+      + 'inside a derived result identifier. A name is letters, digits, dashes and '
+      + 'underscores.');
+  } else if (arm && meta.arm !== arm) {
+    problems.push(`${file} records arm="${meta.arm}" and sits in the arm "${arm}".`);
+  }
   if (meta.rules === 'user') {
     problems.push(`${file} was collected under --rules user. Promotion refuses it, because its `
       + 'sidecars record the operator\'s private rule filenames and hashes.');
@@ -175,7 +187,7 @@ export async function readArm(dir, name = path.basename(dir)) {
   for (const rel of samples) {
     const meta = await readMeta(path.join(dir, rel));
     metas.push(meta);
-    for (const p of sidecarProblems(rel, meta)) problems.push(`${name}: ${p}`);
+    for (const p of sidecarProblems(rel, meta, name)) problems.push(`${name}: ${p}`);
   }
   return { name, dir, manifest, files, rels, samples, metas, problems };
 }
@@ -366,8 +378,10 @@ async function main(argv, now) {
   // correction and a report is not a number, which is why `score.mjs` refuses a
   // set whose prompt digests differ, and `--compare` is what reads two arms
   // together without pooling them.
-  const scorer = path.join(HERE, 'score.mjs');
-  const scorerDigest = digestBytes(await fs.readFile(scorer));
+  // The literal, on every platform. `path.relative` spells it `bench\score.mjs`
+  // on Windows, and `check:studies` compares this against a forward-slash
+  // constant before it will run anything.
+  const scorerDigest = digestBytes(await fs.readFile(path.resolve(REPO, SCORER)));
   const analyses = [];
   for (const prompt of prompts) {
     const files = arms.flatMap((arm) => arm.samples
@@ -376,7 +390,7 @@ async function main(argv, now) {
       .sort();
     if (!files.length) continue;
     const args = [
-      path.relative(REPO, scorer),
+      SCORER,
       '--prompt', path.relative(REPO, path.join(studyDir, 'prompts', `${prompt.scenario}.txt`)),
       ...(arms.length > 1 ? ['--compare'] : []),
       ...files,
@@ -394,7 +408,7 @@ async function main(argv, now) {
     study: opts.study,
     promoted: now,
     package_version: pkg.version,
-    scorer: { path: path.relative(REPO, scorer), digest: scorerDigest },
+    scorer: { path: SCORER, digest: scorerDigest },
     license_check: { checked: opts.licenseCheck, at: now },
     arms: armRecords,
     arms_digest: digestBytes(armDigests.slice().sort().join('\n')),

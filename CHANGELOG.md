@@ -114,8 +114,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   table, under `<scenario>.<arm>.<statistic>.<metric>`. It then re-runs each
   retained command over the promoted bytes and compares, because the retained
   table was the one promoted artifact no digest covered and every figure
-  derives from it. A scorer whose digest has moved refuses the re-run and names
-  both digests. A command naming a file outside the study is refused before it
+  derives from it. That re-run executes a program, so the check runs
+  `bench/score.mjs` by literal name and refuses a study or a command naming
+  anything else. A scorer whose digest has moved refuses the re-run and names
+  both digests. The child gets an environment built by name, with no credential
+  and no home directory, and a deadline that kills it. A command naming a file
+  outside the study is refused before it
   runs. Every path the manifest names is checked for containment, every file
   the study holds is accounted for, and a symbolic link inside a study is
   refused rather than skipped. An arm that did not cover its plan still

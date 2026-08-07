@@ -8,8 +8,13 @@
  * The measurement design, section 3, defines the study. It is not a directory
  * of samples. It is a record that reproduces an analysis, so a reader re-runs
  * the named command against the named files, or knows exactly why the figure
- * moved. `bench/retain.mjs` writes one. This file only reads them, so it spawns
- * nothing, reads no clock, and runs anywhere Node runs.
+ * moved. `bench/retain.mjs` writes one, and this file reads them.
+ *
+ * **This file executes a program.** It re-runs the scorer, for the reason given
+ * below, and that makes it the one check here with an execution surface. Two
+ * gates stand in front of the spawn and `SCORER` documents both. Nothing else
+ * here reaches outside: it reads no clock, and it takes no argument from a
+ * record it has not first checked.
  *
  * Two rules shape this file, and they are the two the probe record already
  * obeys.
@@ -56,6 +61,87 @@ const REPO = path.dirname(HERE);
 
 /** One study, one manifest, at a fixed name in the study's own directory. */
 export const STUDY_MANIFEST = 'study.json';
+
+/**
+ * The only program this check will execute, as a literal.
+ *
+ * **This file runs code.** The re-run above is a spawn, and the first version
+ * took the program from `manifest.scorer.path` — a field inside the very file
+ * an attacker edits. Measured on this branch: a relative-escape path in a
+ * hand-edited `study.json` executed a script outside the repository, under the
+ * operator's whole environment, which echoed the retained output back so the
+ * check printed clean and exited zero.
+ *
+ * Neither of the first two gates could hold, and it is worth writing down why,
+ * because both looked like gates. `command[1] === manifest.scorer.path`
+ * compared two fields of the same attacker-controlled file. And the digest gate
+ * verified the digest OF the attacker's own script, which they had simply
+ * recorded correctly.
+ *
+ * So the indirection is gone. There is one scorer, named here, and a study that
+ * names anything else is refused rather than run. The argument is the design's
+ * own: a study scored by some other program is by definition not reproducible
+ * in this tree, so there is nothing to lose by refusing it. `bench/retain.mjs`
+ * only ever writes this value, and this makes the check enforce what promotion
+ * already promised.
+ *
+ * Written as a literal with forward slashes on every platform, never through
+ * `path.relative`, which spells it `bench\score.mjs` on Windows and would have
+ * made the comparison platform-dependent.
+ */
+export const SCORER = 'bench/score.mjs';
+
+/**
+ * How long a re-run may take before it is killed, in milliseconds.
+ *
+ * A scorer that never returns would hang `npm run check` with no output and no
+ * verdict, which reads as a slow machine rather than as a refusal. Four
+ * scenarios by two arms of five is forty small files, and the whole suite
+ * scores them in well under a second, so this is generous by two orders of
+ * magnitude and still bounded.
+ */
+export const RERUN_TIMEOUT_MS = 120_000;
+
+/**
+ * The environment a re-run gets: built up by name, never inherited.
+ *
+ * The child is a program this repository ships, and it reads no environment at
+ * all. Handing it `process.env` anyway gave the executed script the operator's
+ * whole shell — `HOME`, and every `ANTHROPIC_*` and `CLAUDE_*` credential the
+ * probe collector goes to such lengths to keep out of an arm. An allowlist is
+ * what `bench/collect-probe.mjs` already settled on for the same reason, after
+ * a review measured what a subtraction let through.
+ *
+ * `PATH` alone is enough, measured: the scorer runs to completion and prints
+ * its table under a completely empty environment on this platform. The Windows
+ * entries are the ones Node itself wants to start there, and CI is where that
+ * claim is measured, because nobody here has a Windows host.
+ */
+export const RERUN_VARS = process.platform === 'win32'
+  ? ['PATH', 'SystemRoot', 'windir', 'SystemDrive']
+  : ['PATH'];
+
+/**
+ * Does this study name the one program this check will run?
+ *
+ * The single expression behind both the manifest refusal and the spawn gate.
+ * `commandProblems` asks the same question of the command, which is a different
+ * field of the same file and so a genuinely separate check.
+ */
+export function namesTheScorer(manifest) {
+  return manifest?.scorer?.path === SCORER;
+}
+
+export function rerunEnv(parent) {
+  const env = {};
+  // Matched case-insensitively, because Windows spells `Path` however it likes
+  // and an exact comparison would leave the child unable to find anything.
+  const wanted = new Map(RERUN_VARS.map((name) => [name.toLowerCase(), name]));
+  for (const [name, value] of Object.entries(parent)) {
+    if (wanted.has(name.toLowerCase())) env[name] = value;
+  }
+  return env;
+}
 
 /**
  * Operator configuration, in the shapes a retained file could carry it.
@@ -140,8 +226,22 @@ export function studyProblems(manifest, name = STUDY_MANIFEST) {
   if (!isText(manifest.study)) say('study names the study directory.');
   if (!isText(manifest.promoted)) say('promoted records when the promotion ran.');
   if (!isText(manifest.package_version)) say('package_version records the revision promoted.');
-  if (!isText(manifest.scorer?.path) || !HEX.test(String(manifest.scorer?.digest))) {
-    say('scorer names the scorer and the digest of the revision that ran.');
+  // The path is checked against the LITERAL, because the check executes it.
+  // Promotion only ever writes this value, and a study naming any other program
+  // is not reproducible in this tree whatever else is true of it.
+  //
+  // `namesTheScorer` is exported so `checkStudy` gates the SPAWN on the same
+  // expression rather than on a second copy of it. Three copies of one gate is
+  // two copies nothing can test: with any two standing, a mutation of the third
+  // changes no observable behaviour, and an untestable gate is indistinguishable
+  // from an absent one the day somebody edits it.
+  if (!namesTheScorer(manifest)) {
+    say(`scorer.path is ${SCORER}, and this study names `
+      + `${isText(manifest.scorer?.path) ? manifest.scorer.path : 'nothing'}. `
+      + 'The check runs that program, so it runs one program and refuses the rest.');
+  }
+  if (!HEX.test(String(manifest.scorer?.digest))) {
+    say('scorer records the digest of the revision that ran.');
   }
   // The named refusal, recorded. A promotion that skipped it leaves no trace
   // otherwise, and section 3 requires the check in the manifest rather than in
@@ -280,8 +380,15 @@ export function disqualify(results, reasons) {
   return out;
 }
 
-/** Flags a retained scorer command may carry, and which of them take a path. */
-const SCORER_FLAGS = { '--compare': false, '--unaudited': false, '--prompt': true };
+/**
+ * Flags a retained scorer command may carry, and which of them take a path.
+ *
+ * The list carries what promotion emits and nothing else. `--unaudited` was
+ * here and is gone: promotion never passes it, and an allowlist that admits a
+ * flag nobody writes is an allowlist describing something other than the thing
+ * it guards.
+ */
+const SCORER_FLAGS = { '--compare': false, '--prompt': true };
 
 /**
  * Everything wrong with a retained command, before anything re-runs it.
@@ -292,12 +399,15 @@ const SCORER_FLAGS = { '--compare': false, '--unaudited': false, '--prompt': tru
  * output from bytes the study does not hold, which is the same hole `arms[]`
  * and `prompts[]` had one field over.
  */
-export function commandProblems(command, { scorerPath, studyDir, repoRoot = REPO }) {
+export function commandProblems(command, { studyDir, repoRoot = REPO }) {
   const problems = [];
   if (!Array.isArray(command) || command.length < 3) return ['is not a scorer command.'];
   if (command[0] !== 'node') problems.push('does not run node.');
-  if (command[1] !== scorerPath) {
-    problems.push(`runs ${command[1]} and the study records the scorer as ${scorerPath}.`);
+  // Against the LITERAL, never against `manifest.scorer.path`. Comparing the
+  // command to another field of the same file compared two values the same
+  // hand wrote, which is how a rewritten pair passed this gate and ran.
+  if (command[1] !== SCORER) {
+    problems.push(`runs ${command[1]}, and the only program this check runs is ${SCORER}.`);
   }
   let expectPath = false;
   for (const arg of command.slice(2)) {
@@ -318,19 +428,46 @@ export function commandProblems(command, { scorerPath, studyDir, repoRoot = REPO
   return problems;
 }
 
-/** One recorded command, run again. Nothing here reads the numbers. */
-export function rerun(command, cwd = REPO) {
+/**
+ * One recorded command, run again. Nothing here reads the numbers.
+ *
+ * Two things this does NOT do, and both were findings. It does not inherit the
+ * environment: the child gets `rerunEnv` and nothing else, so no credential and
+ * no home directory reaches a program the check executes. And it does not wait
+ * forever: a child still running at the deadline is killed and the caller is
+ * told, because a hung re-run is indistinguishable from a slow machine and
+ * would take `npm run check` with it.
+ *
+ * The caller is still responsible for deciding WHAT runs. This function runs
+ * what it is handed.
+ */
+export function rerun(command, { cwd = REPO, timeoutMs = RERUN_TIMEOUT_MS } = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, command.slice(1), {
-      cwd, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd,
+      env: rerunEnv(process.env),
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     const out = [];
     const errs = [];
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+    // `unref`, so a deadline this long cannot hold the process open once the
+    // child has already closed. An unref'd timer still fires while the loop is
+    // alive, and the child's own pipes are what keep it alive.
+    timer.unref?.();
+    const done = (result) => {
+      clearTimeout(timer);
+      resolve({ timed_out: timedOut, ...result });
+    };
     child.stdout.on('data', (d) => out.push(d));
     child.stderr.on('data', (d) => errs.push(d));
     const text = (chunks) => Buffer.concat(chunks).toString('utf8');
-    child.on('error', (e) => resolve({ exit_code: -1, stdout: '', stderr: e.message }));
-    child.on('close', (code) => resolve({
+    child.on('error', (e) => done({ exit_code: -1, stdout: '', stderr: e.message }));
+    child.on('close', (code) => done({
       exit_code: code ?? -1, stdout: text(out), stderr: text(errs),
     }));
   });
@@ -464,16 +601,22 @@ export async function checkStudy(dir, name = path.basename(dir)) {
   // file's own promise. It is doubly load-bearing now: a re-run under a
   // different scorer is not the run the study describes, so a drift refuses the
   // re-run rather than quietly replacing the comparison.
+  //
+  // TWO gates stand in front of the spawn, and both are needed. The first is
+  // the literal name above, which decides WHICH program runs and is the one an
+  // edited manifest cannot move. The second is this digest, which decides
+  // whether that program is the revision the study was scored under. The digest
+  // alone was never a gate on execution: it only ever verified whatever the
+  // manifest pointed at, including a script the same edit supplied.
   let scorerFit = false;
-  if (isText(manifest.scorer?.path)) {
-    const scorerAbs = path.resolve(REPO, manifest.scorer.path);
-    const bytes = await fs.readFile(scorerAbs).catch(() => null);
+  if (namesTheScorer(manifest)) {
+    const bytes = await fs.readFile(path.resolve(REPO, SCORER)).catch(() => null);
     if (!bytes) {
-      say(`the scorer at ${manifest.scorer.path} is not here, so nothing can re-run this study.`);
+      say(`the scorer at ${SCORER} is not here, so nothing can re-run this study.`);
     } else {
       const now = digestBytes(bytes);
       if (now !== manifest.scorer.digest) {
-        say(`${manifest.scorer.path} is now ${now} and this study was scored under `
+        say(`${SCORER} is now ${now} and this study was scored under `
           + `${manifest.scorer.digest}. A re-run would not be the run this study describes.`);
       } else scorerFit = true;
     }
@@ -483,12 +626,15 @@ export async function checkStudy(dir, name = path.basename(dir)) {
   // was the one promoted artifact no digest covered, and every figure derives
   // from it, so a single edited cell used to pass this check outright.
   for (const analysis of Array.isArray(manifest.analyses) ? manifest.analyses : []) {
-    const found = commandProblems(analysis?.command, {
-      scorerPath: manifest.scorer?.path, studyDir: dir,
-    });
+    const found = commandProblems(analysis?.command, { studyDir: dir });
     for (const p of found) say(`the ${analysis?.scenario} command ${p}`);
     if (found.length || !scorerFit) continue;
     const again = await rerun(analysis.command);
+    if (again.timed_out) {
+      say(`re-running the ${analysis.scenario} command did not finish inside `
+        + `${RERUN_TIMEOUT_MS}ms, so it was killed and this study is unverified.`);
+      continue;
+    }
     if (again.stdout !== analysis.stdout) {
       say(`re-running the ${analysis.scenario} command produced different output from the `
         + 'bytes this study retains, so a figure derived from them is not reproducible.');

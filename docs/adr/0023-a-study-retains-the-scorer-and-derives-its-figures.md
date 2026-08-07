@@ -103,6 +103,55 @@ study holds plain files only: filtering a walk on `isFile()` let a symbolic link
 escape the scan entirely, and a link's target string is committed content like
 any other byte.
 
+Amended again 2026-08-07, after the re-run above turned out to be an execution
+surface nobody had written down.
+
+**`npm run check:studies` runs a program.** No text said so, including the
+amendment that introduced it, and a reader would have had to infer it from a
+`spawn` call. State it first, because everything below follows from it: a
+routine repository check executes code, on a developer machine and in
+continuous integration, and the thing it executes is chosen from a file that a
+pull request can edit.
+
+The first version chose that program from `manifest.scorer.path`. A reviewer
+edited one study manifest and measured the result: a relative-escape path ran a
+script outside the repository, under the operator's entire environment, which
+echoed the retained output back so the check printed clean and exited zero.
+
+Both gates that looked like gates were the same gate. `command[1]` was compared
+against `manifest.scorer.path`, which is two fields of one file that one hand
+wrote. And the digest verified whatever that field pointed at, so an attacker
+supplying a script and recording its digest correctly passed. Neither was ever a
+constraint on the attacker.
+
+**The decision: there are two gates in front of the spawn, and they answer
+different questions.**
+
+The first is a literal. `bench/study.mjs` names `bench/score.mjs` as a constant,
+refuses a study whose `scorer.path` is anything else, and refuses a command
+whose program is anything else. The indirection is gone, so no edit to a study
+can move what runs. The argument for dropping it is the design's own: a study
+scored by some other program is by definition not reproducible in this tree, so
+refusing it costs nothing that was ever worth having. `bench/retain.mjs` only
+ever wrote that value, and the check now enforces what promotion promised.
+
+The second is the digest, which is unchanged and now does the job it can
+actually do: it says whether the one program is the revision the study was
+scored under. It was never a gate on execution, and reading it as one is what
+let the first design look safe.
+
+**Two further limits on the spawn, because a gate is not a sandbox.** The child
+is built an environment by name rather than handed this process's, so no
+credential and no home directory reaches it — the allowlist `bench/collect-probe.mjs`
+already settled on, for the reason a review measured there. And a child still
+running at a deadline is killed and refused by name, because a hung re-run
+takes `npm run check` with it and reads as a slow machine.
+
+**The flip condition.** If this check ever needs to run a second program, the
+literal becomes a list, and that list lives in code beside these gates rather
+than in a study manifest. A study naming its own program is the design this
+amendment retracts.
+
 An arm manifest in `bench/out/` is replaced when a resumed run recomputes it,
 because `run.sh` resumes an interrupted arm and the record should describe
 where the arm ended. Nothing is edited in that replacement. A manifest inside a

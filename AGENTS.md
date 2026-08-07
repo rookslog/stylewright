@@ -305,6 +305,22 @@ published in `bench/README.md`.
   refuses a command that names a file outside the study, and it refuses to
   re-run at all when the scorer's own digest has moved, because that run
   would not be the run the study describes.
+- **`check:studies` executes a program, and two gates decide which.** A
+  routine check runs code, in CI and on a developer machine, chosen from a
+  file a pull request can edit. The first gate is a literal:
+  `bench/score.mjs` is named as a constant in `bench/study.mjs`, and a
+  study or a command naming anything else is refused rather than run. The
+  second is the digest, which says whether that one program is the
+  revision the study was scored under. Taking the program from
+  `manifest.scorer.path` was full remote code execution, because the
+  command was compared against another field of the same file and the
+  digest verified the attacker's own script. Do not reintroduce the
+  indirection. If a second program is ever needed, the literal becomes a
+  list in code, never a field in a study.
+- The re-run child is built an environment by name and gets no credential
+  and no home directory, the way a probe arm is built. It is killed and
+  refused by name at a deadline, because a hung re-run takes the whole
+  gate with it. ADR-0023 carries the reasoning and the flip condition.
 - Every path a study manifest names is joined only after `isBelow` says it
   lands inside the study, and every file the study holds is accounted for.
   A study holds plain files only, so a symbolic link inside one is refused

@@ -56,9 +56,15 @@ names one of those identifiers.
 The check recomputes every one of them. It re-runs each command the study
 retained, over the promoted bytes, and compares the output against the bytes
 the study holds. The retained table was the one promoted artifact no digest
-covered, and every figure derives from it, so an edited cell used to pass. A
-scorer whose digest has moved refuses the re-run instead, because that run
-would not be the run the study describes.
+covered, and every figure derives from it, so an edited cell used to pass.
+
+That re-run executes a program, so two gates decide which one. The check runs
+`bench/score.mjs` and refuses a study or a command naming anything else. It then
+refuses to run even that one when its digest has moved, because the result would
+not be the run the study describes. The child gets an environment built by name,
+with no credential and no home directory in it, and a deadline that kills it.
+ADR-0023 records why the program is a literal rather than a field a study
+supplies.
 
 The check also recomputes every digest and accounts for every file the study
 holds. Promoted evidence is tamper-evident rather than immutable, so an edit to

@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
-  STUDY_MANIFEST, checkDirectory, checkStudy, commandProblems, contentProblems, deriveResults,
-  disqualify, studyProblems, walkStudy,
+  RERUN_VARS, SCORER, STUDY_MANIFEST, checkDirectory, checkStudy, commandProblems,
+  contentProblems, deriveResults, disqualify, rerun, rerunEnv, studyProblems, walkStudy,
 } from '../bench/study.mjs';
 import { tempStudy } from './bench-helpers.js';
 
@@ -128,7 +128,12 @@ test('a well formed study manifest passes, and each missing part is named', () =
   assert.match(say({ license_check: undefined }), /license_check records what was checked/);
   assert.match(say({ arms: [] }), /arms lists at least one/);
   assert.match(say({ arms_digest: 'short' }), /arms_digest is the digest/);
-  assert.match(say({ scorer: { path: 'x' } }), /scorer names the scorer/);
+  // The scorer path is held to a literal, because the check executes it.
+  assert.match(say({ scorer: { path: 'x', digest: 'a'.repeat(64) } }),
+    /scorer\.path is bench\/score\.mjs, and this study names x/);
+  assert.match(say({ scorer: { path: '../evil.mjs', digest: 'a'.repeat(64) } }),
+    /it runs one program and refuses the rest/);
+  assert.match(say({ scorer: { path: 'bench/score.mjs' } }), /scorer records the digest/);
   assert.match(say({ analyses: [{ scenario: 'report' }] }), /each analysis retains/);
   assert.match(say({ provenance_gaps: undefined }), /provenance_gaps names each field/);
   assert.match(say({ prompts: [{ scenario: 'report' }] }), /each prompt names its scenario/);
@@ -144,21 +149,102 @@ test('a manifest that states a figure is refused', () => {
 });
 
 test('a retained command is checked before anything re-runs it', () => {
-  const opts = { scorerPath: 'bench/score.mjs', studyDir: '/s', repoRoot: '/' };
-  const ok = ['node', 'bench/score.mjs', '--prompt', 's/prompts/report.txt', '--compare',
+  const opts = { studyDir: '/s', repoRoot: '/' };
+  const ok = ['node', SCORER, '--prompt', 's/prompts/report.txt', '--compare',
     's/arms/control/report-1.txt'];
   assert.deepEqual(commandProblems(ok, opts), []);
   const say = (cmd) => commandProblems(cmd, opts).join(' ');
   // The command is the author's own line, so a rewired one would re-run cleanly
   // over bytes the study does not hold.
-  assert.match(say(['node', 'bench/score.mjs', 'bench/out/control/report-1.txt']),
-    /is not inside this study/);
-  assert.match(say(['node', 'bench/score.mjs', 's/arms/../../elsewhere/x.txt']),
-    /is not inside this study/);
-  assert.match(say(['node', 'other.mjs', 's/x.txt']), /the study records the scorer as/);
-  assert.match(say(['sh', 'bench/score.mjs', 's/x.txt']), /does not run node/);
-  assert.match(say(['node', 'bench/score.mjs', '--rm-rf', 's/x.txt']), /which the promotion never passes/);
-  assert.match(say(['node', 'bench/score.mjs', '--prompt']), /ends on a flag that needs a path/);
+  assert.match(say(['node', SCORER, 'bench/out/control/report-1.txt']), /is not inside this study/);
+  assert.match(say(['node', SCORER, 's/arms/../../elsewhere/x.txt']), /is not inside this study/);
+  assert.match(say(['sh', SCORER, 's/x.txt']), /does not run node/);
+  assert.match(say(['node', SCORER, '--rm-rf', 's/x.txt']), /which the promotion never passes/);
+  assert.match(say(['node', SCORER, '--prompt']), /ends on a flag that needs a path/);
+  // The one program, by name. Every earlier gate compared the command against
+  // another field of the same file, which the same hand wrote.
+  for (const program of ['other.mjs', '../evil.mjs', '/tmp/evil.mjs', 'bench\\score.mjs']) {
+    assert.match(say(['node', program, 's/x.txt']),
+      /the only program this check runs is bench\/score\.mjs/, `${program} must be refused`);
+  }
+  // `--unaudited` is a real scorer flag and promotion never emits it, so the
+  // allowlist does not carry it. A study whose command asks for it is refused.
+  assert.match(say(['node', SCORER, '--unaudited', 's/x.txt']),
+    /which the promotion never passes/);
+});
+
+// This check RUNS A PROGRAM, and the first version took the program's path from
+// the very file an attacker edits. A relative-escape `scorer.path` executed a
+// script outside the repository, under the operator's whole environment, and
+// echoed the retained output back so the check printed clean and exited zero.
+// The three tests below are that payload, refused at each of its three legs.
+
+test('a study naming any program but the one scorer is refused, never run', async (t) => {
+  const { arm, dir } = await tempStudy(t);
+  // The payload: a script that would announce itself if it ever ran.
+  const evil = path.join(arm.root, 'evil.mjs');
+  const proof = path.join(arm.root, 'it-ran.txt');
+  await fs.writeFile(evil, `import fs from 'node:fs';\n`
+    + `fs.writeFileSync(${JSON.stringify(proof)}, JSON.stringify(Object.keys(process.env)));\n`);
+
+  const p = path.join(dir, STUDY_MANIFEST);
+  const manifest = JSON.parse(await fs.readFile(p, 'utf8'));
+  const escape = path.relative(path.dirname(path.dirname(import.meta.dirname)), evil);
+  // Both fields rewritten together, and the digest recorded correctly, which is
+  // exactly what defeated the earlier pair of gates.
+  manifest.scorer = { path: escape, digest: 'f'.repeat(64) };
+  manifest.analyses[0].command = ['node', escape, `arms/control/${'report'}-1.txt`];
+  await fs.writeFile(p, JSON.stringify(manifest, null, 2));
+
+  const { problems } = await checkStudy(dir, '2026-08-06-demo');
+  assert.ok(problems.some((x) => /scorer\.path is bench\/score\.mjs/.test(x)));
+  assert.ok(problems.some((x) => /the only program this check runs is bench\/score\.mjs/.test(x)));
+  // The proof of the negative: the payload never executed.
+  await assert.rejects(() => fs.stat(proof), { code: 'ENOENT' });
+});
+
+test('a re-run inherits no credential, no home, and nothing but its allowlist', () => {
+  const env = rerunEnv({
+    PATH: '/usr/bin',
+    HOME: '/Users/someone',
+    USERPROFILE: 'C:\\Users\\someone',
+    ANTHROPIC_API_KEY: 'never-read',
+    ANTHROPIC_BASE_URL: 'https://elsewhere',
+    CLAUDE_CODE_OAUTH_TOKEN: 'never-read',
+    AWS_BEARER_TOKEN_BEDROCK: 'never-read',
+    SOME_INTERNAL_SECRET: 'never-read',
+  });
+  // An allowlist, the way `bench/collect-probe.mjs` settled it: a subtraction
+  // decays with every release, and a review measured what one let through.
+  assert.deepEqual(Object.keys(env).sort(), RERUN_VARS.filter((v) => v === 'PATH'));
+  for (const gone of ['HOME', 'USERPROFILE', 'ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL',
+    'CLAUDE_CODE_OAUTH_TOKEN', 'AWS_BEARER_TOKEN_BEDROCK', 'SOME_INTERNAL_SECRET']) {
+    assert.equal(env[gone], undefined, `${gone} must not reach a program the check runs`);
+  }
+  // Matched case-insensitively, or a Windows child cannot find anything.
+  assert.equal(rerunEnv({ Path: '/usr/bin' }).Path, '/usr/bin');
+});
+
+test('the child really gets that environment, and not this process\'s', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-env-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const script = path.join(root, 'echo-env.mjs');
+  await fs.writeFile(script, 'process.stdout.write(JSON.stringify(Object.keys(process.env)));\n');
+  const seen = await rerun(['node', script], { cwd: root });
+  const keys = JSON.parse(seen.stdout);
+  assert.ok(!keys.includes('HOME'), `the child saw HOME: ${keys.join(', ')}`);
+  assert.ok(!keys.some((k) => /^(ANTHROPIC|CLAUDE|AWS)_/i.test(k)),
+    `the child saw a credential-adjacent name: ${keys.join(', ')}`);
+});
+
+test('a re-run that will not finish is killed and refused by name', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-hang-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const script = path.join(root, 'hang.mjs');
+  await fs.writeFile(script, 'setInterval(() => {}, 1000);\n');
+  const result = await rerun(['node', script], { cwd: root, timeoutMs: 250 });
+  assert.equal(result.timed_out, true);
+  assert.notEqual(result.exit_code, 0);
 });
 
 test('a study built by a real promotion passes, and derives its figures', async (t) => {
