@@ -268,8 +268,8 @@ the authority and not this paragraph.
 ### A figure that outruns its study
 
 The measurement design (`docs/specs/2026-08-04-measurement-design.md`,
-ADR-0009 through ADR-0015, ADR-0017 and ADR-0023) governs every number
-published in `bench/README.md`.
+ADR-0009 through ADR-0015, ADR-0017, ADR-0023 and ADR-0024) governs every
+number published in `bench/README.md`.
 
 - A figure carries a `bench-study:<study>#<result>` marker, or the word
   unaudited. The numeral check enforces the common case once implemented,
@@ -350,13 +350,20 @@ published in `bench/README.md`.
   that a recorded failure is a result did not hold for the isolation
   failure. Nothing is weakened: the record still derives FAIL and can
   never read as a pass. ADR-0024.
-- A probe arm runs `--setting-sources user`, and `bench/run.sh` runs
-  `''`. That is deliberate and the difference is the home. A probe home is
-  throwaway and empty, so `user` admits nothing but the installed tree,
+- A probe arm runs `--setting-sources user`, and `bench/run.sh` selects
+  its spelling from `--rules`: `none` gives the no-guidance control `''`,
+  and `user` gives the treatment arm `user`. The divergence is between a
+  probe arm and that control, and the difference is the home. A probe home
+  is throwaway and empty, so `user` admits nothing but the installed tree,
   and the empty spelling suppressed the user skill directory along with
-  the settings. `run.sh` runs in the operator's real home, where `user`
-  would load their configuration and destroy the no-guidance control. Do
-  not reconcile the two spellings.
+  the settings. `run.sh` runs in the operator's real home, where the
+  control needs `''` or their configuration would reach it. Do not
+  reconcile the two spellings.
+- A probe arm may add one flag and no others. `--debug-file` retains the
+  harness trace section 4.1 asks a record to carry, and each arm keeps
+  the harness's own skill-loading lines verbatim. `trace` is `null` or a
+  list of strings, and a summary there is the defect: a summary of a
+  trace is the author's word about the evidence. ADR-0024.
 - The probe plants its nonce in the skill's frontmatter description, so it
   measures the attachment surface and not invocation. Skills reach the
   model as names and descriptions, and a body loads when the model invokes

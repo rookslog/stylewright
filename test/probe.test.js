@@ -2,9 +2,9 @@
 //
 // Two properties carry the design's claims, and each has cases here. A record
 // never states its own outcome, so `checkRecord` refuses one and `deriveOutcome`
-// computes it from the retained bytes. And the probe runs the control arm's
-// exact flag set, so a record collected under any other flags fails the
-// acceptance test in section 4.2 of the measurement design.
+// computes it from the retained bytes. And the probe runs a probe arm's exact
+// flag set, so a record collected under any other flags fails the acceptance
+// test in section 4.2 of the measurement design.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,12 +15,13 @@ import path from 'node:path';
 
 import {
   TUPLE, ENV_CLASSES, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory,
-  describe, redact,
+  describe, redact, summarise, traceProblems,
+  REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG,
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
   parsePathway, plantFlags, plantInDescription, plantNonce, plantedSentence, readRun, recordName,
-  servingBuild,
+  servingBuild, skillTraceLines, readTrace, TRACE_LINE_LIMIT,
   treeDigest, tupleModel, writeRecord, ASK, AUTH_ROUTES,
 } from '../bench/collect-probe.mjs';
 
@@ -251,7 +252,7 @@ test('the flags are the probe arm\'s, and any other surface is refused', () => {
   assert.match(
     isolationProblems(['-p', '--setting-sources', 'user', '--strict-mcp-config',
       '--dangerously-skip-permissions']).join(' '),
-    /--dangerously-skip-permissions is not a flag the control arm runs/);
+    /--dangerously-skip-permissions is not a flag a probe arm runs/);
   assert.match(isolationProblems(['-p', '--setting-sources', 'user']).join(' '),
     /omit --strict-mcp-config/);
 });
@@ -299,7 +300,7 @@ test('a stray positional is refused, not skipped', () => {
   const stray = ['-p', 'extra-prompt', '--model', 'opus', '--setting-sources', '',
     '--strict-mcp-config', '--output-format', 'json'];
   assert.match(isolationProblems(stray).join(' '),
-    /"extra-prompt" at position 1 is not part of the control arm's invocation/);
+    /"extra-prompt" at position 1 is not part of a probe arm's invocation/);
   assert.equal(deriveOutcome({ ...record(), flags: stray }).isolated, false);
 });
 
@@ -919,4 +920,142 @@ test('a symlinked record directory is refused, and nothing is written through it
   await assert.rejects(
     writeRecord(path.join(link, 'r.json'), record(), link), /never written through one/);
   assert.deepEqual(await fs.readdir(real), []);
+});
+
+// The lane split, pinned by name. `checkRecord` reads the flag SHAPE and
+// `deriveOutcome` reads the VALUES, and the two questions must stay apart.
+//
+// This case is written against a record collected under the old spelling,
+// which is the record that already sits in `bench/probes/`. Fold the two
+// readings back into one and it fails in the direction that matters: the
+// record becomes malformed, so the repository cannot keep the evidence its own
+// amendment rests on. ADR-0024.
+test('a record under the old flag spelling is well formed, and derives a failure', () => {
+  const old = record({
+    flags: ['-p', '--model', 'opus', '--setting-sources', '', '--strict-mcp-config',
+      '--output-format', 'json'],
+  });
+  assert.deepEqual(checkRecord(old), [],
+    'a wrong-flag record is a failed probe, and checkRecord reads shape alone');
+  assert.equal(deriveOutcome(old).isolated, false,
+    'the acceptance test reads the value, so the old spelling is not isolated');
+  assert.equal(deriveOutcome(old).passes, false);
+});
+
+// The trace, which section 4.1 asks for and no record carried until now.
+test('a trace is null or the harness\'s own lines, and nothing else', () => {
+  assert.deepEqual(traceProblems(null), []);
+  assert.deepEqual(traceProblems(undefined), []);
+  assert.deepEqual(traceProblems([]), []);
+  assert.deepEqual(traceProblems(['Loaded 1 unique skills']), []);
+  assert.match(traceProblems('Loaded 1 unique skills').join(' '), /list of strings/);
+  assert.match(traceProblems([{ line: 'x' }]).join(' '), /list of strings/);
+  assert.match(traceProblems({ lines: [] }).join(' '), /list of strings/);
+});
+
+test('a record retaining its trace passes the check, and a summarised one does not', () => {
+  const withTrace = record();
+  withTrace.installed.trace = ['Loading skills from /tmp/a/home/.claude/skills',
+    'Loaded 1 unique skills (user: 1, project: 0)'];
+  withTrace.control.trace = ['Loaded 0 unique skills (user: 0, project: 0)'];
+  assert.deepEqual(checkRecord(withTrace), []);
+
+  const summarised = record();
+  summarised.installed.trace = 'the harness loaded one skill';
+  assert.match(checkRecord(summarised).join(' '), /installed.trace is null/);
+});
+
+test('the trace keeps the skill-loading lines verbatim, and drops the rest', () => {
+  const log = [
+    '2026-08-07 [DEBUG] Loading skills from /tmp/home/.claude/skills   ',
+    '2026-08-07 [DEBUG] connecting to the transport',
+    '2026-08-07 [DEBUG] Loaded 1 unique skills (builtin: 0, user: 1, project: 0)',
+    '2026-08-07 [DEBUG] a line about something else entirely',
+  ].join('\n');
+  assert.deepEqual(skillTraceLines(log), [
+    '2026-08-07 [DEBUG] Loading skills from /tmp/home/.claude/skills',
+    '2026-08-07 [DEBUG] Loaded 1 unique skills (builtin: 0, user: 1, project: 0)',
+  ]);
+  // A log naming no skill loading is an empty list, and that is a reading.
+  assert.deepEqual(skillTraceLines('nothing here\n'), []);
+});
+
+test('the trace is bounded, because a record is read by a person', () => {
+  const many = Array.from({ length: TRACE_LINE_LIMIT + 20 }, () => 'Loaded 1 unique skills');
+  assert.equal(skillTraceLines(many.join('\n')).length, TRACE_LINE_LIMIT);
+});
+
+// An absent log and a log naming nothing are different states, and the record
+// keeps them apart. Collapsing them lets a harness that never wrote a log read
+// as one that loaded no skills.
+test('a missing debug log is no trace, and an empty one is a trace of nothing', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-trace-'));
+  assert.equal(await readTrace(null), null);
+  assert.equal(await readTrace(path.join(dir, 'absent.log')), null);
+  const written = path.join(dir, 'quiet.log');
+  await fs.writeFile(written, 'nothing about skills\n');
+  assert.deepEqual(await readTrace(written), []);
+});
+
+test('the trace flag is the one allowed extra, and it carries a path', () => {
+  const traced = armFlags('opus', '/tmp/debug.log');
+  assert.deepEqual(isolationProblems(traced), []);
+  assert.deepEqual(traced.slice(-2), [TRACE_FLAG, '/tmp/debug.log']);
+  // Still not REQUIRED, so an untraced record is not a failed probe.
+  assert.deepEqual(isolationProblems(armFlags('opus')), []);
+  // And it is a flag like any other: a missing value is refused.
+  assert.match(isolationProblems([...armFlags('opus'), TRACE_FLAG]).join(' '),
+    /--debug-file carries no value/);
+});
+
+// The summary answers what the records DERIVED. "Clean" said only that they
+// were well formed, and a reader took it for a green probe.
+test('the summary names the derived outcomes, never a bare verdict', () => {
+  assert.match(summarise({ pass: 1, fail: 1 }), /2 checked: 1 derives PASS, 1 derives FAIL/);
+  assert.match(summarise({ pass: 0, fail: 2 }), /2 checked: 2 derives FAIL/);
+  assert.doesNotMatch(summarise({ pass: 0, fail: 2 }), /PASS/);
+  assert.match(summarise({ pass: 0, fail: 0 }), /No probe records yet/);
+});
+
+test('a directory of records reports what each one derived', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-probe-dir-'));
+  await fs.writeFile(path.join(dir, 'pass.json'), JSON.stringify(record()));
+  await fs.writeFile(path.join(dir, 'fail.json'), JSON.stringify(record({
+    control: {
+      answer: NONCE, model_id: 'claude-opus-4-6-20260514', is_error: false,
+      home: '/tmp/b/home', trace: null,
+    },
+  })));
+  const { outcomes } = await checkDirectory(dir);
+  assert.deepEqual(outcomes, { pass: 1, fail: 1 });
+});
+
+// A description this probe cannot extend by appending to its line. Every skill
+// here writes a plain scalar, so the refusal costs nothing today and stops a
+// silent miscollection the day one does not.
+test('a description shape the plant would corrupt is refused, one shape at a time', () => {
+  const withValue = (value) => `---\nname: demo\ndescription: ${value}\n---\n\n# demo\n`;
+  assert.throws(() => plantInDescription(withValue('"Use when a reply runs long."'), NONCE),
+    /double-quoted scalar/);
+  assert.throws(() => plantInDescription(withValue("'Use when a reply runs long.'"), NONCE),
+    /single-quoted scalar/);
+  assert.throws(() => plantInDescription(withValue('|'), NONCE), /literal block scalar/);
+  assert.throws(() => plantInDescription(withValue('>'), NONCE), /folded block scalar/);
+  // The plain scalar every skill here writes still plants.
+  assert.match(plantInDescription(withValue('Use when a reply runs long.'), NONCE),
+    new RegExp(NONCE));
+});
+
+// The README spells the flag set out for a reader. `bench/probe.mjs` claims to
+// hold one copy of it, so the spelled-out one is held to the constants rather
+// than trusted to stay in step by hand.
+test('the probes README spells the flag set the constants define', async () => {
+  const readme = await fs.readFile(
+    new URL('../bench/probes/README.md', import.meta.url), 'utf8');
+  const expected = REQUIRED_FLAGS.flatMap((flag) => {
+    if (!FLAGS_TAKING_A_VALUE.includes(flag)) return [flag];
+    return [flag, FIXED_VALUES[flag] ?? `<${flag === '--model' ? 'alias' : 'value'}>`];
+  }).join(' ');
+  assert.ok(readme.includes(expected),
+    `the README must spell the flag set as: ${expected}`);
 });

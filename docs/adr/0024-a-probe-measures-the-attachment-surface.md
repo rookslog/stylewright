@@ -9,7 +9,14 @@ issues: [21, 43]
 
 The first isolation probe ran on 2026-08-07 and derived a failure. Two
 independent faults each produced it, and neither was a fact about the product.
-This records both repairs, which the owner ratified together.
+
+This records three repairs, and they did not arrive by the same route. The
+owner ratified the first two together: a probe arm enables the user source, and
+the nonce goes in the frontmatter description. The third came out of repairing
+them — a record collected under the wrong flags is a failed probe rather than a
+broken file — and it is argued below, adversarially reviewed on the pull request
+that carries it, and ratified by the owner's merge of that pull request. It has
+no separate sign-off, and the section that states it names what would reopen it.
 
 ## The flag set suppressed the thing under test
 
@@ -112,15 +119,60 @@ prints as FAIL, and can never read as a pass. What changed is that it now reads
 as evidence rather than as a corrupt file, which is what lets the failed record
 and its replacement sit side by side.
 
+**What would reopen this.** Two things, and neither has happened. A record that
+is shape-invalid AND flag-wrong reads today as one undifferentiated failure, and
+a reader who needs to tell a corrupt file from a wrong-flag run would need the
+two readings reported separately rather than merged into one list. And the
+coverage computation in section 7 does not exist yet. When it lands, it has to
+adjudicate a tuple whose records disagree, and a machine reading `isolated=false`
+beside `isolated=true` on the same tuple may need a rule this split does not
+supply. Either one is a reason to revisit, and neither is a reason to fold the
+two readings back into one.
+
+## The record retains the trace, and that costs one flag
+
+Added on review of the pull request that carries this ADR. Section 4.1 asks a
+probe to record the harness trace where one exists, and calls a trace naming the
+loaded file better evidence than either answer. No record carried one, while
+four documents here quoted the harness's own skill-loading lines as the warrant
+for the flag amendment above. The evidence for this ADR lived in a scratchpad.
+
+**Decision.** An arm runs with `--debug-file`, and each arm retains the lines the
+harness wrote about where it looked for skills and how many it loaded. The field
+is `null` or a list of the harness's own lines, verbatim. A summary of a trace is
+the author's word about the evidence, which this protocol refuses everywhere
+else, so the shape does not admit one.
+
+`--debug-file` is therefore ALLOWED beside the required set, and it is the only
+flag that is. It opens no configuration surface — it redirects diagnostic output
+to a file and changes nothing about settings, skills, MCP, or the model — so the
+acceptance test still means what it meant. `--debug` would have served through
+stderr, and its argument is optional, so it swallowed the prompt and cost a call
+pair that bought nothing.
+
+Both arms run through ONE path, one after the other, and the trace is read and
+the file removed between them. Two paths would put a different value in each
+arm's invocation, and a record carries one flag set, which would then be true of
+neither arm.
+
 ## Consequences
 
 The first record stays where it is. It is a faithful record of what the
 instrument measured, a recorded failure is a result rather than coverage, and the
 probe that replaces it is a different instrument asking a narrower question.
 
+The record written between them stays too, and it carries one wrong field. Its
+`nonce_plant` says the nonce was appended to `SKILL.md`, because the collector's
+description of its own method had not followed the code. The run planted in the
+frontmatter description. `bench/probes/README.md` carries the correction, and the
+record is not edited, because a record is history.
+
 The two generations stay distinguishable without a version field, because the
 older record derives `isolated=false` and the newer one does not.
 
-Both amendments are measurements, not deductions, and they bind to one harness
-build, one platform, one pathway. Nothing here generalises across any element of
-the identity tuple, as section 4.1 already says of everything else.
+Both amendments are measurements, not deductions. Everything here binds to one
+identity tuple and to nothing wider: harness build `2.1.222`, platform
+`darwin-arm64`, pathway `claude:user`, environment class `empty-home`, and the
+model each record names. Nothing generalises across any element of it, as
+section 4.1 already says of everything else, and a reader who wants the served
+build reads it from the record rather than from this sentence.

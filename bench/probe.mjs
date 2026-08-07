@@ -5,7 +5,11 @@
  * The measurement design, section 4.1, defines the probe. Section 4.2 makes the
  * isolation probe a blocking prerequisite for installed delivery, with one
  * acceptance test: an installed skill is discoverable under the exact flag set
- * the control arm runs, in a redirected home the harness fully respects.
+ * A PROBE ARM runs, in a redirected home the harness fully respects.
+ *
+ * That flag set is this file's own, and it is NOT `bench/run.sh`'s. The two
+ * diverge on `--setting-sources`, deliberately, and the reason is the home each
+ * one runs in. `REQUIRED_FLAGS` below carries the argument.
  *
  * Two rules shape everything here.
  *
@@ -75,20 +79,41 @@ export const STACK_CLASS = 'representative';
  * rule holds.
  *
  * `bench/run.sh` does NOT follow this change, and the difference is the home.
- * Its control runs in the operator's REAL home, where `user` would load their
- * CLAUDE.md and their settings and destroy the no-guidance control. The two
- * files now spell the flag differently on purpose, and the reason is the
- * environment each one runs in rather than a drift between them.
+ * It SELECTS a spelling from `--rules`: `none` gives its no-guidance control
+ * `''`, and `user` gives its treatment arm `user`. Both of those run in the
+ * operator's REAL home, where `''` is what suppresses their CLAUDE.md and their
+ * settings for the control. The two files now spell the flag differently on
+ * purpose, and the reason is the environment each one runs in rather than a
+ * drift between them.
  *
  * `--strict-mcp-config` suppresses the servers, unchanged.
  */
 export const REQUIRED_FLAGS = [
   '-p', '--model', '--setting-sources', '--strict-mcp-config', '--output-format',
 ];
-export const ALLOWED_FLAGS = REQUIRED_FLAGS;
-const FLAGS_TAKING_A_VALUE = ['--model', '--setting-sources', '--output-format'];
+
+/**
+ * The one flag an arm may add, and the only one.
+ *
+ * Section 4.1 asks a probe to record "the harness trace where one exists", and
+ * calls a trace naming the loaded file better evidence than either answer. This
+ * harness offers one through `--debug-file`, so retaining it is the design's
+ * instruction rather than an extra.
+ *
+ * It is ALLOWED and not REQUIRED, and it carries no fixed value, because the
+ * path is a throwaway one. It opens no configuration surface: it redirects
+ * diagnostic output to a file and changes nothing about settings, skills, MCP,
+ * or the model. `--debug` would have done the same job through stderr, and it
+ * takes an OPTIONAL argument, so it swallowed the prompt and cost a call pair
+ * that produced nothing. ADR-0024 records the decision.
+ */
+export const TRACE_FLAG = '--debug-file';
+export const ALLOWED_FLAGS = [...REQUIRED_FLAGS, TRACE_FLAG];
+export const FLAGS_TAKING_A_VALUE = [
+  '--model', '--setting-sources', '--output-format', TRACE_FLAG,
+];
 /** Values a flag must carry, where the probe arm fixes one. */
-const FIXED_VALUES = { '--setting-sources': 'user', '--output-format': 'json' };
+export const FIXED_VALUES = { '--setting-sources': 'user', '--output-format': 'json' };
 
 /**
  * Words a record may not carry. Each one states an outcome, and the outcome is
@@ -236,10 +261,10 @@ function keyPaths(value, prefix = '') {
 
 /**
  * Problems with the flag set the probe ran under. An unknown flag is refused
- * rather than ignored, because the acceptance test is that the probe ran the
- * control's flags EXACTLY. A flag the control never passes is a configuration
- * surface the control never opened, and a probe that needed one has failed the
- * test it exists to run.
+ * rather than ignored, because the acceptance test is that the probe ran a
+ * probe arm's flags EXACTLY. A flag outside that set is a configuration surface
+ * the arm never opened, and a probe that needed one has failed the test it
+ * exists to run. `TRACE_FLAG` is the single exception, and it is named above.
  */
 /**
  * The flag walk, in two readings.
@@ -291,8 +316,8 @@ function flagProblems(flags, values) {
     }
     if (!ALLOWED_FLAGS.includes(flag)) {
       problems.push(flag.startsWith('-')
-        ? `${flag} is not a flag the control arm runs.`
-        : `"${flag}" at position ${i} is not part of the control arm's invocation.`);
+        ? `${flag} is not a flag a probe arm runs.`
+        : `"${flag}" at position ${i} is not part of a probe arm's invocation.`);
       i += 1;
       continue;
     }
@@ -328,6 +353,28 @@ function flagProblems(flags, values) {
     if (!seen.has(required)) problems.push(`flags omit ${required}.`);
   }
   return problems;
+}
+
+/**
+ * The trace field's shape, which is deliberately the smallest one that carries
+ * the evidence.
+ *
+ * A trace is `null`, or a LIST OF LINES the harness wrote. Nothing more, because
+ * a richer shape would invite a summary, and a summary of a trace is the
+ * author's word again — the thing this whole protocol refuses. Lines are the
+ * harness's own bytes, so a reader compares them against a run of their own.
+ *
+ * `null` stays legal, and it means the run kept no trace. Every record written
+ * before 2026-08-07 carries that, and a harness offering no trace would too.
+ * Section 4.1 asks for the trace "where one exists", so absence is a state and
+ * not a defect.
+ */
+export function traceProblems(trace) {
+  if (trace === null || trace === undefined) return [];
+  if (!Array.isArray(trace) || trace.some((line) => typeof line !== 'string')) {
+    return ['trace is null, or the harness\'s own lines as a list of strings.'];
+  }
+  return [];
 }
 
 /**
@@ -437,6 +484,7 @@ export function checkRecord(record, name = 'record') {
       say(`${arm}.model_id names the build that served it, or is empty when none did.`);
     }
     if (!isText(side.home)) say(`${arm}.home records the redirected home.`);
+    for (const p of traceProblems(side.trace)) say(`${arm}.${p}`);
   }
   if (record.installed && !isText(record.installed.tree_digest)) {
     say('installed.tree_digest records the tree the probe measured.');
@@ -561,10 +609,11 @@ export async function readRecords(dir) {
   return records;
 }
 
-/** Returns `{ problems, lines }` over a directory of records. */
+/** Returns `{ problems, lines, outcomes }` over a directory of records. */
 export async function checkDirectory(dir) {
   const problems = [];
   const lines = [];
+  const outcomes = { pass: 0, fail: 0 };
   for (const { name, record, unreadable } of await readRecords(dir)) {
     if (unreadable) {
       problems.push(`${name}: not readable as JSON.`);  // Our own words only.
@@ -572,19 +621,36 @@ export async function checkDirectory(dir) {
     }
     const found = checkRecord(record, name);
     problems.push(...found);
-    if (!found.length) lines.push(describe(name, record));
+    if (!found.length) {
+      lines.push(describe(name, record));
+      outcomes[deriveOutcome(record).passes ? 'pass' : 'fail'] += 1;
+    }
   }
-  return { problems, lines };
+  return { problems, lines, outcomes };
+}
+
+/**
+ * The summary line, which names what the records DERIVED.
+ *
+ * "Clean" said only that every record was well formed, and a reader took it for
+ * a green probe. The two are different questions, and this run answers the
+ * second one out loud: a directory holding nothing but failures is clean and
+ * says the probe failed.
+ */
+export function summarise({ pass, fail }) {
+  const total = pass + fail;
+  if (!total) return 'No probe records yet. The isolation probe is a manual protocol.';
+  const derived = [];
+  if (pass) derived.push(`${pass} derives PASS`);
+  if (fail) derived.push(`${fail} derives FAIL`);
+  return `Probe records well formed. ${total} checked: ${derived.join(', ')}.`;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const dir = process.argv[2] ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'probes');
-  const { problems, lines } = await checkDirectory(dir);
+  const { problems, lines, outcomes } = await checkDirectory(dir);
   for (const line of lines) process.stdout.write(`${line}\n`);
   for (const p of problems) process.stderr.write(`${p}\n`);
   if (problems.length) process.exit(1);
-  process.stdout.write(
-    lines.length
-      ? `Probe records clean. ${lines.length} checked.\n`
-      : 'No probe records yet. The isolation probe is a manual protocol.\n');
+  process.stdout.write(`${summarise(outcomes)}\n`);
 }

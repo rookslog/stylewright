@@ -209,8 +209,16 @@ an older or merely different model than the probe's is as unprobed as a
 study on a newer one. And a recorded failure is a result, not coverage:
 a status line whose study matches only a failed probe says the probe
 failed, a line whose study matches no probe says unprobed, and the
-comparison is computed, never hand-tracked. Nothing generalises across
-any element of the tuple. The copy pathways share one static conformance
+comparison is computed, never hand-tracked. One tuple can carry both
+outcomes, and that case needs its own rule before anything computes a
+status. A pass supersedes an earlier failure on the same tuple only
+when the instrument changed between them, which the records show
+directly: the failure derives `isolated=false` or names a different
+plant site, so the two answer different questions. Two records of the
+SAME instrument that disagree on one tuple are a different thing. That
+tuple reads as failed, because a probe that answers two ways is a probe
+whose result nobody knows, and a person decides what to do about it.
+Nothing generalises across any element of the tuple. The copy pathways share one static conformance
 suite, which needs no live model, and each live pathway needs its own
 probe.
 
@@ -683,3 +691,11 @@ decision, taken only with ADR-0007's test extended first.
   declared null digest, because no treatment exists to digest. And
   ADR-0013's record carries bytes, with the outcome computed, matching
   the design it governs.
+- Draft 15 disposed of the review round on the probe pull request. The
+  probe record now retains the harness trace this section has asked for
+  since draft 1, which no record carried while four documents quoted the
+  harness's own skill-loading lines as evidence. Section 4.1 gained the
+  rule for a tuple whose records disagree, because the first two records
+  share a tuple and the existing wording covered them by accident.
+  ADR-0024 gained the third repair's provenance, its flip condition, and
+  the trace decision.

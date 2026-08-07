@@ -49,6 +49,16 @@ Every pathway runs the same flags, because every pathway answers one question:
 -p --model <alias> --setting-sources user --strict-mcp-config --output-format json
 ```
 
+`bench/probe.mjs` holds that set as `REQUIRED_FLAGS` and `FIXED_VALUES`, and it
+holds it once. The block above is a second spelling of it for a reader, so
+`test/probe.test.js` holds this file to those constants. Edit the constants and
+this block goes red until it follows.
+
+A run adds one flag beyond the block, `--debug-file <path>`, which is how the
+harness hands over the trace section 4.1 asks a record to carry. It is allowed
+and never required, and it opens no configuration surface. A record collected
+without it is a probe like any other, carrying no trace.
+
 ## Collect a record
 
 ```
@@ -93,7 +103,7 @@ reader is owed the evidence instead.
 A probe derives a pass when both arms answered and three things then hold. The
 installed arm repeated the nonce. The empty-home control answered and did not
 repeat it, which catches a probe passing for the wrong reason. And the flags
-were the control arm's.
+were a probe arm's.
 
 `armAnswered` in `bench/probe.mjs` defines what answering means, and every
 check reads it from there. Saying only that the control did not repeat the nonce
@@ -102,6 +112,42 @@ rounds each caught in a different place.
 
 A failure is a result. A record of a probe that failed stays here, and the
 status a later reader computes says the probe failed rather than saying nothing.
+
+## The record retains the harness trace
+
+Section 4.1 asks a probe to record the harness trace where one exists, and calls
+a trace that names the loaded file better evidence than either answer. Each arm
+therefore carries a `trace` field, and the shape is the smallest one that holds
+evidence: `null`, or the harness's own lines as a list of strings.
+
+The lines are kept verbatim and they are selected, not summarised. A run keeps
+what the harness said about where it looked for skills and how many it loaded,
+which is the sentence four documents here quote as the warrant for the flag
+amendment. The rest of a debug log runs to megabytes of transport detail, a
+record is committed, and a summary of a trace is the author's word about the
+evidence rather than the evidence.
+
+`null` and an empty list are different states. `null` says no log reached the
+collector, and an empty list says a log was written and named no skill loading.
+Every record collected before 2026-08-07 carries `null`, and so would a record
+from a harness that offers no trace at all.
+
+## The records here, and what each one is
+
+`0969efef` derives FAIL. It is the first probe, collected under
+`--setting-sources ''` with the nonce in a `SKILL.md` body, and both faults are
+in it.
+
+`bfbea42b` derives PASS and carries one wrong field. Its `nonce_plant` says the
+nonce was appended to `SKILL.md`, and the run that wrote it planted in the
+frontmatter description. The collector's string had not followed the code. The
+record stays as it was written, because a record is history and not a draft, and
+this paragraph is the correction.
+
+`d80e11b7` derives PASS, describes its own method truthfully, and retains the
+trace. The harness logged `Loaded 1 unique skills` over the installed arm's home
+and `Loaded 0` over the control's, which is the evidence this protocol had been
+quoting from a scratchpad.
 
 One residue, stated. The record is the author's own file, like every other
 record in this protocol. The check derives the outcome from the bytes, and it
