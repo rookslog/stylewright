@@ -20,12 +20,12 @@
       "source": "./skills",
       "strict": false,
       "skills": ["./craft"],
-      "description": "Writing discipline with no external standard behind it. The authority is ours, and each skill says so. bench/ in the repository holds the protocol for measuring what a skill does.",
+      "description": "Discipline with no external standard behind it, covering how an agent writes and how it works. The authority is ours, and each skill says so. bench/ in the repository holds the protocol for measuring what a skill does.",
       "author": { "name": "Logan Rooks", "url": "https://github.com/rookslog" },
       "repository": "https://github.com/rookslog/stylewright",
       "license": "MIT",
       "category": "writing",
-      "keywords": ["anti-slop", "compressed-deliberation", "navigable-references", "concision", "agent-output", "style"]
+      "keywords": ["anti-slop", "compressed-deliberation", "navigable-references", "proportionate-execution", "concision", "agent-output", "style"]
     }
   ]
 }

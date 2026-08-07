@@ -1,0 +1,4 @@
+interface:
+  display_name: "proportionate-execution"
+  short_description: "Use when an agent runs a multi-step task on someone else's behalf."
+  default_prompt: "Use $proportionate-execution to check this document."
