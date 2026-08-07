@@ -1171,8 +1171,28 @@ export function checkSkill({ skillText, matrixText, now }) {
   // container is broken the count is withheld rather than printed, because a
   // wrong number here is worse than no number. It also covers the fenced row,
   // which silently rebased the denominator to `1 of 1`.
-  const BROKEN = /^matrix-|^unread-matrix-row$|^row-outside-the-table$/;
-  const broken = findings.some((f) => BROKEN.test(f.code));
+  //
+  // The list is written out, one code at a time, and it is not a prefix match.
+  // A prefix was the first version, and it read `matrix-` as "about the table".
+  // It is not: `matrix-` names the FILE, and the declaration lives in that file
+  // above the table. So the five declaration findings withheld both counts and
+  // said the table was broken over a table nobody had touched. A code added
+  // later would inherit that by spelling, which is the defect renewing itself,
+  // and a name is the wrong thing to carry this. Each code here describes the
+  // container the reader sees: the header, the delimiter, the rows' place in
+  // the block, and the lines that look like rows and are not read.
+  const BROKEN = new Set([
+    'matrix-no-table',
+    'matrix-no-header',
+    'matrix-header-columns',
+    'matrix-delimiter-columns',
+    'matrix-header-column-name',
+    'matrix-second-delimiter',
+    'matrix-row-unclosed',
+    'unread-matrix-row',
+    'row-outside-the-table',
+  ]);
+  const broken = findings.some((f) => BROKEN.has(f.code));
   const sourced = rows.filter((r) => /^G-/i.test(r.id));
   if (broken) {
     findings.push({

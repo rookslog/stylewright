@@ -706,6 +706,42 @@ test('the coverage count is withheld when the table is broken', () => {
     .some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 2')));
 });
 
+test('a malformed declaration is not a broken table, and the ratios still print', () => {
+  // The withholding rule was written as a prefix match on `matrix-`, and then
+  // five findings about the QUOTATION DECLARATION arrived under that spelling.
+  // The declaration sits in the prose above the table, so each of them made the
+  // run say `not counted: the matrix table is broken` over a header, delimiter
+  // and four rows nobody had touched. The message was false, and it sent the
+  // author to the table rather than to the line they wrote.
+  const bare = MATRIX.replace(`${DECLARED}\n\n`, '');
+  for (const [what, m] of [
+    ['equivocates', MATRIX.replace(DECLARED,
+      '**Quotation:** permitted for the dictionary only. Rule text is forbidden.')],
+    ['is absent', bare],
+    ['is doubled', MATRIX.replace(DECLARED, `${DECLARED}\n\n${DECLARED}`)],
+    ['sits below the table', `${bare}\n**Quotation:** forbidden. The owner said no.\n`],
+    ['sits inside HTML', MATRIX.replace(DECLARED,
+      '<details>\n\n**Quotation:** forbidden. The owner said no.\n\n</details>')],
+  ]) {
+    const found = check({ skillText: SKILL, matrixText: m });
+    // The declaration finding still fires. This test defends the counts, not
+    // the declaration rule, so it fails loudly if the fixture stops reproducing.
+    assert.ok(found.some((f) => f.code.startsWith('matrix-declaration-')
+      || f.code === 'matrix-no-quotation-declaration'
+      || f.code === 'matrix-two-quotation-declarations'),
+    `the declaration that ${what} was read as well formed, so this fixture proves nothing`);
+
+    for (const code of ['audit-coverage', 'quote-coverage']) {
+      const note = found.find((f) => f.code === code);
+      assert.ok(note, `${code} is absent where the declaration ${what}`);
+      assert.notEqual(note.message, 'not counted: the matrix table is broken.',
+        `the table is intact and the run says it is broken because the declaration ${what}`);
+      assert.match(note.message, /^\d+ of 2 G rows /,
+        `the ratio over 2 G rows is not printed where the declaration ${what}`);
+    }
+  }
+});
+
 test('a leap second is 23:59:60 and a fraction belongs to the seconds', () => {
   // `|60` after any minute admitted 1439 times that never existed, and the
   // fraction sat outside the seconds group so `12:00.500Z` parsed.
