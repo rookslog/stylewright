@@ -1,6 +1,6 @@
 {
   "name": "stylewright",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Writing skills for coding agents, distilled from named standards. Installs into Claude Code, Claude Cowork, and Codex.",
   "keywords": [
     "claude-code",
@@ -17,12 +17,29 @@
   "type": "module",
   "license": "MIT",
   "author": "Logan Rooks",
-  "repository": { "type": "git", "url": "git+https://github.com/rookslog/stylewright.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rookslog/stylewright.git"
+  },
   "homepage": "https://github.com/rookslog/stylewright#readme",
-  "bugs": { "url": "https://github.com/rookslog/stylewright/issues" },
-  "bin": { "stylewright": "./bin/stylewright.mjs" },
-  "engines": { "node": ">=20.11.0" },
-  "files": ["bin", "src", "skills", "grounding", "resident", "README.md", "LICENSE"],
+  "bugs": {
+    "url": "https://github.com/rookslog/stylewright/issues"
+  },
+  "bin": {
+    "stylewright": "./bin/stylewright.mjs"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "grounding",
+    "resident",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --test",
     "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md bench/README.md bench/samples/README.md bench/probes/README.md docs/ skills/",
@@ -33,6 +50,10 @@
     "check:studies": "node bench/study.mjs",
     "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs && npm run check:probes && npm run check:resident && npm run check:studies"
   },
-  "dependencies": { "@inquirer/prompts": "^7.0.0" },
-  "devDependencies": { "acorn": "^8.18.0" }
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0"
+  },
+  "devDependencies": {
+    "acorn": "^8.18.0"
+  }
 }
