@@ -5,7 +5,7 @@ decided: 2026-08-06
 issues: [21, 43]
 ---
 
-# ADR-0021 — A study retains the scorer's output, and every figure derives from it
+# ADR-0023 — A study retains the scorer's output, and every figure derives from it
 
 ADR-0006 named the store. Retained samples are committed to this repository.
 Building the promotion path raised the question that decision left open: what

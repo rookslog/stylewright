@@ -21,7 +21,7 @@
  * - An arm collected under `--rules user` is refused. Its sidecars record the
  *   operator's private rule filenames and hashes, and its samples may quote the
  *   rules themselves. Redaction is the design's other option and it is not
- *   built here, so this pass refuses outright and ADR-0021 says so.
+ *   built here, so this pass refuses outright and ADR-0023 says so.
  * - Every retained file is scanned for operator configuration and for anything
  *   credential-shaped, and a hit refuses the promotion.
  * - A license check is recorded, in the study manifest, or nothing is promoted.

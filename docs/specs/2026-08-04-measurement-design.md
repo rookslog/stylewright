@@ -621,7 +621,7 @@ decision, taken only with ADR-0007's test extended first.
   refused outright. And a study promoted from a `run.sh` arm cannot carry
   the platform, the environment class, the stack digest, the delivery mode
   or the installed pathway, so its manifest names each as a gap.
-  ADR-0021 settles all three.
+  ADR-0023 settles all three.
 - Draft 11 disposed of the confirmation round: four findings, all
   consistency audits against the ratified threat model, none contesting
   it. The principles page matched the ADR's wording instead of promising

@@ -22,7 +22,7 @@ by public push time, not by commit dates.
 
 `bench/out/` stays excluded by `.gitignore`. A sample there survives nothing.
 This directory is committed, and a published figure names a study that lives
-here. ADR-0006 records the owner's decision, and ADR-0021 records how a study
+here. ADR-0006 records the owner's decision, and ADR-0023 records how a study
 is built.
 
 One directory per study, named `<date>-<slug>`. It holds `study.json`, the

@@ -205,7 +205,7 @@ measurement as the 173 above, so neither number corrects the other.
 The store is named now, and it is `bench/samples/`. `bench/out/` stays
 excluded, and a figure survives by promotion into a committed study.
 `bench/samples/README.md` carries the command and the refusals, ADR-0006
-records the owner's decision, and ADR-0021 records how a study is built. None
+records the owner's decision, and ADR-0023 records how a study is built. None
 of the figures above can be promoted, because no arm behind one kept a sidecar.
 They stay unaudited, and ADR-0014 retires them when the first retained study
 lands.

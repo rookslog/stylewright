@@ -268,7 +268,7 @@ the authority and not this paragraph.
 ### A figure that outruns its study
 
 The measurement design (`docs/specs/2026-08-04-measurement-design.md`,
-ADR-0009 through ADR-0015, ADR-0017 and ADR-0021) governs every number
+ADR-0009 through ADR-0015, ADR-0017 and ADR-0023) governs every number
 published in `bench/README.md`.
 
 - A figure carries a `bench-study:<study>#<result>` marker, or the word
@@ -289,7 +289,7 @@ published in `bench/README.md`.
   no verdict. `armState` derives whether the arm finished from the bytes.
 - A study manifest states no figure. It retains the scorer's command and
   the scorer's output, and `check:studies` derives one figure per cell of
-  the scorer's own table. A key that states a figure is refused. ADR-0021
+  the scorer's own table. A key that states a figure is refused. ADR-0023
   records the decision, and it also records what a study cannot yet carry:
   the platform, the environment class, the stack digest, the delivery mode
   and the installed pathway all need a runner that does not exist, so a

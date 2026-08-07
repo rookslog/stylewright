@@ -20,7 +20,7 @@
  * reader recomputes from retained bytes rather than to a number the author
  * typed beside them. A manifest that carried its own figures would be the
  * author's summary, and the design promises a reader who never has to trust
- * one. ADR-0021 records the decision.
+ * one. ADR-0023 records the decision.
  *
  * **Promoted evidence is tamper-evident, not immutable.** An editor or a commit
  * can still change the bytes. The digests are what make the change visible, so

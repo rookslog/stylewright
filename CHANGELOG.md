@@ -113,7 +113,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   figure per cell of the scorer's own table, under
   `<scenario>.<arm>.<statistic>.<metric>`, and recomputes every digest, so an
   edit to promoted evidence stops being silent. A manifest carrying a key that
-  states a figure is refused. ADR-0021 records the decision, the deferred
+  states a figure is refused. ADR-0023 records the decision, the deferred
   redaction, and the provenance a study cannot yet carry, which it names as
   gaps rather than inventing.
 
