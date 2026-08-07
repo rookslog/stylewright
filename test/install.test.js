@@ -661,6 +661,16 @@ async function killedRun(target, hook, { repoRoot = REPO, when = null } = {}) {
         // Say when, then never return. The install is suspended exactly here
         // until the parent ends the process, so nothing downstream of this call
         // ever runs.
+        //
+        // A promise nobody settles holds no event loop open. Node references
+        // the channel only while the process listens on it, and this child
+        // never listens, so the loop drained and the runtime exited 13 on its
+        // own unsettled await — a few milliseconds after the message, and
+        // sometimes before the parent's signal arrived. Referencing the
+        // channel here is what makes the suspension real. It happens inside
+        // the hook, so a run whose hook never fires still ends by itself
+        // rather than hanging the suite.
+        process.channel.ref();
         process.send('now');
         await new Promise(() => {});
       }
@@ -679,7 +689,12 @@ async function killedRun(target, hook, { repoRoot = REPO, when = null } = {}) {
     const child = spawn(
       process.execPath, ['--input-type=module', '-e', script],
       { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
-    child.on('message', () => child.kill('SIGKILL'));
+    // The wait is the guard on the line above. A child that only seems
+    // suspended dies of its own accord about two milliseconds after it
+    // speaks, and an immediate kill wins that race on most machines and
+    // loses it on a loaded one. Waiting first means a child that does not
+    // truly hang fails every run rather than one in a hundred.
+    child.on('message', () => setTimeout(() => child.kill('SIGKILL'), 50));
     child.on('close', (code, signal) => resolve({ code, signal }));
   });
   assert.equal(died.signal, 'SIGKILL', 'the run must die rather than return');
