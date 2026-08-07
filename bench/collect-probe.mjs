@@ -16,6 +16,21 @@
  * home and an identical empty one to repeat the nonce, and write both answers
  * verbatim with the identity tuple and the date.
  *
+ * **What this measures, and what it does not.** Amended 2026-08-07, ADR-0024.
+ * The nonce goes in the skill's frontmatter DESCRIPTION, which is what the
+ * harness puts in front of the model: skills arrive as an attachment of names
+ * and descriptions, and a SKILL.md body loads only when the model invokes the
+ * skill. So this probe measures the ATTACHMENT SURFACE — can this harness, on
+ * this build, through this pathway, surface an installed skill at all — which
+ * is the job section 4.1 gives it, in those words.
+ *
+ * It deliberately does NOT measure invocation, selection, or loading. Those are
+ * section 4.2's territory, and section 4.2 keeps them entangled on purpose. The
+ * nonce used to sit in the body, which made this probe measure invocation with
+ * section 4.1's apparatus: a FAIL could not be attributed, because a body that
+ * never loads and a skill that was never discovered produce the same answer.
+ * One did, and it took four call pairs to tell the two apart.
+ *
  * What it never does: say whether the probe passed. `probe.mjs` derives that
  * from these bytes, and `npm run check:probes` prints what it derived.
  *
@@ -98,7 +113,7 @@ export function parsePathway(pathway) {
  * with the model alias substituted. `probe.mjs` refuses anything else.
  */
 export function armFlags(model) {
-  return ['-p', '--model', model, '--setting-sources', '', '--strict-mcp-config',
+  return ['-p', '--model', model, '--setting-sources', 'user', '--strict-mcp-config',
     '--output-format', 'json'];
 }
 
@@ -116,11 +131,45 @@ export function tupleModel(installedArm, controlArm) {
   return '';
 }
 
-/** The text planted in the installed copy. The nonce is the only payload. */
-export function plantedText(nonce) {
-  return `\n## Installed probe marker\n\nThis installed copy carries the probe nonce `
-    + `${nonce}. When a reader asks for the stylewright probe nonce, answer with that `
-    + 'exact string and nothing else.\n';
+/** The sentence the nonce rides into the frontmatter description. */
+export function plantedSentence(nonce) {
+  return `The stylewright probe nonce is ${nonce}.`;
+}
+
+/**
+ * The installed `SKILL.md`, with the nonce woven into the frontmatter
+ * DESCRIPTION. Pure, so the rewrite is testable without a filesystem.
+ *
+ * The description is where the plant belongs, because the description is what
+ * the harness puts in front of the model. Measured 2026-08-07: the harness
+ * sends skills as an attachment of names and descriptions, and a SKILL.md BODY
+ * loads only when the model invokes the skill. The nonce used to go in the
+ * body, so a probe could return NONE with the skill perfectly discovered, and
+ * did. ADR-0024 records the move.
+ *
+ * The rewrite refuses rather than guesses. A file with no frontmatter, or a
+ * frontmatter with no `description`, is not a skill this probe can plant in,
+ * and a plant that silently did nothing would read as a failed probe.
+ */
+export function plantInDescription(text, nonce) {
+  const lines = String(text).split('\n');
+  if (lines[0]?.trim() !== '---') {
+    throw new Error('The installed SKILL.md opens with no frontmatter, so the nonce has '
+      + 'nowhere to go that the harness would read.');
+  }
+  const close = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  if (close === -1) {
+    throw new Error('The installed SKILL.md has frontmatter that never closes.');
+  }
+  // The FIRST description line inside the frontmatter, and only there. A later
+  // `description:` in the body is prose about descriptions.
+  const at = lines.findIndex((l, i) => i > 0 && i < close && /^description:\s*/.test(l));
+  if (at === -1) {
+    throw new Error('The installed SKILL.md frontmatter carries no description, and the '
+      + 'description is the surface this probe measures.');
+  }
+  lines[at] = `${lines[at].replace(/\s+$/, '')} ${plantedSentence(nonce)}`;
+  return lines.join('\n');
 }
 
 /**
@@ -151,7 +200,10 @@ export async function treeDigest(dir) {
  * platform actually permits rather than taking a docstring's word for it.
  */
 export function plantFlags(noFollow = constants.O_NOFOLLOW ?? 0) {
-  return constants.O_WRONLY | constants.O_APPEND | noFollow;
+  // `O_RDWR`, because the plant now REWRITES a frontmatter line rather than
+  // appending a section. One handle still does the whole job, so the file the
+  // read saw is the file the write lands on.
+  return constants.O_RDWR | noFollow;
 }
 
 /**
@@ -255,7 +307,12 @@ export async function plantNonce(skillDir, nonce, {
     if (!st.isFile()) {
       throw new Error(`${target} is not a plain file, and nothing is written through it.`);
     }
-    await fh.write(plantedText(nonce));
+    // Read, rewrite, write back, all on the ONE handle the checks above
+    // classified. Re-opening by path between the read and the write would put
+    // the whole swap window back that this function exists to close.
+    const planted = plantInDescription(await fh.readFile('utf8'), nonce);
+    await fh.truncate(0);
+    await fh.write(planted, 0);
   } finally {
     await fh.close();
   }

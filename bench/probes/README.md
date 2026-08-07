@@ -16,18 +16,37 @@ surface the control closes, the two arms differ by a flag as well as by
 delivery mode, and the one-variable rule fails.
 
 The acceptance test is that one sentence. An installed skill is discoverable
-under the exact flag set the control arm runs, in a redirected home the harness
-respects. `bench/probe.mjs` holds that flag set and refuses a record collected
-under any other.
+under the exact flag set a probe arm runs, in a redirected home the harness
+respects. `bench/probe.mjs` holds that flag set, and a record collected under
+any other derives a failure rather than passing. It is kept, because a recorded
+failure is a result.
+
+That flag set changed on 2026-08-07, on measurement, and ADR-0024 records it.
+The probe ran `--setting-sources ''` because the bench control does. A
+diagnostic then measured what the empty spelling does to skills: the harness
+logged `Loaded 0 unique skills` over an installed tree it was watching, and
+`Loaded 1` over the same tree under `user`. The empty spelling suppresses the
+user skill directory along with the settings, so the old test asked its question
+in a configuration where skills are switched off.
+
+Isolation survives, because a probe home is a throwaway empty one. There is no
+operator configuration in it to suppress, so `user` admits nothing but the tree
+the probe installed. Measured on the same pair: the empty-home control under
+`user` loaded zero skills, so the two arms differ by the installed skill and
+nothing else.
+
+`bench/run.sh` keeps `''`, and the difference is the home. Its control runs in
+the operator's real home, where `user` would load their CLAUDE.md and their
+settings and destroy the no-guidance control.
 
 The collector drives the Claude Code harness, so it probes the pathways that
 harness reads. A Codex pathway needs its own runner, and the collector refuses
 it rather than attributing one harness's answer to another pathway.
 
-Every pathway runs the same flags, because the bench runs one control:
+Every pathway runs the same flags, because every pathway answers one question:
 
 ```
--p --model <alias> --setting-sources '' --strict-mcp-config --output-format json
+-p --model <alias> --setting-sources user --strict-mcp-config --output-format json
 ```
 
 ## Collect a record
@@ -45,6 +64,24 @@ nonce, the identity tuple, and the date.
 The nonce goes into a throwaway install, never into a tree a study measures.
 That is the second of the two options section 4.1 allows, and it is the one
 that keeps the probed tree and the measured tree from differing silently.
+
+## Where the nonce goes, and what that makes this measure
+
+The nonce goes in the skill's frontmatter description. The harness sends skills
+to the model as an attachment of names and descriptions, and a `SKILL.md` body
+loads only when the model invokes the skill. Measured 2026-08-07, from the
+harness's own debug log.
+
+So this probe measures the attachment surface, which is the job section 4.1
+gives it: can this harness surface an installed skill at all. It measures
+nothing about invocation, selection, or loading, and it is not meant to. Those
+belong to section 4.2, which keeps them entangled on purpose.
+
+The nonce used to sit in the body, and that made the probe measure invocation
+with section 4.1's instrument. A discovered skill the model had no reason to
+invoke answered NONE, exactly as an undiscovered one would, so a failure could
+not be attributed to anything. The first record here is that failure, and it
+stays. ADR-0024 records the move and the reasoning.
 
 ## The record states no outcome
 

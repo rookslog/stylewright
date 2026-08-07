@@ -19,7 +19,8 @@ import {
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
-  parsePathway, plantFlags, plantNonce, plantedText, readRun, recordName, servingBuild,
+  parsePathway, plantFlags, plantInDescription, plantNonce, plantedSentence, readRun, recordName,
+  servingBuild,
   treeDigest, tupleModel, writeRecord, ASK, AUTH_ROUTES,
 } from '../bench/collect-probe.mjs';
 
@@ -235,27 +236,37 @@ test('the control installs nothing, so it records no tree', () => {
   assert.match(checkRecord(bad).join(' '), /control installs nothing/);
 });
 
-test('the flags are the control arm\'s, and any other surface is refused', () => {
+// The flag set moved on 2026-08-07, on measurement. `--setting-sources ''`
+// suppresses the user SKILL directory as well as the settings, so the old
+// acceptance test asked its question in a configuration with skills switched
+// off. A probe home is a throwaway empty one, so `user` admits nothing but the
+// installed tree. ADR-0024.
+test('the flags are the probe arm\'s, and any other surface is refused', () => {
   assert.deepEqual(isolationProblems(armFlags('opus')), []);
+  assert.ok(armFlags('opus').includes('user'));
+  // The old spelling is now the refused one, in both directions.
   assert.match(
-    isolationProblems(['-p', '--setting-sources', 'user', '--strict-mcp-config']).join(' '),
-    /--setting-sources carried "user"/);
+    isolationProblems(['-p', '--setting-sources', '', '--strict-mcp-config']).join(' '),
+    /--setting-sources carried ""/);
   assert.match(
-    isolationProblems(['-p', '--setting-sources', '', '--strict-mcp-config',
+    isolationProblems(['-p', '--setting-sources', 'user', '--strict-mcp-config',
       '--dangerously-skip-permissions']).join(' '),
     /--dangerously-skip-permissions is not a flag the control arm runs/);
-  assert.match(isolationProblems(['-p', '--setting-sources', '']).join(' '),
+  assert.match(isolationProblems(['-p', '--setting-sources', 'user']).join(' '),
     /omit --strict-mcp-config/);
 });
 
 // The harness obeys the LAST spelling of a repeated flag, so a check reading
 // the first one accepts a record whose arm ran with the operator's config open.
 test('a repeated flag is refused, and every occurrence is read', () => {
-  const twice = ['-p', '--setting-sources', '', '--strict-mcp-config',
-    '--setting-sources', 'user'];
+  // The dangerous direction inverted with the flag set. It is now a record that
+  // opens with the probe's spelling and repeats it as `''`, whose arm therefore
+  // ran with the user skill source switched off.
+  const twice = ['-p', '--setting-sources', 'user', '--strict-mcp-config',
+    '--setting-sources', ''];
   const problems = isolationProblems(twice).join(' ');
   assert.match(problems, /--setting-sources appears twice/);
-  assert.match(problems, /--setting-sources carried "user"/);
+  assert.match(problems, /--setting-sources carried ""/);
   assert.equal(deriveOutcome({ nonce: 'x', flags: twice }).isolated, false);
 });
 
@@ -466,9 +477,13 @@ test('the environment class names the home, not the route', () => {
 // The refusal below the flag check promises nothing is quoted. The flag check
 // above it quoted its value verbatim, so a credential-shaped flag leaked.
 test('a credential-shaped value in any message is withheld at emission', () => {
+  // A stray positional is quoted back by the refusal that names it, so it is
+  // the shape that proves redaction happens at emission. The refusal for a
+  // fixed-value flag used to quote too, and no longer does: `checkRecord` reads
+  // the flag SHAPE now and leaves the values to the acceptance test.
   const leaky = record({
-    flags: ['-p', '--model', 'opus', '--setting-sources', 'sk-ant-oat01-LEAKEDCREDENTIAL0123',
-      '--strict-mcp-config', '--output-format', 'json'],
+    flags: ['-p', '--model', 'opus', '--setting-sources', 'user',
+      'sk-ant-oat01-LEAKEDCREDENTIAL0123', '--strict-mcp-config', '--output-format', 'json'],
   });
   const problems = checkRecord(leaky, 'r.json');
   const joined = problems.join(' ');
@@ -477,6 +492,19 @@ test('a credential-shaped value in any message is withheld at emission', () => {
   // A withheld line still says which record it came from.
   assert.ok(problems.every((line) => line.startsWith('r.json: ')),
     'attribution belongs outside the withheld region');
+});
+
+test('a credential in a flag value is refused without being quoted', () => {
+  // The value reading no longer runs inside `checkRecord`, so nothing quotes
+  // this one. The whole-record scan is what still catches it, and it names
+  // nothing it matched.
+  const leaky = record({
+    flags: ['-p', '--model', 'opus', '--setting-sources', 'sk-ant-oat01-LEAKEDCREDENTIAL0123',
+      '--strict-mcp-config', '--output-format', 'json'],
+  });
+  const joined = checkRecord(leaky, 'r.json').join(' ');
+  assert.equal(joined.includes('LEAKEDCREDENTIAL'), false, 'no message may quote it');
+  assert.match(joined, /looks like a credential/);
 });
 
 // The first version replaced what it recognised and then asked whether anything
@@ -669,16 +697,48 @@ test('a tie in the model usage names no build, the way extract.mjs refuses one',
   assert.equal(servingBuild({}), '');
 });
 
-test('the planted text carries the nonce, and the ask never does', () => {
-  assert.match(plantedText(NONCE), new RegExp(NONCE));
+test('the planted sentence carries the nonce, and the ask never does', () => {
+  assert.match(plantedSentence(NONCE), new RegExp(NONCE));
   assert.equal(ASK.includes(NONCE), false);
+});
+
+// The plant site is the whole point of the instrument. Measured 2026-08-07:
+// the harness attaches names and descriptions, and a body loads only on
+// invocation, so a body-planted nonce measures invocation and returns NONE
+// against a skill that was discovered perfectly. ADR-0024.
+const SKILL_MD = '---\nname: demo\ndescription: Use when a reply runs long.\n---\n\n'
+  + '# demo\n\n## Purpose\n\nSomething.\n';
+
+test('the nonce lands in the frontmatter description, not the body', () => {
+  const planted = plantInDescription(SKILL_MD, NONCE);
+  const lines = planted.split('\n');
+  const close = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  const description = lines.find((l, i) => i > 0 && i < close && l.startsWith('description:'));
+  assert.match(description, new RegExp(NONCE), 'the description must carry the nonce');
+  // The body is untouched, so nothing depends on the model invoking the skill.
+  assert.equal(planted.slice(planted.indexOf('# demo')).includes(NONCE), false);
+  // The original description survives beside it.
+  assert.match(description, /Use when a reply runs long\./);
+});
+
+test('a file the probe cannot plant in is refused rather than silently missed', () => {
+  // Each of these would otherwise produce a probe that derives FAIL for a
+  // reason that has nothing to do with the harness.
+  assert.throws(() => plantInDescription('# A skill\n', NONCE), /opens with no frontmatter/);
+  assert.throws(() => plantInDescription('---\nname: x\n', NONCE), /never closes/);
+  assert.throws(() => plantInDescription('---\nname: x\n---\n\ndescription: not here\n', NONCE),
+    /carries no description/);
 });
 
 test('the nonce lands in the installed SKILL.md', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
-  await fs.writeFile(path.join(dir, 'SKILL.md'), '# A skill\n');
+  await fs.writeFile(path.join(dir, 'SKILL.md'), SKILL_MD);
   await plantNonce(dir, NONCE);
-  assert.match(await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8'), new RegExp(NONCE));
+  const planted = await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8');
+  assert.match(planted, new RegExp(NONCE));
+  // A rewrite, not an append: the file is truncated to exactly the new text, so
+  // no tail of the old one survives past the end of the new.
+  assert.equal(planted, plantInDescription(SKILL_MD, NONCE));
 });
 
 // `appendFile` resolves the path, so a SKILL.md swapped for a link between the
@@ -703,7 +763,7 @@ test('a tree that moves while the nonce is planted is reported', async () => {
   const home = path.join(root, 'home');
   const skill = path.join(home, 'skill');
   await fs.mkdir(skill, { recursive: true });
-  await fs.writeFile(path.join(skill, 'SKILL.md'), '# A skill\n');
+  await fs.writeFile(path.join(skill, 'SKILL.md'), SKILL_MD);
   await assert.rejects(
     plantNonce(skill, NONCE, {
       baseDir: home,
@@ -779,9 +839,9 @@ test('O_NOFOLLOW refuses a swapped leaf, and a platform without it does not', as
 
 test('the tree digest names contents, so an edit inside the tree moves it', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-tree-'));
-  await fs.writeFile(path.join(dir, 'SKILL.md'), '# A skill\n');
+  await fs.writeFile(path.join(dir, 'SKILL.md'), SKILL_MD);
   const before = await treeDigest(dir);
-  await fs.appendFile(path.join(dir, 'SKILL.md'), plantedText(NONCE));
+  await fs.writeFile(path.join(dir, 'SKILL.md'), plantInDescription(SKILL_MD, NONCE));
   assert.notEqual(await treeDigest(dir), before);
 });
 

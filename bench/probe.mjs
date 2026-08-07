@@ -52,22 +52,43 @@ export const ENV_CLASSES = ['empty-home', 'representative'];
 export const STACK_CLASS = 'representative';
 
 /**
- * The flags the control arm runs under, as `bench/run.sh` invokes them. The
- * probe's acceptance test is about these and nothing else: a probe that had to
- * enable a configuration surface the control suppresses has answered the
- * question with a no.
+ * The flags a probe arm runs under. Defined ONCE, here, beside the check that
+ * enforces them, because a second copy is a second thing to drift.
  *
- * `--setting-sources ''` is the isolation. It suppresses the operator's
- * settings and their CLAUDE.md together, which is what makes a true no-guidance
- * control possible. `--strict-mcp-config` suppresses the servers.
+ * `--setting-sources user` is the isolation, and it reads backwards until you
+ * know what the home is. Amended 2026-08-07, on measurement, and ADR-0024
+ * carries the reasoning.
+ *
+ * This spelling was `''` until a diagnostic pair measured what that does. With
+ * `''` the harness logged `Loaded 0 unique skills (user: 0)` over an installed
+ * tree it was watching, and with `user` it logged `Loaded 1` over the same
+ * tree. The empty spelling suppresses the user SKILL directory along with the
+ * settings, so the old acceptance test asked whether an installed skill is
+ * discoverable in a configuration where skills are switched off. It can only
+ * ever answer no.
+ *
+ * Isolation survives the change because a probe arm's home is a THROWAWAY
+ * EMPTY one. There is no operator CLAUDE.md and no operator settings in it to
+ * suppress, so `user` admits nothing but the tree the probe installed. Measured
+ * on the same pair: the empty-home control under `user` loaded zero skills, so
+ * the arms differ by the installed skill and nothing else, and the one-variable
+ * rule holds.
+ *
+ * `bench/run.sh` does NOT follow this change, and the difference is the home.
+ * Its control runs in the operator's REAL home, where `user` would load their
+ * CLAUDE.md and their settings and destroy the no-guidance control. The two
+ * files now spell the flag differently on purpose, and the reason is the
+ * environment each one runs in rather than a drift between them.
+ *
+ * `--strict-mcp-config` suppresses the servers, unchanged.
  */
 export const REQUIRED_FLAGS = [
   '-p', '--model', '--setting-sources', '--strict-mcp-config', '--output-format',
 ];
 export const ALLOWED_FLAGS = REQUIRED_FLAGS;
 const FLAGS_TAKING_A_VALUE = ['--model', '--setting-sources', '--output-format'];
-/** Values a flag must carry, where the control arm fixes one. */
-const FIXED_VALUES = { '--setting-sources': '', '--output-format': 'json' };
+/** Values a flag must carry, where the probe arm fixes one. */
+const FIXED_VALUES = { '--setting-sources': 'user', '--output-format': 'json' };
 
 /**
  * Words a record may not carry. Each one states an outcome, and the outcome is
@@ -220,7 +241,37 @@ function keyPaths(value, prefix = '') {
  * surface the control never opened, and a probe that needed one has failed the
  * test it exists to run.
  */
+/**
+ * The flag walk, in two readings.
+ *
+ * `isolationProblems` is the ACCEPTANCE TEST: it reads the values too, so a
+ * record whose arm ran the wrong `--setting-sources` fails it. `deriveOutcome`
+ * asks this one.
+ *
+ * `flagShapeProblems` is the RECORD CHECK: it reads the structure and leaves the
+ * values alone. `checkRecord` asks this one, and the difference matters because
+ * of what the two questions are for.
+ *
+ * Both were one function, and `checkRecord` asked the acceptance test. That made
+ * a probe which ran the wrong flags a MALFORMED RECORD rather than a FAILED
+ * PROBE — so the repository could not keep one, and the design's own rule that a
+ * recorded failure is a result did not hold for the isolation failure. It became
+ * visible when the acceptance flag set moved on 2026-08-07: the record of the
+ * probe that motivated the move could not survive it. ADR-0024.
+ *
+ * Nothing is weakened. A record under the wrong flags still derives FAIL,
+ * `check:probes` still prints it as one, and no such record can ever read as a
+ * pass. What changed is that it reads as evidence rather than as a broken file.
+ */
 export function isolationProblems(flags) {
+  return flagProblems(flags, true);
+}
+
+export function flagShapeProblems(flags) {
+  return flagProblems(flags, false);
+}
+
+function flagProblems(flags, values) {
   if (!Array.isArray(flags) || !flags.length) return ['flags is a non-empty array.'];
   const problems = [];
   // EVERY element is consumed, as a flag or as the value of the flag before it.
@@ -256,9 +307,14 @@ export function isolationProblems(flags) {
     if (i + 1 >= flags.length) {
       problems.push(`${flag} carries no value.`);
     } else if (fixed !== undefined) {
-      if (value !== fixed) {
+      // A flag whose value IS the acceptance test. The shape reading still
+      // refuses a stray flag sitting in the value position, because that is
+      // malformed however the acceptance test comes out.
+      if (typeof value !== 'string' || value.startsWith('-')) {
+        problems.push(`${flag} carries no value.`);
+      } else if (values && value !== fixed) {
         problems.push(
-          `${flag} carried "${value}", and the control arm passes `
+          `${flag} carried "${value}", and a probe arm passes `
           + `${fixed === '' ? 'an empty value' : `"${fixed}"`}.`);
       }
     } else if (typeof value !== 'string' || value === '' || value.startsWith('-')) {
@@ -395,7 +451,11 @@ export function checkRecord(record, name = 'record') {
     say('identity.model disagrees with the build that served an arm.');
   }
 
-  for (const p of isolationProblems(record.flags)) say(p);
+  // The SHAPE, not the acceptance test. A record whose arm ran the wrong flags
+  // is a probe that failed, and `deriveOutcome` says so through `isolated`.
+  // Refusing it here made it a broken file instead, which is how the design's
+  // "a recorded failure is a result" stopped holding for isolation failures.
+  for (const p of flagShapeProblems(record.flags)) say(p);
 
   // The probe authenticates from a credential in the environment, by either
   // route, per ADR-0017, and neither form ever enters the tree. A record is

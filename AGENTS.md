@@ -341,9 +341,27 @@ published in `bench/README.md`.
   gate is the defect PR #59's review caught. Do not reopen it.
 - A probe record states no outcome. `bench/probe.mjs` derives one from the
   bytes the record retains, and `check:probes` prints what it derived. A
-  record that grades itself is refused, and so is one collected under any
-  flags but the control arm's. `bench/probes/README.md` carries the
-  protocol.
+  record that grades itself is refused. `bench/probes/README.md` carries
+  the protocol.
+- **A record collected under the wrong flags is a failed probe, not a
+  broken file.** `checkRecord` reads the flag shape and `deriveOutcome`
+  reads the values, as `isolated`. They were one reading, which made such
+  a record malformed — so the repository could not keep one, and the rule
+  that a recorded failure is a result did not hold for the isolation
+  failure. Nothing is weakened: the record still derives FAIL and can
+  never read as a pass. ADR-0024.
+- A probe arm runs `--setting-sources user`, and `bench/run.sh` runs
+  `''`. That is deliberate and the difference is the home. A probe home is
+  throwaway and empty, so `user` admits nothing but the installed tree,
+  and the empty spelling suppressed the user skill directory along with
+  the settings. `run.sh` runs in the operator's real home, where `user`
+  would load their configuration and destroy the no-guidance control. Do
+  not reconcile the two spellings.
+- The probe plants its nonce in the skill's frontmatter description, so it
+  measures the attachment surface and not invocation. Skills reach the
+  model as names and descriptions, and a body loads when the model invokes
+  the skill. A body-planted nonce measured invocation with section 4.1's
+  instrument, and its failure attributed to nothing.
 
 ### A write into a file the user owns
 
