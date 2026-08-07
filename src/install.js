@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadCatalog } from './catalog.js';
+import { loadResidents, RESIDENT_NAME } from './resident.js';
 import {
   contained, hashFile, readManifestWithIdentity, writeManifest, recordSkill,
   refuseStaleWrite,
@@ -162,9 +163,34 @@ async function undo(targetDir, name, stated, written) {
   await writeManifest(targetDir, mine ? clearPending(withdrawn, name) : withdrawn, identity);
 }
 
+/**
+ * Everything this repository can copy into a target directory, by name.
+ *
+ * The resident fragment joins the skills here rather than in `loadCatalog`,
+ * because it is not a skill: `ground --check` grades every catalog entry
+ * against a matrix, and the fragment is a generated copy of text one matrix
+ * already disposes of. Joining them at the install surface is what lets the
+ * fragment take the whole of `installUnderLock` — the statement, the journal,
+ * the drift refusal, the retirement — with no second write path.
+ *
+ * A skill that took the reserved name would shadow the fragment silently, so
+ * the collision stops here, in the one place both sets meet.
+ */
+async function selectable(repoRoot) {
+  const byName = new Map((await loadCatalog(repoRoot)).map((s) => [s.name, s]));
+  for (const entry of await loadResidents(repoRoot)) {
+    if (byName.has(entry.name)) {
+      throw new Error(
+        `"${RESIDENT_NAME}" is the resident fragment's reserved name, and a skill `
+        + 'in this repository uses it. Rename the skill.');
+    }
+    byName.set(entry.name, entry);
+  }
+  return byName;
+}
+
 export async function installSkills(options) {
-  const catalog = await loadCatalog(options.repoRoot);
-  const byName = new Map(catalog.map((s) => [s.name, s]));
+  const byName = await selectable(options.repoRoot);
   for (const name of options.names) {
     if (!byName.has(name)) throw new Error(`Unknown skill "${name}".`);
   }
@@ -191,8 +217,7 @@ export async function installSkills(options) {
  * own lock is released.
  */
 export async function installHeld(options) {
-  const catalog = await loadCatalog(options.repoRoot);
-  const byName = new Map(catalog.map((s) => [s.name, s]));
+  const byName = await selectable(options.repoRoot);
   for (const name of options.names) {
     if (!byName.has(name)) throw new Error(`Unknown skill "${name}".`);
   }

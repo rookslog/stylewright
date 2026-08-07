@@ -47,3 +47,37 @@ export function resolveTarget({ platform, scope, home, cwd }) {
 export function describeTarget({ platform, scope }) {
   return `${platform} (${scope})`;
 }
+
+/**
+ * The instruction files one platform reads at one scope, outermost preference
+ * first.
+ *
+ * The resident fragment is inert until an instruction file imports it, so
+ * `doctor` has to know which files could carry the import and `install` has to
+ * know which one to name. That is layout knowledge, so it lives here beside
+ * `LAYOUT` rather than in a second table somewhere else.
+ *
+ * The list is wide on purpose. A project may carry `CLAUDE.md` and `AGENTS.md`
+ * together, with one importing the other — this repository does exactly that —
+ * and a check that reads only the first would report "not imported" against a
+ * user who did everything right. A false alarm is how a warning gets ignored,
+ * and reading one extra file costs a read.
+ *
+ * Membership is this repository's own claim, from the label it gives the
+ * target, and is not verified against either agent's documented load order.
+ * `CONSUMERS` above carries the same caveat, and issue #28 tracks it.
+ */
+const INSTRUCTIONS = {
+  claude: {
+    user: [path.join('.claude', 'CLAUDE.md')],
+    project: ['CLAUDE.md', 'AGENTS.md', path.join('.claude', 'CLAUDE.md')],
+  },
+  cowork: { user: [path.join('.claude', 'CLAUDE.md')] },
+  codex: { user: [path.join('.codex', 'AGENTS.md')], project: ['AGENTS.md'] },
+  agents: { user: [path.join('.agents', 'AGENTS.md')] },
+};
+
+export function instructionFiles({ platform, scope, home, cwd }) {
+  const root = scope === 'user' ? home : cwd;
+  return (INSTRUCTIONS[platform]?.[scope] ?? []).map((rel) => path.join(root, rel));
+}

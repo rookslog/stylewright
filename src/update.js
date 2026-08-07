@@ -4,6 +4,7 @@ import { readManifest } from './manifest.js';
 import { isLocked, withTargetLock, isHeldError } from './lock.js';
 import { installHeld } from './install.js';
 import { loadCatalog } from './catalog.js';
+import { loadResidents } from './resident.js';
 
 function validateNames(given, known, label) {
   const bad = given.filter((v) => !known.includes(v));
@@ -75,7 +76,13 @@ export async function findInstalls({ home, cwd, platforms, scopes }) {
 export async function updateSkills({
   repoRoot, home, cwd, platforms, scopes, names, now, force = false,
 }) {
-  const known = new Set((await loadCatalog(repoRoot)).map((s) => s.name));
+  // The resident fragment counts as shipped here, or an installed fragment
+  // would be reported as a skill this repository has withdrawn and left to go
+  // stale on every update.
+  const known = new Set([
+    ...(await loadCatalog(repoRoot)).map((s) => s.name),
+    ...(await loadResidents(repoRoot)).map((s) => s.name),
+  ]);
   const { found: installs, locked } = await findInstalls({ home, cwd, platforms, scopes });
 
   // --skill is the third consumer of the same rule as --platform and --scope,

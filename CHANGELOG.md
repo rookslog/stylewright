@@ -7,6 +7,27 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The `navigable-references` rule also ships as a resident fragment, installed
+  by name as `stylewright-resident`. A skill loads when its trigger matches,
+  and this rule has no trigger that fires reliably, because it applies to every
+  sentence. The fragment is an ordinary manifest-recorded file under the target
+  directory, so it inherits the tree checks, the pending journal, drift
+  refusal, `--force`, and exact uninstall from the machinery every skill
+  already uses. The tool prints the one import line and never writes to your
+  instruction file. `doctor` gains `resident-not-imported`, which reports a
+  fragment that no instruction file imports, and `resident-double-delivery`,
+  which reports a rule delivered as both an installed skill and an imported
+  fragment at once. Each check compares the exact line this tool told you to
+  paste, spelled for the file it reads, so a mark in one scope cannot answer
+  for a fragment in another. Detecting the inactive state is the thing a write
+  into your instruction file could never do. The check reads no Markdown, so a
+  copy of the line inside a code fence counts as an import, and a file it
+  cannot read counts as no import. ADR-0022 states both directions. The
+  fragment is generated from the skill, and
+  `npm run check:resident` fails a checkout where the two disagree. No tier
+  selects the fragment, and it installs for `claude` and `cowork` only, because
+  this repository has verified no import form for Codex. ADR-0022 records the
+  decision, and issue #24 keeps what the pilot leaves open.
 - Every grounding matrix carries an `Audited` column. A `G` row holds
   `unaudited`, or the date a person read that row against the source and a
   digest of the row they read. No run of the checker raises a row out of

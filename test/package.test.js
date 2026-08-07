@@ -109,6 +109,45 @@ test('the packed artifact serves every advertised command', async (t) => {
     await assert.rejects(fs.access(path.join(project, '.claude', 'skills', 'plain-language')));
   });
 
+  await t.test('the resident fragment ships, installs, and doctor detects the paste', async () => {
+    // The fragment lives outside `skills/`, so `files` in package.json is the
+    // only thing putting it in the tarball. This subtest is what fails when it
+    // is not there.
+    const r = await cli([
+      'install', '--skill', 'stylewright-resident',
+      '--platform', 'claude', '--scope', 'project',
+    ]);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const fragment = path.join(
+      project, '.claude', 'skills', 'stylewright-resident', 'navigable-references.md');
+    await fs.access(fragment);
+    assert.match(r.stdout, /@\.claude\/skills\/stylewright-resident\/navigable-references\.md/);
+    // The tool prints the line. It never writes the instruction file.
+    await assert.rejects(fs.access(path.join(project, 'CLAUDE.md')));
+
+    const before = await cli(['doctor']);
+    assert.equal(before.code, 1, before.stdout + before.stderr);
+    assert.match(before.stdout, /resident-not-imported|not active/);
+
+    await fs.writeFile(
+      path.join(project, 'CLAUDE.md'),
+      '@.claude/skills/stylewright-resident/navigable-references.md\n');
+
+    // `--tier all` above installed the skill too, so both forms are now live.
+    const both = await cli(['doctor']);
+    assert.equal(both.code, 1, both.stdout + both.stderr);
+    assert.match(both.stdout, /twice/);
+
+    const dropped = await cli([
+      'uninstall', '--skill', 'navigable-references',
+      '--platform', 'claude', '--scope', 'project',
+    ]);
+    assert.equal(dropped.code, 0, dropped.stdout + dropped.stderr);
+    const clean = await cli(['doctor']);
+    assert.equal(clean.code, 0, clean.stdout + clean.stderr);
+    assert.match(clean.stdout, /No problems found\./);
+  });
+
   await t.test('new-skill scaffolds inside the package root', async () => {
     const r = await cli(['new-skill', 'packed-demo', '--tier', 'craft'], pkgRoot);
     assert.equal(r.code, 0, r.stdout + r.stderr);

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TIERS } from './catalog.js';
+import { RESIDENT_NAME } from './resident.js';
 import { contentUnits } from './ground.js';
 import { destinationState, reachability } from './tree.js';
 
@@ -184,6 +185,14 @@ export async function scaffoldSkill({
   }
   if (!TIERS.includes(tier)) {
     throw new Error(`Unknown tier "${tier}". Known: ${TIERS.join(', ')}`);
+  }
+  // The resident fragment installs under this name, and install joins the two
+  // sets by name. A skill that took it would shadow the fragment, so the
+  // refusal stands where the name is chosen rather than where the collision
+  // would surface.
+  if (name === RESIDENT_NAME) {
+    throw new Error(
+      `Cannot scaffold "${name}": the resident fragment installs under that name.`);
   }
   if (tier === 'standards' && (!source || !url)) {
     throw new Error('A standards skill needs --source and --url. Every rule must trace somewhere.');

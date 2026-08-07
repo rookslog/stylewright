@@ -7,17 +7,18 @@ This repository ships writing skills. Its own documents are written under one of
 those skills, and continuous integration checks them with its own tool. Hold a
 change here to the standard the repository sells.
 
-## Run these five before you claim a change is done
+## Run these six before you claim a change is done
 
 ```bash
-npm test              # unit and conformance tests
-npm run lint:docs     # our own writing rules, applied to our own documents
-npm run check:ground  # every grounding matrix still matches its skill
-npm run check:docs    # every document's front matter fits the schema
-npm run check:probes  # every probe record carries what a reader derives from
+npm test                # unit and conformance tests
+npm run lint:docs       # our own writing rules, applied to our own documents
+npm run check:ground    # every grounding matrix still matches its skill
+npm run check:docs      # every document's front matter fits the schema
+npm run check:probes    # every probe record carries what a reader derives from
+npm run check:resident  # the resident fragment still matches its skill
 ```
 
-`npm run check` runs all five.
+`npm run check` runs all six.
 
 ## What counts as a defect here
 
@@ -287,6 +288,46 @@ ADR-0009 through ADR-0015, and ADR-0017) governs every number published in
   record that grades itself is refused, and so is one collected under any
   flags but the control arm's. `bench/probes/README.md` carries the
   protocol.
+
+### A write into a file the user owns
+
+The resident fragment delivers one rule as a file the user's instruction file
+imports. **The tool prints the import line and never writes that file.** A
+maximum-effort adversarial review refused a marked-region editor for
+`AGENTS.md` and `CLAUDE.md`, and that refusal is final. Flag any change that
+reintroduces such a write, whatever it is called.
+
+Detection is what replaced it. `doctor` reports a fragment that no instruction
+file imports, and it reports a rule delivered as both a skill and a fragment at
+once. Narrowing either check, or removing it, removes the only thing that makes
+the design honest. `src/doctor.js` reads instruction files as data: it asks the
+bytes whether they contain one line, and nothing there acts on what it reads.
+
+Two gates on those checks each fixed a finding that told a user to break their
+own setup, so hold a change to both. The comparison is per INSTALLED FRAGMENT,
+using the spelling `importLine` produces for the file being read, because that
+spelling is relative to that file — one flat set let a project-scope mark
+silence a user-scope fragment. And double delivery requires an installed
+fragment and not merely an import, because a stale line beside the skill alone
+made the tool advise removing the only delivery the user had.
+
+Both error directions are stated in ADR-0022 and in README, and neither is a
+defect to report. A fenced or negated occurrence of the line reads as imported,
+for the reason ADR-0016 gives everywhere else. Every structural refusal —
+absent, unreadable, not a regular file, over a megabyte — reads as not
+imported, which can only add a warning. `readsAsInstruction` is a named
+predicate because a test cannot hold it inside the read: remove the type half
+and a FIFO at an instruction path hangs the suite instead of failing it.
+
+The fragment is a generated copy of graded text, and not a second skill. Every
+line but its header comment comes out of
+`skills/craft/navigable-references/SKILL.md`, whose matrix disposes of each one
+as rows N-03 and E-02 through E-11. The header comment is the one ungraded
+line, and it instructs a maintainer rather than a writer. A second ungraded
+line needs a decision. `npm run check:resident` fails a checkout where the two
+forms have drifted, and `--write` regenerates it through `src/tree.js` like
+every other write surface. Adding prose to `resident/` by hand ships an
+ungraded rule, and the check catches it. ADR-0022 records the decision.
 
 ### A word list without rationale or a severity
 
