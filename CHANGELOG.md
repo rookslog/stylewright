@@ -17,9 +17,21 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   day, and the check refuses one later than the day it runs on, because nobody
   read a row on a day that has not arrived. ADR-0018 records the decision, and
   every `G` row ships unaudited. A row of another kind carries the cell empty.
+- Every grounding matrix carries a `Source text` column. A `G` row holds
+  `unquoted`, or the rule's own words in quotation marks, beside the identifier
+  that names them. A reader then checks the row in place instead of opening the
+  source to find the rule. The marks separate the source's words from ours, and
+  a cell carrying neither them nor `unquoted` is refused, because our paraphrase
+  under that heading claims an authority the source never gave it. The
+  quotation joins the row digest, so writing one voids a recorded audit.
+  `ground --check` prints how many rows quote their source, beside the audited
+  count and at the same level. No threshold enforces the substitution limit,
+  which is a judgment for the reader of that number. ADR-0020 records the
+  decision. Every matrix ships `unquoted` throughout, and each says why in its
+  own words.
 - The grounding check reads the matrix table as a reader sees it. The header and
-  the delimiter carry six columns, the sixth heading reads `Audited`, and a
-  seventh cell is refused. Every row begins at column 0, a fenced row is an
+  the delimiter carry seven columns, every heading is checked by name, and an
+  eighth cell is refused. Every row begins at column 0, a fenced row is an
   example rather than a record, and a row the check does not read is named
   rather than dropped. Each of those shapes used to leave the rendered column
   broken while the check reported the audits intact. The table must also be
@@ -29,7 +41,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reader cannot see reports on a file nobody has.
 - `parseMatrix` changed meaning. It returns no rows when the text carries no
   table delimiter, where it used to return every line that looked like a row,
-  and each row now carries an `extra` field holding any cells past the sixth.
+  and each row now carries an `extra` field holding any cells past the last.
   Nothing in this repository reads it other than the grounding check.
 
 - The `navigable-references` skill, in the craft tier. It asks a writer to give

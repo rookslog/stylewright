@@ -116,7 +116,8 @@ This limit is what lets the repository be public.
 ## Write the grounding matrix
 
 Each row has an ID, the guidance quoted from your `SKILL.md`, the heading it sits
-under, the source rule, where that rule lives, and the state of its audit.
+under, the source rule, the rule's own words, where that rule lives, and the
+state of its audit.
 
 - Use `G-nn` when the row traces to the source. Name the rule, such as `Rule 5.1`.
 - Use `E-nn` when the guidance is ours. Leave the rule cell empty.
@@ -134,18 +135,52 @@ Write the date in UTC, which `date -u +%F` gives you. The check refuses a date
 after the UTC day it runs on, because nobody read a row on a day that has not
 arrived.
 
-Every row carries the sixth cell, including the rows that leave it empty. A row
-written with five cells is refused, so a matrix without a `G` row cannot drop
-the column. A seventh cell is refused too, because the render drops it.
+Every row carries the last cell, including the rows that leave it empty. A row
+written with six cells is refused, so a matrix without a `G` row cannot drop
+the column. An eighth cell is refused too, because the render drops it.
 
-The header and the delimiter carry six columns as well, and the sixth heading
-reads `Audited`. Write every row at column 0. A row indented or quoted is not
-read, and the check names it rather than passing over it. Put an example row
+The header and the delimiter carry seven columns as well, and the check reads
+every heading by name. Write every row at column 0. A row indented or quoted is
+not read, and the check names it rather than passing over it. Put an example row
 inside a fenced block, which the check skips.
 
 Editing any other cell in the row changes the digest. The check then reports
 the audit as stale, because the words you read are no longer the words in the
 row. Read the row against the source again, or write `unaudited`.
+
+## Quote the rule in the `Source text` cell
+
+Write `unquoted` in the `Source text` cell of every `G` row, and leave the cell
+empty on every other row. A reviewer then knows that nobody has put the rule's
+words beside your paraphrase yet.
+
+Quote the rule when the exact wording is what a reader must check. Write the
+operative sentence in quotation marks, and nothing else in the cell:
+
+```
+| G-01 | Use no more than 20 words in a sentence. | Procedures | Rule 5.1 | "Keep to a maximum of 20 words." | Part 1, Section 5 | unaudited |
+```
+
+The marks are not decoration. Words inside a pair are the source's and words
+outside one are ours, so a row citing two rules writes `"a" and "b"`. A cell
+that carries neither the marks nor the word `unquoted` is refused, because our
+own paraphrase under a heading that reads `Source text` claims an authority the
+source never gave it.
+
+Do three things before you write a quotation, in this order:
+
+1. Read `SOURCE.md` for that skill. It records what licence was checked and
+   when. Some sources restrict reproduction beyond ordinary quotation, and one
+   of ours does.
+2. Record the check you made, in the same `SOURCE.md`, with the date.
+3. Ask whether the matrix has started to replace the source. A quoted operative
+   sentence per row is citation. Every rule quoted in full is republishing, and
+   no number in the checker decides where that line falls. `check:ground` prints
+   how many rows quote their source, and you hold the judgment.
+
+The quotation is part of the row digest, so writing one voids a recorded audit.
+That is deliberate. The quoted words are what the auditor read your sentence
+against.
 
 Quote your own `SKILL.md` exactly. `check:ground` compares the strings, so a
 reworded rule fails the check until you update its row. That is the point.

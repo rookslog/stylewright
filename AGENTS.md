@@ -65,13 +65,33 @@ Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
 
 No check here opens a source, so no check can say whether a `G` row reads its
-rule correctly. Each `G` row therefore records its own audit, in a sixth cell.
+rule correctly. Each `G` row therefore records its own audit, in the last cell.
 The cell says `unaudited`, or it carries the date a person read that row
-against the source and a digest of the four cells they read. Every other kind
+against the source and a digest of the five cells they read. Every other kind
 of row leaves the cell empty, for the same reason its rule cell is empty. The
 cell itself is never absent. A row without it is refused whatever kind it is,
 because coalescing an absent cell with an empty one let a matrix of `E` and
 `N` rows drop the column and stay clean.
+
+A `G` row also carries the rule's own words, in a `Source text` cell beside the
+identifier that names them. It says `unquoted`, or it quotes the rule. That
+makes the row checkable in place: a reader compares two texts in one row rather
+than our sentence against 400 pages. Every other kind of row leaves it empty,
+and `unquoted` is the state every row starts in.
+
+A quotation is marked as one. The cell opens and closes with a quotation mark
+and the marks pair, so words inside a pair are the source's and words outside
+one are ours. Unmarked text there is the `G` row defect one column over. Our
+paraphrase, sitting under a heading that reads `Source text`, borrows an
+authority the source never granted, and nothing but the marks tells a reader
+which it is reading.
+
+Check the licence before writing in that column, and record what you checked in
+`SOURCE.md`. Every matrix here ships `unquoted` throughout, and each says why in
+its own words. The run prints how many `G` rows quote their source beside the
+audited count. It is a note, and no threshold enforces the substitution limit,
+because whether a body of quotation could replace the source is a judgment for
+the reader of that number. ADR-0020 records the decision.
 
 Three things are defects. A date written for a reading nobody did is the worst
 of them, and it is the `G` row defect in its newest form. A digest that no
@@ -94,12 +114,12 @@ admitted. The time is bounded because `24:00:00Z` is a legal spelling of
 midnight ENDING that day, so its written day put the bound a day early.
 
 **The matrix table is checked, not just its rows.** The header and the
-delimiter each carry six columns, and the sixth heading is `Audited`. Delete
-either line, cut either to five cells, or rename that heading, and GFM drops
-the rendered column or stops the block being a table at all. The person loses
-the audit record while the check reports it intact, so the column the reader
-sees is the column that counts. A seventh cell is refused for the mirror
-reason: GFM drops it, so text there is seen by no reader and read by no check.
+delimiter each carry seven columns, and every heading is checked by name.
+Delete either line, cut either short, or rename any heading, and GFM drops the
+rendered column or stops the block being a table at all. The person loses the
+record while the check reports it intact, so the column the reader sees is the
+column that counts. An eighth cell is refused for the mirror reason: GFM drops
+it, so text there is seen by no reader and read by no check.
 
 A row must begin at column 0. A row indented four spaces or fenced is an
 example to a reader and was a recorded audit to the checker. Fenced content is
@@ -129,10 +149,13 @@ table at all.
 and the two share no grammar, so a shape refused there says nothing about
 issues 37 and 69.
 
-`ground --check` prints the audited count for each matrix beside its verdict.
-That line is a note, so it fails nothing. Do not promote it to an error, and do
-not remove it to quiet the output. A green run over a matrix nobody has read
-is what issue 40 reports, and the count is the answer to it.
+`ground --check` prints the audited count and the quoted count for each matrix
+beside its verdict. Both are notes, so they fail nothing. Do not promote either
+to an error, and do not remove either to quiet the output. A green run over a
+matrix nobody has read is what issue 40 reports, and the count is the answer to
+it. Both are withheld together when the table is broken, because one number
+printed beside one withheld would tell a reader the table is readable after
+all.
 
 The checker reads Markdown a line at a time, and it models no container. So it
 states the forms it reads and refuses every line outside them. Those forms are

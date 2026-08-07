@@ -4,8 +4,16 @@ import crypto from 'node:crypto';
 import { sections, indentOf, isIndented } from './markdown.js';
 import { loadCatalog } from './catalog.js';
 
-/** The columns a matrix carries, in order. The sixth is the audit. */
-export const MATRIX_COLUMNS = ['ID', 'Our guidance', 'Our anchor', 'Source rule', 'Source location', 'Audited'];
+/**
+ * The columns a matrix carries, in order. The last is the audit.
+ *
+ * `Source text` sits directly beside `Source rule`, because the control the
+ * design document states is that a quotation carries its identifier next to
+ * it. A reader compares the two cells without leaving the row, which is the
+ * whole reason the column exists: a `G` row against a paraphrase could only be
+ * checked against a memory of the rule, or against a 400-page PDF.
+ */
+export const MATRIX_COLUMNS = ['ID', 'Our guidance', 'Our anchor', 'Source rule', 'Source text', 'Source location', 'Audited'];
 
 // Split on UNESCAPED pipes only. Without this a paragraph containing a pipe —
 // guidance about a shell pipeline, or about Markdown itself — could not be
@@ -124,17 +132,18 @@ export function parseMatrix(text) {
     guidance: cells[1],
     anchor: cells[2],
     rule: cells[3],
-    location: cells[4],
-    // An absent sixth cell is NOT an empty one. Coalescing the two here made
+    quote: cells[4],
+    location: cells[5],
+    // An absent last cell is NOT an empty one. Coalescing the two here made
     // the column optional for any matrix without a G row: delete the header,
     // the delimiter and every cell from a matrix of E and N rows and the
     // check stayed clean, because each missing cell read as an empty audit
     // and no G row was left to complain. `undefined` reaches the check and
     // the check names it.
-    audit: cells[5],
-    // Everything past the sixth cell. GFM drops it from the render, so text
+    audit: cells[6],
+    // Everything past the last cell. GFM drops it from the render, so text
     // here is seen by no reader and was read by no check.
-    extra: cells.slice(6),
+    extra: cells.slice(7),
   }));
 }
 
@@ -209,6 +218,34 @@ const DESIGNATOR = /^\[(?:table|code) [0-9a-f]{8}\]$/;
 const UNAUDITED = 'unaudited';
 const AUDIT = /^(\d{4})-(\d{2})-(\d{2}) ([0-9a-f]{8})$/;
 
+/**
+ * What a `G` row records about the source's own words.
+ *
+ * The row's guidance cell is OUR sentence. Beside a rule identifier it reads
+ * as the rule, and a reviewer checking it has to open the source to find out.
+ * The doctrine permits quoting the rule for exactly that reason, so the row
+ * carries a cell for the source's words.
+ *
+ * `unquoted` is the honest default and the state every row starts in, as
+ * `unaudited` is for the cell beside it. An empty cell would say the same
+ * thing far less clearly, and it would not survive the column being dropped.
+ *
+ * The other spelling is a quotation, and it is marked as one. Unmarked text
+ * here would be indistinguishable from a second paraphrase of ours sitting
+ * under a heading that says `Source`, which is this repository's worst defect
+ * wearing a new cell. So the cell opens and closes with a quotation mark, and
+ * the marks pair. Words outside a pair are ours — `"a" and "b"` cites two
+ * rules — and words inside one are the source's.
+ *
+ * Quoting is bounded by substitution rather than by any count this program
+ * could hold: a matrix that quotes every rule in full has stopped citing and
+ * started republishing. No threshold here can decide that, so the run reports
+ * how much of each matrix is quoted and leaves the judgment with the person
+ * who reads the number.
+ */
+const UNQUOTED = 'unquoted';
+const QUOTED = /^"[^"]*"(?:[^"]*"[^"]*")*$/;
+
 const LEAP = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
 
 /**
@@ -227,12 +264,18 @@ function isRealDate(year, month, day) {
 
 /**
  * The digest an audit of this row would carry. Every cell the audit is a
- * claim about goes in: our guidance, where it sits, the rule it cites and
- * where that rule lives. The id stays out, because renumbering a matrix
- * rewrites no claim.
+ * claim about goes in: our guidance, where it sits, the rule it cites, the
+ * source's own words and where that rule lives. The id stays out, because
+ * renumbering a matrix rewrites no claim.
+ *
+ * The quotation is in for the reason every other cell is. A person auditing a
+ * row reads our sentence against the rule, and the quotation is the copy of
+ * the rule they read it against. Leaving it out would let the quoted words be
+ * rewritten under a recorded audit, which is the stale-digest defect one
+ * column over.
  */
 export function rowDigest(row) {
-  return digest([row.guidance, row.anchor, row.rule, row.location].join('\n'));
+  return digest([row.guidance, row.anchor, row.rule, row.quote, row.location].join('\n'));
 }
 
 /**
@@ -667,13 +710,19 @@ export function checkSkill({ skillText, matrixText, now }) {
       });
       return;
     }
-    if (what === 'header' && cells[5] !== MATRIX_COLUMNS[5]) {
+    // Every heading, not only the audit's. The check named one column because
+    // one column was the record. A second column now carries a claim about a
+    // source, and a heading is what tells the reader which cell they are
+    // reading, so renaming any of them loses a record the same way.
+    if (what !== 'header') return;
+    MATRIX_COLUMNS.forEach((name, i) => {
+      if (cells[i] === name) return;
       findings.push({
         level: 'error',
-        code: 'matrix-header-not-audited',
-        message: `the matrix names its sixth column "${cells[5]}", not "${MATRIX_COLUMNS[5]}".`,
+        code: 'matrix-header-column-name',
+        message: `the matrix names column ${i + 1} "${cells[i]}", not "${name}".`,
       });
-    }
+    });
   };
   if (!table.delimiter) {
     // The cause matters more than the absence. An indented table has a
@@ -801,10 +850,39 @@ export function checkSkill({ skillText, matrixText, now }) {
       findings.push({
         level: 'error',
         code: 'row-missing-audit-cell',
-        message: `${row.id}: the row has no Audited cell. Every row carries six columns, `
-          + 'and only a G row fills the sixth.',
+        message: `${row.id}: the row has no Audited cell. Every row carries `
+          + `${MATRIX_COLUMNS.length} columns, and only a G row fills the last two.`,
       });
       return;
+    }
+    // The quotation, on the same terms as the audit and for the same reason.
+    // Only a G row cites a source, so only a G row has anything to quote from
+    // one, and the cell is present on every row either way.
+    if (kind === 'G') {
+      const remedyQuote = 'Write `unquoted`, or the rule\'s own words in quotation marks.';
+      if (!row.quote) {
+        findings.push({
+          level: 'error',
+          code: 'g-row-no-quote',
+          message: `${row.id}: a G row records whether it quotes its rule. ${remedyQuote}`,
+        });
+      } else if (row.quote !== UNQUOTED && !QUOTED.test(row.quote)) {
+        // Unmarked text beside a rule identifier reads as the rule and may be
+        // ours. The marks are what separate the source's words from our own,
+        // so a cell that carries neither is refused rather than trusted.
+        findings.push({
+          level: 'error',
+          code: 'quote-unmarked',
+          message: `${row.id}: "${row.quote}" is neither \`${UNQUOTED}\` nor a quotation. `
+            + `The cell opens and closes with a quotation mark, and the marks pair. ${remedyQuote}`,
+        });
+      }
+    } else if (row.quote) {
+      findings.push({
+        level: 'error',
+        code: 'e-row-has-quote',
+        message: `${row.id}: only a G row quotes a source, because only a G row cites one.`,
+      });
     }
     // A seventh cell is read by nobody and was refused by nobody. GFM drops it
     // from the render, so text could sit in a row that neither the checker nor
@@ -897,12 +975,28 @@ export function checkSkill({ skillText, matrixText, now }) {
       code: 'audit-coverage',
       message: 'not counted: the matrix table is broken.',
     });
+    findings.push({
+      level: 'note',
+      code: 'quote-coverage',
+      message: 'not counted: the matrix table is broken.',
+    });
   } else if (sourced.length) {
     findings.push({
       level: 'note',
       code: 'audit-coverage',
       message: `${sourced.filter((r) => auditState(r, today).state === 'recorded').length} `
         + `of ${sourced.length} G rows record a person reading them against the source.`,
+    });
+    // The second number the verdict cannot carry. A reader holds the
+    // substitution limit, and they cannot hold it against a file they have to
+    // count by hand. It rises as rows are quoted and it is a note either way:
+    // an unquoted matrix is honest, and a fully quoted one is a judgment about
+    // republishing that no threshold here can make.
+    findings.push({
+      level: 'note',
+      code: 'quote-coverage',
+      message: `${sourced.filter((r) => r.quote && r.quote !== UNQUOTED).length} `
+        + `of ${sourced.length} G rows carry the source's own words.`,
     });
   }
 

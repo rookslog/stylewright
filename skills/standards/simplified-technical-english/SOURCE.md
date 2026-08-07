@@ -11,13 +11,20 @@
 - Transformation: an operational digest in our own words, plus a navigation map.
   No dictionary definitions. As of 2026-07-27 the repository permits quoting an
   individual rule beside its identifier, and permits a lint dictionary of
-  approved and non-approved word pairs. This skill does not yet use either. See
+  approved and non-approved word pairs. This skill uses neither. See
   section 3.2 of the design document for the limit, which is substitution rather
   than quotation.
 - Publication decision: the repository owner read this record and approved
   continued publication on 2026-08-04. The approval holds while the skill
   reproduces no rule text and no substantial part of the standard. A change
   that crosses either line reopens the decision.
+- Quotation check, 2026-08-06: the grounding matrix gained a `Source text`
+  column on this date, under ADR-0020. Nothing was quoted into it. This record
+  was read first, and the publication decision above forbids it: reproducing a
+  rule is reproducing rule text, whether it lands in the skill or in the matrix
+  beside it. Every row of that matrix reads `unquoted`, and it stays that way
+  until the owner reopens the decision above. Nobody re-read the copyright page
+  on this date, because the licence is not the thing in the way.
 
 ## How to re-check this record
 

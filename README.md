@@ -256,6 +256,16 @@ The check confirms that a `G` row names a rule. It cannot confirm that the rule
 says what the row says. A person read the source and wrote the row, and no
 program has checked that reading.
 
+So a `G` row carries the rule's own words too, in a `Source text` cell beside
+the identifier. You compare two texts in one row, instead of comparing our
+sentence against a 400-page PDF you have to find first. The cell says
+`unquoted` until somebody quotes the rule, and a quotation is written in
+quotation marks, so you can always tell the source's words from ours.
+
+Every matrix here says `unquoted` in every row today. Each matrix says why in
+its own words, and the reasons differ by source. `stylewright ground --check`
+prints how many rows quote their source, beside the audited count.
+
 So each `G` row records its own audit. The `Audited` cell says `unaudited`, or
 it carries the date a person read that row against the source and a digest of
 the row they read. No run of the checker raises a row out of `unaudited`, and
