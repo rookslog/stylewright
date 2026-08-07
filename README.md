@@ -336,7 +336,7 @@ source's. No program checked that claim either. The marks say where a
 quotation starts and stops, and the source says whether it is accurate.
 
 Every matrix here says `unquoted` in every row today. Each one declares whether
-it may quote its source at all, in a line you can read, and four of the five
+it may quote its source at all, in a line you can read, and five of the six
 say it may not. `stylewright ground --check` prints how many rows quote their
 source, beside the audited count.
 

@@ -59,7 +59,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   inside a collapsed `<details>`, and again qualified into meaning both. An
   absent declaration reads as `forbidden`, so does an unreadable one, and a
   second one is refused rather than lifting the first. ADR-0020 records both
-  decisions. Every matrix ships `unquoted` throughout, and four of the five
+  decisions. Every matrix ships `unquoted` throughout, and five of the six
   forbid quotation.
 - The grounding check reads the matrix table as a reader sees it. The header and
   the delimiter carry seven columns, every heading is checked by name, and an
