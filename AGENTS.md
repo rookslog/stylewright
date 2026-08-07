@@ -404,18 +404,19 @@ Flag a list that fails these. Do not flag a list for existing.
 
 ADR-0021 splits word lists in two, and each half has its own gate.
 
-A **signature dictionary** is a list assembled from what one setting was
-observed to overuse. None ships under `skills/`. That layer lives in
-`bench/score.mjs` as the `signatures` metric, which no install pathway copies.
-An entry there carries a stated reference distribution before it counts against
-anything, and a word moves from the metric to a lint rule only after a promoted
-study under the measurement design says it should.
+A **signature dictionary** is a list assembled from what a model or an
+instruction stack was observed to overuse. It traces to a setting and to
+nothing else. None ships under `skills/`. That layer lives in `bench/score.mjs`
+as the `signatures` metric, which no install pathway copies. An entry there
+carries a stated reference distribution before it counts against anything, and
+a word moves from the metric to a lint rule only after a promoted study under
+the measurement design says it should.
 
-A **controlled vocabulary** is the approved and non-approved word pairs of a
-published standard. Those are method rather than observation, and they may
-ship. The gate is the three conditions above plus a licence check recorded in
-`SOURCE.md`, and not the promoted study. The ASD word-pair dictionary on issue
-#19 is that case.
+A **controlled vocabulary** is a list whose word pairs trace to a published
+standard. Those pairs are method rather than observation, and they may ship.
+The gate is the three conditions above plus their own licence check, recorded
+in `SOURCE.md`, and not the promoted study. The ASD word-pair dictionary on
+issue #19 is that case.
 
 Which gate applies turns on where the list came from, and never on what it
 looks like.

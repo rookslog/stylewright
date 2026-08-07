@@ -36,14 +36,12 @@ structural or commitment defect, and no rule in it is enforced by matching a
 word. A rule may quote a phrase to illustrate the move it names. It may not
 ship a list that a checker matches.
 
-No signature dictionary ships anywhere under `skills/`. A signature dictionary
-is a list of words assembled from what one setting was observed to overuse, and
-it is the artefact this decision keeps out of every skill directory.
-
-A controlled vocabulary is a different artefact and this decision does not
-reach it. The approved and non-approved word pairs of a published standard are
-method rather than observation, and they stay governed by the three conditions
-in `AGENTS.md` and by a recorded licence check. Issue #19 carries that case.
+No signature dictionary ships anywhere under `skills/`. The ban covers a list
+assembled from what a model or an instruction stack was observed to overuse.
+Such a list traces to a setting and to nothing else. It does not cover a
+controlled vocabulary whose word pairs trace to a published standard. Those
+stay governed by the three conditions in `AGENTS.md` and by their own licence
+gate, and issue #19 carries the case.
 
 The signature layer re-homes to the bench, as a `signatures` metric in
 `bench/score.mjs`. That file already
