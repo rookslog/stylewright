@@ -113,6 +113,32 @@ Crossing the owner's condition now takes an edit to the declaration and
 its stated reason. That is a decision about the source, made where the
 reason lives, rather than an edit to one row among a hundred.
 
+**A declaration is read where a reader finds it.** The first version read
+the line wherever it sat, and review then got a permitting line accepted
+under the table and again inside a collapsed `<details>`. Both are the
+container asymmetry this repository already refuses for a matrix row,
+pointing the other way: there, a row the reader saw as an example counted
+as a record, and here, a line the reader never sees carries one. So the
+declaration sits above the header row and outside raw HTML, and one that
+does not is refused.
+
+A declaration also names its state once. `permitted for the dictionary
+only. Rule text is forbidden.` read as permitted while saying both, so
+the reason may carry neither state word. The whole paragraph is read
+rather than the first line, because a check that read one line would move
+the qualification down a line rather than refuse it.
+
+Each of these is refused AND reads as forbidden. A finding that left the
+quotation standing would have given the attacker everything the attack
+was for, so an unreadable declaration governs nothing and the file falls
+back to the same default an absent one gets.
+
+**A refused cell is not a quotation, wherever the refusal came from.**
+The coverage count applied that to a malformed cell and not to a
+prohibited one, so a forbidden matrix printed `1 of 39` beside the
+finding refusing that very cell. A count contradicting the finding above
+it is worse than either alone.
+
 **Every pair holds something.** `""` and `"   "` opened and closed with a
 mark and passed, so a row could claim to quote its rule while quoting
 nothing. The coverage count also counted any cell that merely differed

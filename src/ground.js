@@ -276,22 +276,67 @@ const QUOTED = new RegExp(`^${PAIR}(?:[^"]*${PAIR})*$`);
  * A second declaration does not overrule the first. Both are refused, and any
  * `forbidden` among them governs, because the way to lift a prohibition is to
  * edit it rather than to add a line under it.
+ *
+ * Three things make a declaration unreadable, and an unreadable one governs
+ * nothing. Each was found by attacking this check rather than by imagining it.
+ *
+ * It sits ABOVE the table. A permitting line written under the matrix was
+ * accepted, and a reader looking for the state of a file reads its opening
+ * prose. A declaration below the rows it governs is a footnote to them.
+ *
+ * It sits outside raw HTML. A permitting line inside a collapsed `<details>`
+ * was accepted, and a reader on GitHub does not see it at all. That is the
+ * container asymmetry this file already refuses for a matrix row, pointing the
+ * other way: a line the reader cannot see may not carry the record.
+ *
+ * It names its state once. `permitted for the dictionary only. Rule text is
+ * forbidden.` read as permitted, and it says both. The state is a binary and
+ * the reason may not restate it, so the whole paragraph is checked and not the
+ * first line, or the qualification simply moves down a line.
  */
 const FORBIDDEN = 'forbidden';
 const DECLARATION = /^\*\*Quotation:\*\* (permitted|forbidden)\b/;
+const EITHER_STATE = /\b(?:permitted|forbidden)\b/i;
 
-export function readDeclaration(text) {
+// Raw HTML at column 0, read as a region rather than as a block. A reader sees
+// `<details>` hide everything to its closer, whatever blank lines fall between,
+// and CommonMark's HTML block ends at the first of those.
+const HTML_OPENS = /^<[a-zA-Z][\w-]*(?=[\s>/]|$)/;
+const HTML_CLOSES = /^<\/[a-zA-Z][\w-]*\s*>/;
+const HTML_SELF_CLOSES = /\/>\s*$/;
+
+/**
+ * Every declaration in the file, each with what makes it unreadable. The
+ * caller decides, because an unreadable declaration is two facts at once: a
+ * finding to report, and a line that governs nothing.
+ */
+export function readDeclaration(text, headerLine = null) {
   const found = [];
+  const lines = text.split('\n');
   let fence = null;
-  for (const [i, line] of text.split('\n').entries()) {
+  let html = 0;
+  for (const [i, line] of lines.entries()) {
     const marker = MATRIX_FENCE.exec(line);
     if (fence) {
       if (marker && marker[2][0] === fence[0] && marker[2].length >= fence.length) fence = null;
       continue;
     }
     if (marker) { fence = marker[2]; continue; }
+    if (HTML_CLOSES.test(line)) html = Math.max(0, html - 1);
+    else if (HTML_OPENS.test(line) && !HTML_SELF_CLOSES.test(line)) html += 1;
     const stated = DECLARATION.exec(line);
-    if (stated) found.push({ line: i + 1, state: stated[1] });
+    if (!stated) continue;
+    // The reason is the whole paragraph the declaration opens, so a
+    // qualification cannot escape the check by moving to the next line.
+    const reason = [line.slice(stated[0].length)];
+    for (let j = i + 1; j < lines.length && lines[j].trim(); j += 1) reason.push(lines[j]);
+    found.push({
+      line: i + 1,
+      state: stated[1],
+      inHtml: html > 0,
+      belowTable: headerLine !== null && i + 1 > headerLine,
+      equivocates: EITHER_STATE.test(reason.join(' ')),
+    });
   }
   return found;
 }
@@ -724,31 +769,58 @@ export function checkSkill({ skillText, matrixText, now }) {
   const { units: stmts, refusals } = extract(skillText);
   const findings = [];
 
+  // The table itself, before any row in it. A matrix whose header or delimiter
+  // no longer carries every column is not the file the audit record lives in,
+  // whatever its rows still say.
+  const table = readMatrix(matrixText);
+
   // Whether this matrix may quote at all, before any row is read. An absent
-  // declaration reads as `forbidden`, and a second one lifts nothing.
-  const declared = readDeclaration(matrixText);
-  const forbids = !declared.length || declared.some((d) => d.state === FORBIDDEN);
+  // declaration reads as `forbidden`, a second one lifts nothing, and one the
+  // reader cannot find governs nothing either.
+  const declared = readDeclaration(matrixText, table.header?.line ?? table.delimiter?.line ?? null);
+  const unreadable = [
+    ['belowTable', 'matrix-declaration-below-the-table',
+      'sits under the table it governs. A reader looking for the state of this file reads '
+      + 'its opening prose. Write it above the header row.'],
+    ['inHtml', 'matrix-declaration-inside-html',
+      'sits inside raw HTML, where a reader on GitHub may not see it at all. Write it as '
+      + 'ordinary prose at column 0.'],
+    ['equivocates', 'matrix-declaration-equivocates',
+      'names a state and then names one again in its reason. The state is a binary, and '
+      + '"permitted for some of it" is a qualification the check cannot read. Give one word, '
+      + 'and write the reason without either word in it.'],
+  ];
+  for (const d of declared) {
+    for (const [flag, code, why] of unreadable) {
+      if (!d[flag]) continue;
+      findings.push({
+        level: 'error',
+        code,
+        message: `matrix line ${d.line}: the declaration ${why} Until then it declares nothing, `
+          + 'and this matrix reads as forbidden.',
+      });
+    }
+  }
+  const readable = declared.filter((d) => !d.belowTable && !d.inHtml && !d.equivocates);
+  const forbids = !readable.length || readable.some((d) => d.state === FORBIDDEN);
   if (!declared.length) {
     findings.push({
       level: 'error',
       code: 'matrix-no-quotation-declaration',
       message: 'the matrix does not declare whether it may quote its source. Write '
-        + '`**Quotation:** permitted` or `**Quotation:** forbidden` at column 0, with the '
-        + 'reason beside it. Until it does, no row here may carry anything but `unquoted`.',
+        + '`**Quotation:** permitted` or `**Quotation:** forbidden` at column 0, above the '
+        + 'header row, with the reason beside it. Until it does, no row here may carry '
+        + 'anything but `unquoted`.',
     });
-  } else if (declared.length > 1) {
+  } else if (readable.length > 1) {
     findings.push({
       level: 'error',
       code: 'matrix-two-quotation-declarations',
-      message: `the matrix declares its quotation state ${declared.length} times, on line `
-        + `${declared.map((d) => d.line).join(', ')}. Lift a prohibition by editing it and its `
+      message: `the matrix declares its quotation state ${readable.length} times, on line `
+        + `${readable.map((d) => d.line).join(', ')}. Lift a prohibition by editing it and its `
         + 'reason, never by adding a line under it.',
     });
   }
-  // The table itself, before any row in it. A matrix whose header or delimiter
-  // no longer carries every column is not the file the audit record lives in,
-  // whatever its rows still say.
-  const table = readMatrix(matrixText);
   for (const r of table.refusals) {
     findings.push({
       level: 'error',
@@ -939,9 +1011,9 @@ export function checkSkill({ skillText, matrixText, now }) {
           level: 'error',
           code: 'quotation-forbidden-here',
           message: `${row.id}: this matrix may not quote its source, so the Source text cell `
-            + `reads \`${UNQUOTED}\`. ${declared.length
-              ? `The declaration on line ${declared.find((d) => d.state === FORBIDDEN)?.line ?? declared[0].line} says so`
-              : 'The matrix declares nothing, which reads as forbidden'}. `
+            + `reads \`${UNQUOTED}\`. ${readable.length
+              ? `The declaration on line ${readable.find((d) => d.state === FORBIDDEN).line} says so`
+              : 'The matrix declares nothing this check can read, which reads as forbidden'}. `
             + 'Changing that is a decision about the source, and it is made in the declaration.',
         });
       }
@@ -1084,7 +1156,12 @@ export function checkSkill({ skillText, matrixText, now }) {
       // one. Counting every cell that merely differed from `unquoted` let a
       // malformed cell — an empty pair, or our own unmarked paraphrase —
       // raise the number that reports how much of the source this file carries.
-      message: `${sourced.filter((r) => r.quote && QUOTED.test(r.quote)).length} `
+      //
+      // The prohibition refuses cells too, and the first version of this rule
+      // applied it to one refusal and not the other: a forbidden matrix
+      // reported `1 of 39` beside the finding that refused that very cell. A
+      // count that contradicts the finding above it is worse than either.
+      message: `${forbids ? 0 : sourced.filter((r) => r.quote && QUOTED.test(r.quote)).length} `
         + `of ${sourced.length} G rows carry the source's own words.`,
     });
   }

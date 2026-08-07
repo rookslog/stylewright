@@ -322,6 +322,13 @@ test('a matrix declares whether it may quote at all, and a prohibition is enforc
   // there and not an edit to the row.
   assert.match(found.find((f) => f.code === 'quotation-forbidden-here').message, /line 3/);
 
+  // The count does not contradict the finding above it. A refused cell is not
+  // a quotation, and the prohibition refuses every one of them, so a forbidden
+  // matrix reporting `1 of 2` would say the file carries words the run just
+  // refused to let it carry.
+  assert.deepEqual(found.filter((f) => f.code === 'quote-coverage').map((f) => f.message),
+    ["0 of 2 G rows carry the source's own words."]);
+
   // `unquoted` is untouched by it, so a forbidden matrix is otherwise ordinary.
   assert.deepEqual(errors(check({
     skillText: SKILL,
@@ -349,13 +356,51 @@ test('a second declaration is refused, and any forbidden among them governs', ()
     'the added line lifted the prohibition above it');
 });
 
+test('a declaration a reader cannot find governs nothing', () => {
+  // Three shapes, each found by attacking this check rather than by imagining
+  // it. Every one was ACCEPTED as a permitting line, which is the same
+  // container asymmetry the matrix reader already refuses, pointing the other
+  // way: a line the reader does not see may not carry the record.
+  const permits = '**Quotation:** permitted. The Demo Standard is invented.';
+  const bare = MATRIX.replace(`${DECLARED}\n\n`, '');
+  const cases = [
+    ['matrix-declaration-below-the-table', `${bare}\n${permits}\n`],
+    ['matrix-declaration-inside-html', bare.replace('# Grounding: s',
+      `# Grounding: s\n\n<details>\n\n${permits}\n\n</details>`)],
+    ['matrix-declaration-equivocates', MATRIX.replace(DECLARED,
+      '**Quotation:** permitted for the dictionary only. Rule text is forbidden.')],
+  ];
+  for (const [code, matrix] of cases) {
+    const found = check({ skillText: SKILL, matrixText: matrix });
+    assert.ok(found.some((f) => f.code === code), `${code} did not fire`);
+    // And it does not permit. The finding alone would leave the quotation
+    // standing, which is the whole of what the attack won.
+    assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+      `${code} still permitted the quotation`);
+  }
+});
+
+test('a qualification cannot escape by moving to the next line', () => {
+  // The reason is a paragraph, and reading only the first line of it would
+  // move the equivocation down one line rather than refuse it.
+  const wrapped = MATRIX.replace(DECLARED,
+    '**Quotation:** permitted. The Demo Standard is invented.\nRule text stays forbidden.');
+  const found = check({ skillText: SKILL, matrixText: wrapped });
+  assert.ok(found.some((f) => f.code === 'matrix-declaration-equivocates'),
+    'the second line of the reason named a state and the check did not read it');
+  assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+    'the wrapped qualification permitted the quotation');
+});
+
 test('a declaration inside a fenced block is an example, not a state', () => {
   // CONTRIBUTING shows the line in a fence, and a matrix quoting the guidance
   // would otherwise declare itself by showing what a declaration looks like.
   const shown = MATRIX.replace(DECLARED, `${DECLARED}\n\n\`\`\`\n**Quotation:** forbidden\n\`\`\``);
   const codes = check({ skillText: SKILL, matrixText: shown }).map((f) => f.code);
-  assert.ok(!codes.includes('matrix-two-quotation-declarations'));
-  assert.ok(!codes.includes('quotation-forbidden-here'));
+  assert.ok(!codes.includes('matrix-two-quotation-declarations'),
+    'the fenced example was counted as a second declaration');
+  assert.ok(!codes.includes('quotation-forbidden-here'),
+    'the fenced example forbade quotation in the file that showed it');
 });
 
 test('the run says how much of the matrix quotes its source', () => {

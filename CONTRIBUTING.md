@@ -188,11 +188,23 @@ The word is `permitted` or `forbidden`, and the reason follows it. Under
 `forbidden` the check refuses every `Source text` cell but `unquoted`, whatever
 else is true of that cell.
 
+Write it above the header row, as ordinary prose at column 0, and name the state
+once. Three shapes are refused, and each of them was accepted before somebody
+attacked the check:
+
+- A declaration under the table. A reader looking for the state of a file reads
+  its opening prose, not a footnote to the rows.
+- A declaration inside raw HTML. A permitting line inside a collapsed
+  `<details>` is a line the reader on GitHub never sees.
+- A reason that names a state again. `permitted for the dictionary only. Rule
+  text is forbidden.` says both, and the check read it as permitted. The whole
+  paragraph is read, so moving the qualification to the next line does not help.
+
 Every matrix carries the line, and a matrix that carries none is read as
-`forbidden`. A default of `permitted` would turn the rule off for whoever
-forgot the line. Two lines are refused, and any `forbidden` among them governs,
-so lift a prohibition by editing it rather than by writing a permitting line
-under it.
+`forbidden`. So is one whose only declaration is refused above. A default of
+`permitted` would turn the rule off for whoever forgot the line. Two readable
+lines are refused, and any `forbidden` among them governs, so lift a prohibition
+by editing it rather than by writing a permitting line under it.
 
 Do three things before you write a quotation, in this order:
 

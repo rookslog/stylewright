@@ -104,12 +104,24 @@ rule off for whoever forgot the line. A second declaration is refused and any
 by adding a line under it. Every matrix here ships `unquoted` throughout, and
 three of the four forbid quotation outright. ADR-0020 records the decision.
 
+A declaration is read where a reader finds it, and three placements are not
+that. It sits above the header row, because one under the table is a footnote
+to the rows it governs. It sits outside raw HTML, because a permitting line in
+a collapsed `<details>` is invisible on GitHub. It names its state once, in the
+whole paragraph and not merely the first line, because `permitted for the
+dictionary only. Rule text is forbidden.` read as permitted. Each of those was
+accepted until somebody attacked the check rather than imagined it, and each
+now reads as forbidden as well as being refused. A refusal that left the
+quotation standing would have won the attacker everything.
+
 The marks say which words a row CLAIMS are the source's. They say nothing about
 whether the quotation is accurate, and no check here can: a well-formed
 quotation of a sentence the source never wrote passes. The `Audited` cell is the
-only thing that speaks to that. An example that quotes a real standard is a
-defect for the same reason, so every worked example in this repository names an
-invented standard and says so.
+only thing that speaks to that. So no worked example here attaches a quotation
+to a real standard's identifier. Naming `Rule 5.1` to show what an identifier
+looks like borrows nothing and is fine. Putting a sentence in quotation marks
+beside it publishes a fabrication as that rule, and an example is where a reader
+learns the form.
 
 Three things are defects. A date written for a reading nobody did is the worst
 of them, and it is the `G` row defect in its newest form. A digest that no

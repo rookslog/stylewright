@@ -33,9 +33,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the reason beside it. Under `forbidden` the check refuses every `Source text`
   cell but `unquoted`. A recorded prohibition used to live in prose alone, so
   rule text substituted into the matrix whose owner forbade rule text left the
-  gate green. An absent declaration reads as `forbidden`, and a second one is
-  refused rather than lifting the first. ADR-0020 records both decisions. Every
-  matrix ships `unquoted` throughout, and three of the four forbid quotation.
+  gate green. The line sits above the header row, outside raw HTML, and names
+  its state once, because a permitting line was accepted under the table, again
+  inside a collapsed `<details>`, and again qualified into meaning both. An
+  absent declaration reads as `forbidden`, so does an unreadable one, and a
+  second one is refused rather than lifting the first. ADR-0020 records both
+  decisions. Every matrix ships `unquoted` throughout, and three of the four
+  forbid quotation.
 - The grounding check reads the matrix table as a reader sees it. The header and
   the delimiter carry seven columns, every heading is checked by name, and an
   eighth cell is refused. Every row begins at column 0, a fenced row is an

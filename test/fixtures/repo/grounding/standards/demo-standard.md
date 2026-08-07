@@ -4,7 +4,7 @@ The Demo Standard is invented for this fixture. Its clause identifiers belong to
 no published standard, so nothing here quotes or attributes anything real.
 
 **Quotation:** permitted. There is nothing to quote, because the source does not
-exist. The state is set here so the fixture exercises the permitted branch.
+exist. The state is set here so the fixture exercises that branch.
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|
