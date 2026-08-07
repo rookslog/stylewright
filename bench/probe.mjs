@@ -388,6 +388,14 @@ export function checkRecord(record, name = 'record') {
   // route, per ADR-0017, and neither form ever enters the tree. A record is
   // committed, so a credential that reached one would be published. Nothing
   // here quotes what it matched.
+  //
+  // This asks the question of the WHOLE record, so a credential split across
+  // two fields is seen only when the key name between them survives unwrapping
+  // at eight characters or more — the colon breaks the run otherwise. Which
+  // seams that covers is an accident of what the keys are called, not a
+  // property anything here decides. It sits inside the split-across-fields
+  // residue the pattern already declares, and it is written down because an
+  // accident that looks like coverage is worse than a stated gap.
   if (SECRET.test(unwrap(JSON.stringify(record)))) {
     say('something in this record looks like a credential. Nothing here may carry one, '
       + 'by either route.');
