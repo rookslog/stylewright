@@ -31,14 +31,14 @@ investigation off the model and onto the instruction stack above it, and
 signature is not known to be a property of a model. On the evidence this
 repository holds, the instruction stack is the live hypothesis.
 
-**Decision.** The skill carries mechanisms only. Every rule in it names a
-structural or commitment defect, and no rule in it is enforced by matching a
-word. A rule may quote a phrase to illustrate the move it names. It may not
-ship a list that a checker matches.
+**Decision.** The skill carries mechanisms only. Every rule in it addresses a
+structural or commitment property of a passage, and no rule in it is enforced
+by matching a word. A rule may quote a phrase to illustrate the move it names.
+It may not ship a list that a checker matches.
 
 **The body is a positive recipe.** The owner ruled this on issue #1 and it is
-recorded here. The skill states a shape a writer works toward, and the named
-defects sit beside it as departures from that shape.
+recorded here. The skill states a shape a writer works toward, and each named
+defect sits beside the part of that shape it departs from.
 
 The ruling turns on a conditional the earlier reading had flattened. Match the
 form to the failure. De-slop treats wrong-shaped output, which takes a recipe.
@@ -49,7 +49,8 @@ Forcing one form onto two failure types is the error the ruling corrects.
 The cost travels with the choice, and the owner named it. A recipe constrains
 the skeleton and says nothing about the filler, and nothing can check whether a
 recipe was followed. So the departures stay in the skill, where a named failure
-is still visible, and the check layer stays where this ADR already puts it.
+is still visible, and the mechanical half stays in `bench/score.mjs`, which is
+where the section below puts every count this decision permits.
 
 No signature dictionary ships anywhere under `skills/`. The ban covers a list
 assembled from what a model or an instruction stack was observed to overuse.

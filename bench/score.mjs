@@ -16,9 +16,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Longest first. `hedges` consumes each match, so "it is worth noting" must be
-// found as one hedge before "worth noting" and "it is worth" can each claim it.
-// Scored unsorted, that one phrase counted twice.
+// No entry is CONTAINED in a later one. `hedges` consumes each match, so "it
+// is worth noting" must be found as one hedge before "worth noting" and "it is
+// worth" can each claim it. Scored in the wrong order, that phrase counted
+// twice. Length is not the rule and never was: `for completeness` sits after
+// the shorter `i didn't check` here and nothing is wrong with it. A test holds
+// the containment property over both lists.
 export const HEDGE = [
   'i have not verified', "i haven't verified", 'it is worth noting',
   "it's worth noting", 'i did not check', "i didn't check", 'for completeness',
@@ -48,7 +51,8 @@ export const HEDGE = [
  * the measurement design says it should. Until then the scorer counts it and
  * the product asserts nothing about it.
  *
- * Longest first, for the reason `HEDGE` is: the count consumes each match.
+ * An entry that contains an earlier one comes first, for the reason `HEDGE`
+ * orders that way: the count consumes each match.
  */
 export const SIGNATURE = [];
 

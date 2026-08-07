@@ -413,9 +413,10 @@ a word moves from the metric to a lint rule only after a promoted study under
 the measurement design says it should.
 
 A **controlled vocabulary** is a list whose word pairs trace to a published
-standard. Those pairs are method rather than observation, and they may ship.
-The gate is the three conditions above plus their own licence check, recorded
-in `SOURCE.md`, and not the promoted study. The ASD word-pair dictionary on
+standard. Those pairs are method rather than expression, and they trace to a
+standard rather than to an observed setting, so they may ship. The gate is the
+three conditions above plus their own licence check, recorded in `SOURCE.md`,
+and not the promoted study. The ASD word-pair dictionary on
 issue #19 is that case.
 
 Which gate applies turns on where the list came from, and never on what it

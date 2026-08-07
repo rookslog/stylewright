@@ -7,8 +7,11 @@ here has to be stated rather than left to be discovered.
 - Source: none. No standard, no vendor documentation, and no published guidance
   says any of this.
 - Rights holder: not applicable. Nothing is reproduced.
-- Transformation: not applicable. Every rule is written from scratch, and the
-  grounding matrix carries no `G` row.
+- Transformation: no source wording is carried into the skill, and the grounding
+  matrix carries no `G` row. Two rows rest on material somebody else reported
+  rather than on a source read here, and both are recorded below. `E-16` states
+  a vendor report relayed by the owner, and a survey package informed `E-10` and
+  `E-11` without grading either.
 - Reproduction check: not required, because no source wording is carried into
   the skill. Anyone who later adds a quotation must record the check here first.
 - Recorded 2026-08-06.

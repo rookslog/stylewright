@@ -27,7 +27,7 @@ Read these to recognise a shape you are already in, and not as a list to check
 against.
 
 - **The opening.** A passage that restates the question has spent its first sentence on words the reader wrote.
-- **One idea.** A triad where two items would do buys a clause and adds no idea. So does a "not just X but Y" frame whose Y restates X.
+- **One idea.** A triad where two items would do buys a clause and adds no idea. So does a "not just X but Y" frame whose Y restates X. "Not just a parser bug but a design problem" promises two findings and delivers one.
 - **The claim.** An invented counterposition gives an answer the shape of an argument without the substance of one. A stack of qualifications buries the one that would change what the reader does. A passive verb with no actor leaves nobody holding the claim.
 - **Earned structure.** A heading over two sentences, and a sentence announcing that a point is important, each perform a thoroughness the content has not reached.
 - **The end.** A closing paragraph that re-says the page gives the reader a second reading of the first.
@@ -48,8 +48,7 @@ in.
 
 ## No part of this matches a word
 
-No part of the shape above is enforced by matching a word, and this skill ships
-no word list.
+This skill ships no word list.
 
 A word that one setting overuses is countable, and that makes it tempting to
 ship. Two things argue against carrying it in a skill. A list of forbidden
@@ -68,8 +67,7 @@ Nothing here, today. `stylewright lint` carries no check for any part of the
 shape above, because a triad, a restatement and an invented objection are
 judgments about content rather than shapes a program recognises.
 
-So this skill is the generative half on its own. A reader applies it while
-writing, and no build fails when a passage departs from it.
+So this skill is the generative half on its own.
 
 ## What stands behind this shape
 
