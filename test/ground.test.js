@@ -22,14 +22,21 @@ description: d
 - Do not use semicolons.
 `;
 
+// The Demo Standard is invented, and so is every sentence quoted from it
+// below. Its clause identifiers deliberately match no published scheme, so no
+// fixture here attributes a fabricated quotation to a real rule.
+const DECLARED = '**Quotation:** permitted. The Demo Standard is invented.';
+
 const MATRIX = `# Grounding: s
 
-| ID | Our guidance | Our anchor | Source rule | Source location | Audited |
-|---|---|---|---|---|---|
-| N-01 | S | S |  | Section title |  |
-| N-02 | Rules | Rules |  | Section title |  |
-| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | Part 1, Section 5 | unaudited |
-| G-02 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 | unaudited |
+${DECLARED}
+
+| ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
+|---|---|---|---|---|---|---|
+| N-01 | S | S |  |  | Section title |  |
+| N-02 | Rules | Rules |  |  | Section title |  |
+| G-01 | Use no more than 20 words in a sentence. | Rules | DEMO-4 | unquoted | The Demo Standard, clause 4 | unaudited |
+| G-02 | Do not use semicolons. | Rules | DEMO-5 | "Do not use a semicolon." | The Demo Standard, clause 5 | unaudited |
 `;
 
 /**
@@ -51,7 +58,7 @@ test('parses rows and skips the separator', () => {
   assert.equal(rows.length, 4);
   assert.equal(rows[2].id, 'G-01');
   assert.equal(rows[2].anchor, 'Rules');
-  assert.equal(rows[3].rule, 'Rule 8.1');
+  assert.equal(rows[3].rule, 'DEMO-5');
 });
 
 test('a matching skill and matrix produce no errors', () => {
@@ -65,7 +72,7 @@ test('detects a quote that no longer appears in the skill', () => {
 });
 
 test('detects a quote under the wrong anchor', () => {
-  const moved = MATRIX.replace('| Rules | Rule 8.1', '| Nowhere | Rule 8.1');
+  const moved = MATRIX.replace('| Rules | DEMO-5', '| Nowhere | DEMO-5');
   const found = check({ skillText: SKILL, matrixText: moved });
   assert.ok(found.some((f) => f.code === 'wrong-anchor'));
 });
@@ -77,7 +84,7 @@ test('detects a skill statement with no row', () => {
 });
 
 test('a G row must carry a rule and an E row must not', () => {
-  const gNoRule = MATRIX.replace('| Rule 5.1 |', '|  |');
+  const gNoRule = MATRIX.replace('| DEMO-4 |', '|  |');
   assert.ok(check({ skillText: SKILL, matrixText: gNoRule })
     .some((f) => f.code === 'g-row-no-rule'));
 
@@ -93,14 +100,14 @@ test('a G row must carry a rule and an E row must not', () => {
 // audited matrix. These tests hold the record that closes the difference.
 
 const audited = (row) => MATRIX.replace(
-  '| Part 1, Section 5 | unaudited |',
-  `| Part 1, Section 5 | ${row} |`,
+  '| The Demo Standard, clause 4 | unaudited |',
+  `| The Demo Standard, clause 4 | ${row} |`,
 );
 
 const CURRENT = rowDigest(parseMatrix(MATRIX).find((r) => r.id === 'G-01'));
 
 test('a G row records its audit and a row of another kind does not', () => {
-  const silent = MATRIX.replace('| Part 1, Section 5 | unaudited |', '| Part 1, Section 5 |  |');
+  const silent = MATRIX.replace('| The Demo Standard, clause 4 | unaudited |', '| The Demo Standard, clause 4 |  |');
   const found = check({ skillText: SKILL, matrixText: silent });
   assert.ok(found.some((f) => f.code === 'g-row-no-audit' && f.message.startsWith('G-01:')));
   // The remedy names the digest to write, because a contributor cannot compute
@@ -216,9 +223,9 @@ test('an audit describes the row it sits in, so editing the row voids it', () =>
   assert.deepEqual(errors(check({ skillText: SKILL, matrixText: fresh })), []);
 
   for (const [was, now] of [
-    ['| Rule 5.1 |', '| Rule 5.2 |'],
-    ['| Part 1, Section 5 |', '| Part 1, Section 6 |'],
-    ['| Rules | Rule 5.1', '| Elsewhere | Rule 5.1'],
+    ['| DEMO-4 |', '| DEMO-6 |'],
+    ['| The Demo Standard, clause 4 |', '| The Demo Standard, clause 6 |'],
+    ['| Rules | DEMO-4', '| Elsewhere | DEMO-4'],
   ]) {
     const changed = fresh.replace(was, now);
     assert.notEqual(changed, fresh, `${was} appears once`);
@@ -249,15 +256,281 @@ test('the run says how much of the matrix a person has read, and fails nothing',
   assert.ok(one.some((f) => f.code === 'audit-coverage' && f.message.startsWith('1 of 2')));
 });
 
+// The quotation column. Our sentence beside a rule identifier reads as the
+// rule, and a reviewer had to open the source to find out. The doctrine
+// permits quoting the rule for that reason, so the row records whether it
+// does, on the same terms as the audit beside it.
+
+const quoted = (cell) => MATRIX.replace('| DEMO-4 | unquoted |', `| DEMO-4 | ${cell} |`);
+
+test('a G row records whether it quotes its rule, and a row of another kind does not', () => {
+  const silent = check({ skillText: SKILL, matrixText: quoted(' ') });
+  assert.ok(silent.some((f) => f.code === 'g-row-no-quote' && f.message.startsWith('G-01:')));
+
+  // An empty cell would say the same thing far less clearly, and it does not
+  // survive the column being dropped. `unquoted` is the state every row starts
+  // in, and it is the only spelling of it.
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: MATRIX })), []);
+
+  const narrated = MATRIX.replace('| N-01 | S | S |  |  |', '| N-01 | S | S |  | "S." |');
+  assert.ok(check({ skillText: SKILL, matrixText: narrated })
+    .some((f) => f.code === 'e-row-has-quote' && f.message.startsWith('N-01:')));
+});
+
+test('a quotation is marked as one, because unmarked text beside a rule id reads as the rule', () => {
+  // This is the G row defect one column over. Our own paraphrase sitting in a
+  // cell headed `Source text` borrows the authority of the standard exactly as
+  // a mislabelled row does, and nothing but the marks tells the two apart.
+  const refused = (cell) => check({ skillText: SKILL, matrixText: quoted(cell) })
+    .filter((f) => f.code === 'quote-unmarked').map((f) => f.message);
+  assert.equal(refused('Do not write a sentence of more than 20 words.').length, 1);
+  assert.equal(refused('"Keep to 20 words').length, 1, 'an unclosed quotation is not a quotation');
+  assert.equal(refused('DEMO-4 says "Keep to 20 words."').length, 1,
+    'the cell opens with the mark, so a lead-in of ours cannot pass as the source');
+  assert.equal(refused('"Keep to 20 words."').length, 0);
+  assert.equal(refused('"Keep to 20 words." and "Write one idea."').length, 0,
+    'a row citing two rules quotes both, and our word between them is outside the marks');
+  assert.equal(refused('unquoted').length, 0);
+
+  // Every pair holds something. A pair with nothing in it quotes nothing, and
+  // it passed, so a row could claim its rule's words while carrying none and
+  // the coverage count called it quoted.
+  assert.equal(refused('""').length, 1);
+  assert.equal(refused('"   "').length, 1, 'whitespace between the marks is not words');
+  assert.equal(refused('"Keep to 20 words." and ""').length, 1,
+    'the second pair is a quotation too, so it holds something as well');
+  assert.deepEqual(check({ skillText: SKILL, matrixText: quoted('""') })
+    .filter((f) => f.code === 'quote-coverage').map((f) => f.message),
+    ["1 of 2 G rows carry the source's own words."]);
+
+  // The message carries the cell it refused, because a contributor reading
+  // "is not a quotation" over a cell they believe is one has nothing to act on.
+  assert.match(refused('Keep to 20 words.')[0], /"Keep to 20 words\."/);
+});
+
+// The prohibition. A licence a source imposes is not a property of any row, so
+// nothing in a row could hold it. Rule text substituted into a matrix whose
+// owner forbade exactly that left the whole gate green, because the prohibition
+// lived in prose and the check had never read prose.
+
+test('a matrix declares whether it may quote at all, and a prohibition is enforced', () => {
+  const forbidden = MATRIX.replace(DECLARED, '**Quotation:** forbidden. The owner said no.');
+  const found = check({ skillText: SKILL, matrixText: forbidden });
+  assert.ok(found.some((f) => f.code === 'quotation-forbidden-here' && f.message.startsWith('G-02:')),
+    'a well-formed quotation is exactly the case the prohibition exists to refuse');
+  // The message names the line that forbids it, because the fix is an edit
+  // there and not an edit to the row.
+  assert.match(found.find((f) => f.code === 'quotation-forbidden-here').message, /line 3/);
+
+  // The count does not contradict the finding above it. A refused cell is not
+  // a quotation, and the prohibition refuses every one of them, so a forbidden
+  // matrix reporting `1 of 2` would say the file carries words the run just
+  // refused to let it carry.
+  assert.deepEqual(found.filter((f) => f.code === 'quote-coverage').map((f) => f.message),
+    ["0 of 2 G rows carry the source's own words."]);
+
+  // `unquoted` is untouched by it, so a forbidden matrix is otherwise ordinary.
+  assert.deepEqual(errors(check({
+    skillText: SKILL,
+    matrixText: forbidden.replace('| DEMO-5 | "Do not use a semicolon." |', '| DEMO-5 | unquoted |'),
+  })), []);
+});
+
+test('an absent declaration reads as forbidden, because a default would lift it', () => {
+  // The gate must not fail open on a missing line. That is the defect the
+  // injected day already carries a fix for, one check over.
+  const silent = MATRIX.replace(`${DECLARED}\n\n`, '');
+  const found = check({ skillText: SKILL, matrixText: silent });
+  assert.ok(found.some((f) => f.code === 'matrix-no-quotation-declaration'));
+  assert.ok(found.some((f) => f.code === 'quotation-forbidden-here' && f.message.startsWith('G-02:')),
+    'a matrix that declares nothing quoted its source anyway');
+});
+
+test('a second declaration is refused, and any forbidden among them governs', () => {
+  // Lifting a prohibition by writing a permitting line under it would make the
+  // declaration worth no more than the cell it replaced.
+  const both = MATRIX.replace(DECLARED, `**Quotation:** forbidden. The owner said no.\n\n${DECLARED}`);
+  const found = check({ skillText: SKILL, matrixText: both });
+  assert.ok(found.some((f) => f.code === 'matrix-two-quotation-declarations'));
+  assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+    'the added line lifted the prohibition above it');
+});
+
+test('a declaration a reader cannot find governs nothing', () => {
+  // Three shapes, each found by attacking this check rather than by imagining
+  // it. Every one was ACCEPTED as a permitting line, which is the same
+  // container asymmetry the matrix reader already refuses, pointing the other
+  // way: a line the reader does not see may not carry the record.
+  const permits = '**Quotation:** permitted. The Demo Standard is invented.';
+  const bare = MATRIX.replace(`${DECLARED}\n\n`, '');
+  const cases = [
+    ['matrix-declaration-below-the-table', `${bare}\n${permits}\n`],
+    ['matrix-declaration-inside-html', bare.replace('# Grounding: s',
+      `# Grounding: s\n\n<details>\n\n${permits}\n\n</details>`)],
+    ['matrix-declaration-equivocates', MATRIX.replace(DECLARED,
+      '**Quotation:** permitted for the dictionary only. Rule text is forbidden.')],
+  ];
+  for (const [code, matrix] of cases) {
+    const found = check({ skillText: SKILL, matrixText: matrix });
+    assert.ok(found.some((f) => f.code === code), `${code} did not fire`);
+    // And it does not permit. The finding alone would leave the quotation
+    // standing, which is the whole of what the attack won.
+    assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+      `${code} still permitted the quotation`);
+  }
+});
+
+test('a declaration is hidden by indented HTML too, because CommonMark allows the indent', () => {
+  // Anchoring the tag at column 0 read a two-space-indented `<details>` as
+  // visible prose. A renderer collapses it, so the reader and the check
+  // disagreed again, one space over.
+  const permits = '**Quotation:** permitted. The Demo Standard is invented.';
+  const bare = MATRIX.replace(`${DECLARED}\n\n`, '');
+  for (const indent of ['', ' ', '  ', '   ']) {
+    const hidden = bare.replace('# Grounding: s',
+      `# Grounding: s\n\n${indent}<details>\n\n${permits}\n\n${indent}</details>`);
+    const found = check({ skillText: SKILL, matrixText: hidden });
+    assert.ok(found.some((f) => f.code === 'matrix-declaration-inside-html'),
+      `${indent.length} spaces of indent hid the tag from the check and not from the reader`);
+    assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+      `${indent.length} spaces of indent permitted the quotation`);
+  }
+
+  // The closer takes the same indent, or the region never ends and every
+  // declaration below an indented block is refused for sitting in it.
+  for (const indent of ['', ' ', '  ', '   ']) {
+    const closed = bare.replace('# Grounding: s',
+      `# Grounding: s\n\n${indent}<details>\n\nHidden prose.\n\n${indent}</details>\n\n${permits}`);
+    assert.deepEqual(errors(check({ skillText: SKILL, matrixText: closed })), [],
+      `a closer indented ${indent.length} spaces left the region open`);
+  }
+});
+
+test('a void element opens no region, so a bare line break does not swallow the file', () => {
+  // `<br>` never closes, so counting it put every declaration below it inside
+  // a region no line could end. That fails closed, which is a rule people
+  // route around rather than a rule that holds.
+  for (const tag of ['<br>', '<br />', '<hr>', '<img src="x.png">']) {
+    const after = MATRIX.replace(DECLARED, `${tag}\n\n${DECLARED}`);
+    assert.deepEqual(errors(check({ skillText: SKILL, matrixText: after })), [],
+      `${tag} opened a region that never closed`);
+  }
+});
+
+test('the state word ends the token, so permitted-not does not read as permitted', () => {
+  // `\b` matched inside the word, so a line a person reads as the opposite of
+  // permission was taken for permission.
+  const hyphenated = MATRIX.replace(DECLARED, '**Quotation:** permitted-not. Read this as no.');
+  const found = check({ skillText: SKILL, matrixText: hyphenated });
+  assert.ok(found.some((f) => f.code === 'matrix-no-quotation-declaration'),
+    'permitted-not was read as a declaration');
+  assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+    'permitted-not permitted the quotation');
+});
+
+test('a forbidden that is badly written still forbids', () => {
+  // Doubt reads as forbidden everywhere else here. A state-blind filter had a
+  // clean `permitted` beat a misplaced or equivocating `forbidden` above it,
+  // which is this design pointing backwards.
+  const bare = MATRIX.replace(`${DECLARED}\n\n`, '');
+  const messy = [
+    ['below the table', `${bare}\n**Quotation:** forbidden. The owner said no.\n`],
+    ['inside HTML', bare.replace('# Grounding: s',
+      '# Grounding: s\n\n<details>\n\n**Quotation:** forbidden. The owner said no.\n\n</details>')],
+    ['equivocating', bare.replace('# Grounding: s',
+      '# Grounding: s\n\n**Quotation:** forbidden. No cell here is permitted to carry words.')],
+  ];
+  for (const [how, prohibition] of messy) {
+    // The clean permitting line sits below it and must not win.
+    const both = prohibition.replace('| ID |', `${DECLARED}\n\n| ID |`);
+    assert.ok(check({ skillText: SKILL, matrixText: both })
+      .some((f) => f.code === 'quotation-forbidden-here'),
+      `a prohibition ${how} stopped governing while a clean permitted won`);
+  }
+});
+
+test('a qualification cannot escape by moving to the next line', () => {
+  // The reason is a paragraph, and reading only the first line of it would
+  // move the equivocation down one line rather than refuse it.
+  const wrapped = MATRIX.replace(DECLARED,
+    '**Quotation:** permitted. The Demo Standard is invented.\nRule text stays forbidden.');
+  const found = check({ skillText: SKILL, matrixText: wrapped });
+  assert.ok(found.some((f) => f.code === 'matrix-declaration-equivocates'),
+    'the second line of the reason named a state and the check did not read it');
+  assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+    'the wrapped qualification permitted the quotation');
+});
+
+test('the reason runs to the next heading or the table, not to the next blank line', () => {
+  // Reading one line let the qualification move to the second, and reading one
+  // paragraph let it move to the paragraph after. The argument for widening the
+  // first time reaches the second time, so it stops where a subject changes.
+  const after = MATRIX.replace(DECLARED, `${DECLARED}\n\nRule text stays forbidden.`);
+  assert.ok(check({ skillText: SKILL, matrixText: after })
+    .some((f) => f.code === 'matrix-declaration-equivocates'),
+    'a qualification one paragraph down escaped the reason');
+
+  // A heading ends it, because a heading starts a different subject.
+  const parted = MATRIX.replace(DECLARED, `${DECLARED}\n\n## Elsewhere\n\nRule text stays forbidden.`);
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: parted })), [],
+    'prose under a later heading was read as part of the reason');
+
+  // And a fenced example is skipped rather than read, so a matrix that shows
+  // what a declaration looks like does not equivocate about its own state.
+  const shows = MATRIX.replace(DECLARED,
+    `${DECLARED}\n\n\`\`\`\n**Quotation:** forbidden\n\`\`\`\n\nNothing here says otherwise.`);
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: shows })), [],
+    'a fenced example poisoned the reason around it');
+});
+
+test('a declaration inside a fenced block is an example, not a state', () => {
+  // CONTRIBUTING shows the line in a fence, and a matrix quoting the guidance
+  // would otherwise declare itself by showing what a declaration looks like.
+  const shown = MATRIX.replace(DECLARED, `${DECLARED}\n\n\`\`\`\n**Quotation:** forbidden\n\`\`\``);
+  const codes = check({ skillText: SKILL, matrixText: shown }).map((f) => f.code);
+  assert.ok(!codes.includes('matrix-two-quotation-declarations'),
+    'the fenced example was counted as a second declaration');
+  assert.ok(!codes.includes('quotation-forbidden-here'),
+    'the fenced example forbade quotation in the file that showed it');
+});
+
+test('the run says how much of the matrix quotes its source', () => {
+  // The substitution limit is a judgment about republishing, and no threshold
+  // here can make it. The run reports the number and leaves it with the reader.
+  const none = check({ skillText: SKILL, matrixText: quoted('unquoted') });
+  assert.deepEqual(none.filter((f) => f.code === 'quote-coverage').map((f) => f.message),
+    ["1 of 2 G rows carry the source's own words."]);
+
+  const both = check({ skillText: SKILL, matrixText: quoted('"Keep to 20 words."') });
+  assert.ok(both.some((f) => f.code === 'quote-coverage' && f.message.startsWith('2 of 2')));
+  // It is a note. A matrix that quotes nothing is honest, and a gate that
+  // failed on it would be red for every matrix from the day it landed.
+  assert.deepEqual(errors(both), []);
+});
+
+test('an audit records the quotation the person read, so rewriting it goes stale', () => {
+  // The quoted words are the copy of the rule an auditor read our sentence
+  // against. Left out of the digest, they could be rewritten under a recorded
+  // audit, which is the defect the digest exists to catch one column over.
+  const before = MATRIX.replace('| DEMO-4 | unquoted |', '| DEMO-4 | "Keep to 20 words." |');
+  const stamp = rowDigest(parseMatrix(before).find((r) => r.id === 'G-01'));
+  const recorded = before.replace('| The Demo Standard, clause 4 | unaudited |', `| The Demo Standard, clause 4 | 2026-08-06 ${stamp} |`);
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: recorded })), []);
+
+  const rewritten = recorded.replace('"Keep to 20 words."', '"Keep to 25 words."');
+  assert.ok(check({ skillText: SKILL, matrixText: rewritten })
+    .some((f) => f.code === 'audit-stale' && f.message.startsWith('G-01:')));
+});
+
 // The container, not the cell. Every attack below left the audit VALUES
 // untouched and went after the table around them. A matrix whose rendered
 // column is gone is not the record, whatever its rows still parse as, because
 // the record exists for the person reading the file.
 
-const HEADER = '| ID | Our guidance | Our anchor | Source rule | Source location | Audited |';
-const DELIM = '|---|---|---|---|---|---|';
+const HEADER = '| ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |';
+const DELIM = '|---|---|---|---|---|---|---|';
 const FULLY = MATRIX
-  .replace('| Part 1, Section 5 | unaudited |', `| Part 1, Section 5 | 2026-08-06 ${CURRENT} |`);
+  .replace('| The Demo Standard, clause 4 | unaudited |', `| The Demo Standard, clause 4 | 2026-08-06 ${CURRENT} |`);
 
 test('the header and the delimiter are checked, not skipped', () => {
   // Each of these printed full coverage and no error. In GFM each either drops
@@ -265,15 +538,25 @@ test('the header and the delimiter are checked, not skipped', () => {
   // loses the audit record while the check reports it intact.
   const codes = (m) => check({ skillText: SKILL, matrixText: m }).map((f) => f.code);
 
-  const FIVE = '| ID | Our guidance | Our anchor | Source rule | Source location |';
-  assert.ok(codes(FULLY.replace(HEADER, FIVE).replace(DELIM, '|---|---|---|---|---|'))
+  const SHORT = '| ID | Our guidance | Our anchor | Source rule | Source text | Source location |';
+  assert.ok(codes(FULLY.replace(HEADER, SHORT).replace(DELIM, '|---|---|---|---|---|---|'))
     .includes('matrix-header-columns'));
-  assert.ok(codes(FULLY.replace(DELIM, '|---|---|---|---|---|')).includes('matrix-delimiter-columns'));
+  assert.ok(codes(FULLY.replace(DELIM, '|---|---|---|---|---|---|')).includes('matrix-delimiter-columns'));
   assert.ok(codes(FULLY.replace(DELIM, '|---|---|---|')).includes('matrix-delimiter-columns'));
   assert.ok(codes(FULLY.replace(`${DELIM}\n`, '')).includes('matrix-no-table'));
   assert.ok(codes(FULLY.replace(`${HEADER}\n`, '')).includes('matrix-no-header'));
-  assert.ok(codes(FULLY.replace('| Source location | Audited |', '| Source location | Notes |'))
-    .includes('matrix-header-not-audited'));
+
+  // Every heading, not only the audit's. Renaming one column is renaming the
+  // label that tells a reader which cell they are reading, and the check named
+  // a single column while a second one carried a claim about a source.
+  for (const [was, now] of [
+    ['| Source location | Audited |', '| Source location | Notes |'],
+    ['| Source rule | Source text |', '| Source rule | Notes |'],
+    ['| ID | Our guidance |', '| Row | Our guidance |'],
+  ]) {
+    assert.ok(codes(FULLY.replace(was, now)).includes('matrix-header-column-name'),
+      `renaming a column in ${now} passed`);
+  }
 
   // The intact matrix stays clean, so none of the above is a rule the shipped
   // files break.
@@ -306,10 +589,10 @@ test('a row that is not read is named, so the denominator cannot shrink quietly'
   assert.ok(quoted.some((f) => f.code === 'unread-matrix-row' && /blockquote/.test(f.message)));
 });
 
-test('a seventh cell is refused, because no reader and no check sees it', () => {
+test('a cell past the last is refused, because no reader and no check sees it', () => {
   const smuggled = FULLY.replace(
-    `| Part 1, Section 5 | 2026-08-06 ${CURRENT} |`,
-    `| Part 1, Section 5 | 2026-08-06 ${CURRENT} | INVISIBLE IN RENDER |`,
+    `| The Demo Standard, clause 4 | 2026-08-06 ${CURRENT} |`,
+    `| The Demo Standard, clause 4 | 2026-08-06 ${CURRENT} | INVISIBLE IN RENDER |`,
   );
   assert.ok(check({ skillText: SKILL, matrixText: smuggled })
     .some((f) => f.code === 'row-has-extra-cell' && f.message.startsWith('G-01:')));
@@ -338,7 +621,7 @@ test('the table is contiguous, because GFM ends one at the first gap', () => {
   // table could be scattered down the file and still parse with full coverage
   // while the reader saw no table at all.
   const codes = (m) => check({ skillText: SKILL, matrixText: m }).map((f) => f.code);
-  const G1 = '| G-01 | Use no more than 20 words in a sentence. | Rules | Rule 5.1 | Part 1, Section 5 | unaudited |';
+  const G1 = '| G-01 | Use no more than 20 words in a sentence. | Rules | DEMO-4 | unquoted | The Demo Standard, clause 4 | unaudited |';
 
   // Between the header and the delimiter.
   assert.ok(codes(MATRIX.replace(DELIM, `\n${DELIM}`)).includes('matrix-no-header'));
@@ -404,11 +687,19 @@ test('the coverage count is withheld when the table is broken', () => {
   // one level out.
   for (const m of [
     MATRIX.replace('| Source location | Audited |', '| Source location | Notes |'),
-    MATRIX.replace(DELIM, '|---|---|---|---|---|'),
+    MATRIX.replace(DELIM, '|---|---|---|---|---|---|'),
     MATRIX.replace(`${DELIM}\n`, `${DELIM}\n\n`),
   ]) {
-    const note = check({ skillText: SKILL, matrixText: m }).find((f) => f.code === 'audit-coverage');
-    assert.equal(note.message, 'not counted: the matrix table is broken.');
+    // Both counts, because a quoted matrix is read against the same broken
+    // table. One number withheld and the other printed would tell a reader the
+    // table is readable after all.
+    for (const code of ['audit-coverage', 'quote-coverage']) {
+      const note = check({ skillText: SKILL, matrixText: m }).find((f) => f.code === code);
+      // Named, not dereferenced. A missing note is the interesting failure and
+      // it read as a TypeError, which reports the test rather than the defect.
+      assert.ok(note, `${code} is absent over a broken table, so nothing says why`);
+      assert.equal(note.message, 'not counted: the matrix table is broken.');
+    }
   }
   // An intact table still reports the ratio.
   assert.ok(check({ skillText: SKILL, matrixText: MATRIX })
@@ -430,33 +721,33 @@ test('a leap second is 23:59:60 and a fraction belongs to the seconds', () => {
 
 test('readMatrix finds the table by its delimiter, not by a heading word', () => {
   const table = readMatrix(MATRIX);
-  assert.equal(table.header.cells.length, 6);
-  assert.equal(table.header.cells[5], 'Audited');
+  assert.equal(table.header.cells.length, 7);
+  assert.equal(table.header.cells[6], 'Audited');
   assert.equal(table.rows.length, 4);
   assert.deepEqual(table.refusals, []);
 });
 
-test('every row carries the sixth cell, including a matrix that cites no source', () => {
+test('every row carries the last cell, including a matrix that cites no source', () => {
   // An absent cell used to coalesce to an empty one, so a matrix of E and N
   // rows could drop the column from its header, its delimiter and every row
   // and still pass. No G row was left to complain, and the format quietly
   // became optional for exactly the matrices nobody would check by hand.
   const ours = SKILL.replace(/- Use no more.*\n- Do not use semicolons\.\n/, '- Ours alone.\n');
-  const fiveColumns = `# Grounding: s
+  const oneShort = `# Grounding: s
 
-| ID | Our guidance | Our anchor | Source rule | Source location |
-|---|---|---|---|---|
-| N-01 | S | S |  | Section title |
-| N-02 | Rules | Rules |  | Section title |
-| E-01 | Ours alone. | Rules |  | Ours |
+| ID | Our guidance | Our anchor | Source rule | Source text | Source location |
+|---|---|---|---|---|---|
+| N-01 | S | S |  |  | Section title |
+| N-02 | Rules | Rules |  |  | Section title |
+| E-01 | Ours alone. | Rules |  |  | Ours |
 `;
-  const found = check({ skillText: ours, matrixText: fiveColumns });
+  const found = check({ skillText: ours, matrixText: oneShort });
   assert.deepEqual(found.filter((f) => f.code === 'row-missing-audit-cell').length, 3,
     'every row without the cell is named, not just the ones that cite a source');
 
   // A G row missing the cell is refused for the missing cell, and not reported
   // as though it had left an audit blank.
-  const short = MATRIX.replace('| Part 1, Section 5 | unaudited |', '| Part 1, Section 5 |');
+  const short = MATRIX.replace('| The Demo Standard, clause 4 | unaudited |', '| The Demo Standard, clause 4 |');
   const codes = check({ skillText: SKILL, matrixText: short }).map((f) => f.code);
   assert.ok(codes.includes('row-missing-audit-cell'));
   assert.ok(!codes.includes('g-row-no-audit'));
@@ -468,11 +759,13 @@ test('a matrix that cites no source reports no audit coverage', () => {
   const ours = SKILL.replace(/- Use no more.*\n- Do not use semicolons\.\n/, '- Ours alone.\n');
   const matrix = `# Grounding: s
 
-| ID | Our guidance | Our anchor | Source rule | Source location | Audited |
-|---|---|---|---|---|---|
-| N-01 | S | S |  | Section title |  |
-| N-02 | Rules | Rules |  | Section title |  |
-| E-01 | Ours alone. | Rules |  | Ours |  |
+${DECLARED}
+
+| ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
+|---|---|---|---|---|---|---|
+| N-01 | S | S |  |  | Section title |  |
+| N-02 | Rules | Rules |  |  | Section title |  |
+| E-01 | Ours alone. | Rules |  |  | Ours |  |
 `;
   assert.deepEqual(check({ skillText: ours, matrixText: matrix }), []);
 });
@@ -571,7 +864,7 @@ test('guidance containing a pipe can be quoted in a cell', () => {
   // parseMatrix split on every pipe with no escape, so a paragraph about a
   // shell pipeline could not be reproduced by any row and stayed red forever.
   const skill = `${SKILL}\nUse a | b carefully.\n`;
-  const matrix = `${MATRIX}| E-01 | Use a \\| b carefully. | Rules |  | Ours |  |\n`;
+  const matrix = `${MATRIX}| E-01 | Use a \\| b carefully. | Rules |  |  | Ours |  |\n`;
   assert.deepEqual(errors(check({ skillText: skill, matrixText: matrix })), []);
 });
 
@@ -628,8 +921,8 @@ test('pairing does not depend on the order of the rows', () => {
   // A row naming the wrong anchor could consume the occurrence a later correct
   // row needed, so the same two rows in the other order gave different findings.
   const rows = (a, b) => `${MATRIX}${a}${b}`;
-  const wrong = '| G-03 | Do not use semicolons. | Nowhere | Rule 8.1 | s | unaudited |\n';
-  const right = '| G-04 | Do not use semicolons. | Rules | Rule 8.1 | s | unaudited |\n';
+  const wrong = '| G-03 | Do not use semicolons. | Nowhere | DEMO-5 | unquoted | s | unaudited |\n';
+  const right = '| G-04 | Do not use semicolons. | Rules | DEMO-5 | unquoted | s | unaudited |\n';
   const twice = `${SKILL}- Do not use semicolons.\n`;
   const codes = (m) => check({ skillText: twice, matrixText: m })
     .map((f) => f.code).sort();
@@ -656,7 +949,7 @@ test('one row covers one occurrence, not every copy of a sentence', () => {
   assert.ok(found.some((f) => f.code === 'uncovered-statement'
     && /Do not use semicolons/.test(f.message)));
 
-  const spare = `${MATRIX}| G-03 | Do not use semicolons. | Rules | Rule 8.1 | Part 1, Section 8 | unaudited |\n`;
+  const spare = `${MATRIX}| G-03 | Do not use semicolons. | Rules | DEMO-5 | unquoted | The Demo Standard, clause 5 | unaudited |\n`;
   assert.deepEqual(errors(check({ skillText: twice, matrixText: spare })), []);
   assert.ok(check({ skillText: SKILL, matrixText: spare })
     .some((f) => f.code === 'duplicate-row'));
@@ -664,12 +957,18 @@ test('one row covers one occurrence, not every copy of a sentence', () => {
 
 test('an N row carries no rule, and an unknown prefix is refused', () => {
   const narrative = `${SKILL}\nThis guide does not replace the standard.\n`;
-  const withN = `${MATRIX}| N-01 | This guide does not replace the standard. | Rules |  | Framing |  |\n`;
+  const withN = `${MATRIX}| N-01 | This guide does not replace the standard. | Rules |  |  | Framing |  |\n`;
   assert.deepEqual(errors(check({ skillText: narrative, matrixText: withN })), []);
 
-  const nWithRule = withN.replace('| Rules |  | Framing |', '| Rules | Rule 1.1 | Framing |');
+  const nWithRule = withN.replace('| Rules |  |  | Framing |', '| Rules | DEMO-9 |  | Framing |');
   assert.ok(check({ skillText: narrative, matrixText: nWithRule })
     .some((f) => f.code === 'e-row-has-rule'));
+
+  // The same line one column over. An N row that quotes a source is claiming
+  // one, whatever its rule cell says.
+  const nWithQuote = withN.replace('| Rules |  |  | Framing |', '| Rules |  | "Framing." | Framing |');
+  assert.ok(check({ skillText: narrative, matrixText: nWithQuote })
+    .some((f) => f.code === 'e-row-has-quote'));
 
   const bogus = withN.replace('| N-01 |', '| X-01 |');
   assert.ok(check({ skillText: narrative, matrixText: bogus })

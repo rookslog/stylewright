@@ -116,7 +116,8 @@ This limit is what lets the repository be public.
 ## Write the grounding matrix
 
 Each row has an ID, the guidance quoted from your `SKILL.md`, the heading it sits
-under, the source rule, where that rule lives, and the state of its audit.
+under, the source rule, the rule's own words, where that rule lives, and the
+state of its audit.
 
 - Use `G-nn` when the row traces to the source. Name the rule, such as `Rule 5.1`.
 - Use `E-nn` when the guidance is ours. Leave the rule cell empty.
@@ -134,18 +135,99 @@ Write the date in UTC, which `date -u +%F` gives you. The check refuses a date
 after the UTC day it runs on, because nobody read a row on a day that has not
 arrived.
 
-Every row carries the sixth cell, including the rows that leave it empty. A row
-written with five cells is refused, so a matrix without a `G` row cannot drop
-the column. A seventh cell is refused too, because the render drops it.
+Every row carries the last cell, including the rows that leave it empty. A row
+written with six cells is refused, so a matrix without a `G` row cannot drop
+the column. An eighth cell is refused too, because the render drops it.
 
-The header and the delimiter carry six columns as well, and the sixth heading
-reads `Audited`. Write every row at column 0. A row indented or quoted is not
-read, and the check names it rather than passing over it. Put an example row
+The header and the delimiter carry seven columns as well, and the check reads
+every heading by name. Write every row at column 0. A row indented or quoted is
+not read, and the check names it rather than passing over it. Put an example row
 inside a fenced block, which the check skips.
 
 Editing any other cell in the row changes the digest. The check then reports
 the audit as stale, because the words you read are no longer the words in the
 row. Read the row against the source again, or write `unaudited`.
+
+## Quote the rule in the `Source text` cell
+
+Write `unquoted` in the `Source text` cell of every `G` row, and leave the cell
+empty on every other row. A reviewer then knows that nobody has put the rule's
+words beside your paraphrase yet.
+
+Quote the rule when the exact wording is what a reader must check. Write the
+operative sentence in quotation marks, and nothing else in the cell.
+
+The row below is invented. The Demo Standard does not exist, clause 4 says
+nothing, and the sentence between the marks is made up for this page. No
+example in this repository quotes a real standard, because a fabricated
+sentence attributed to a real rule is the defect this column exists to prevent.
+
+```
+| G-01 | Use no more than 20 words in a sentence. | Procedures | DEMO-4 | "Keep to a maximum of 20 words." | The Demo Standard, clause 4 | unaudited |
+```
+
+The marks are not decoration. Words inside a pair are the source's and words
+outside one are ours, so a row citing two rules writes `"a" and "b"`. Every
+pair holds something, because an empty pair quotes nothing. A cell that carries
+neither the marks nor the word `unquoted` is refused, because our own paraphrase
+under a heading that reads `Source text` claims an authority the source never
+gave it.
+
+## The matrix declares whether it may quote at all
+
+The cell grammar cannot say whether the source permits a quotation, and three
+of our four sources do not. So each matrix declares it, at column 0, in a line
+a reader sees:
+
+```
+**Quotation:** forbidden. The owner approved publication on the condition
+that no rule text is reproduced.
+```
+
+The word is `permitted` or `forbidden`, and the reason follows it. Under
+`forbidden` the check refuses every `Source text` cell but `unquoted`, whatever
+else is true of that cell.
+
+Write it above the header row, as ordinary prose at column 0, and name the state
+once. Three shapes are refused, and each of them was accepted before somebody
+attacked the check:
+
+- A declaration under the table. A reader looking for the state of a file reads
+  its opening prose, not a footnote to the rows.
+- A declaration inside raw HTML. A permitting line inside a collapsed
+  `<details>` is a line the reader on GitHub never sees. Up to three spaces of
+  indent still open one, because a renderer treats those as HTML too.
+- A reason that names a state again. `permitted for the dictionary only. Rule
+  text is forbidden.` says both, and the check read it as permitted. The reason
+  runs to the next heading or to the table, so moving the qualification to the
+  next line or the next paragraph does not help. A fenced example inside it is
+  skipped, so a matrix may show what a declaration looks like.
+
+Write the state word on its own. `permitted-not` is not a declaration at all,
+and a matrix carrying only that one reads as `forbidden`.
+
+Every matrix carries the line, and a matrix that carries none is read as
+`forbidden`. So is one whose only declaration is refused above. A default of
+`permitted` would turn the rule off for whoever forgot the line. Two lines are
+refused, and any `forbidden` among them governs even when that one is the
+refused line, so lift a prohibition by editing it rather than by writing a
+permitting line under it.
+
+Do three things before you write a quotation, in this order:
+
+1. Read `SOURCE.md` for that skill. It records what licence was checked and
+   when. Some sources restrict reproduction beyond ordinary quotation, and one
+   of ours does.
+2. Record the check you made, in the same `SOURCE.md`, with the date. Then edit
+   the declaration, and say there what changed.
+3. Ask whether the matrix has started to replace the source. A quoted operative
+   sentence per row is citation. Every rule quoted in full is republishing, and
+   no number in the checker decides where that line falls. `check:ground` prints
+   how many rows quote their source, and you hold the judgment.
+
+The quotation is part of the row digest, so writing one voids a recorded audit.
+That is deliberate. The quoted words are what the auditor read your sentence
+against.
 
 Quote your own `SKILL.md` exactly. `check:ground` compares the strings, so a
 reworded rule fails the check until you update its row. That is the point.

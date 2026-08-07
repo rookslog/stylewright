@@ -8,6 +8,12 @@
   copyright waived worldwide.
 - Verified: 2026-07-26, read from `LICENSE.md` in the repository above
 - Transformation: an operational digest in our own words. No source text.
+- Quotation check, 2026-08-06: the grounding matrix gained a `Source text`
+  column on this date, under ADR-0020. Nothing was quoted into it, and every
+  row reads `unquoted`. CC0 places no limit on quoting a guideline there, so
+  this is the one matrix in the repository whose column is empty for no reason
+  but the work. Filling it is a content pass, and each quotation is a claim a
+  reader must be able to check against the guideline the row names.
 
 ## A note on the canonical URL
 

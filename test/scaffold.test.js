@@ -33,18 +33,22 @@ test('a scaffolded standards skill passes the grounding check immediately', asyn
     'a fresh scaffold must be green, or contributors learn to silence the check');
 });
 
-test('a scaffolded G row starts unaudited, and says so', async () => {
+test('a scaffolded G row starts unaudited and unquoted, and says so', async () => {
   // The scaffold guesses the rule identifier. Seeding a date beside a guess
   // would make the matrix claim a reading nobody has done, on the day the file
-  // was created.
+  // was created. The quotation is the same: the scaffold has opened no source,
+  // so it has no words of one to put in the row.
   const repo = await tmp();
   await scaffoldSkill({ repoRoot: repo, ...STD });
   const matrix = await fs.readFile(path.join(repo, 'grounding', 'standards', 'demo-guide.md'), 'utf8');
   const rows = parseMatrix(matrix);
   const sourced = rows.filter((r) => r.id.startsWith('G-'));
+  const ours = rows.filter((r) => !r.id.startsWith('G-'));
   assert.ok(sourced.length, 'a standards scaffold seeds at least one G row');
   assert.deepEqual([...new Set(sourced.map((r) => r.audit))], ['unaudited']);
-  assert.deepEqual([...new Set(rows.filter((r) => !r.id.startsWith('G-')).map((r) => r.audit))], ['']);
+  assert.deepEqual([...new Set(ours.map((r) => r.audit))], ['']);
+  assert.deepEqual([...new Set(sourced.map((r) => r.quote))], ['unquoted']);
+  assert.deepEqual([...new Set(ours.map((r) => r.quote))], ['']);
 });
 
 test('a scaffolded skill is a valid catalog entry', async () => {

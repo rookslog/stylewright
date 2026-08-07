@@ -4,8 +4,16 @@ import crypto from 'node:crypto';
 import { sections, indentOf, isIndented } from './markdown.js';
 import { loadCatalog } from './catalog.js';
 
-/** The columns a matrix carries, in order. The sixth is the audit. */
-export const MATRIX_COLUMNS = ['ID', 'Our guidance', 'Our anchor', 'Source rule', 'Source location', 'Audited'];
+/**
+ * The columns a matrix carries, in order. The last is the audit.
+ *
+ * `Source text` sits directly beside `Source rule`, because the control the
+ * design document states is that a quotation carries its identifier next to
+ * it. A reader compares the two cells without leaving the row, which is the
+ * whole reason the column exists: a `G` row against a paraphrase could only be
+ * checked against a memory of the rule, or against a 400-page PDF.
+ */
+export const MATRIX_COLUMNS = ['ID', 'Our guidance', 'Our anchor', 'Source rule', 'Source text', 'Source location', 'Audited'];
 
 // Split on UNESCAPED pipes only. Without this a paragraph containing a pipe —
 // guidance about a shell pipeline, or about Markdown itself — could not be
@@ -27,12 +35,12 @@ const IS_DELIMITER = (cells) => cells.length > 0
  * skip the header and the delimiter by pattern. Both halves leaked.
  *
  * The header and the delimiter were skipped rather than checked, so deleting
- * either one, or cutting either to five cells, or renaming the sixth heading
- * to `Notes`, left every row parsing and the coverage note printing full
- * marks. In GFM each of those either drops the rendered column or stops the
- * block being a table at all, so the person reading the matrix loses the audit
- * record while the check reports it intact. The record exists for the person,
- * so the column they see is the column that counts.
+ * either one, or cutting either short, or renaming a heading to `Notes`, left
+ * every row parsing and the coverage note printing full marks. In GFM each of
+ * those either drops the rendered column or stops the block being a table at
+ * all, so the person reading the matrix loses the record while the check
+ * reports it intact. The record exists for the person, so the column they see
+ * is the column that counts.
  *
  * A row inside a fenced block or indented four spaces is an EXAMPLE to a
  * reader and was a row to the checker, which is the same disagreement pointing
@@ -124,17 +132,18 @@ export function parseMatrix(text) {
     guidance: cells[1],
     anchor: cells[2],
     rule: cells[3],
-    location: cells[4],
-    // An absent sixth cell is NOT an empty one. Coalescing the two here made
+    quote: cells[4],
+    location: cells[5],
+    // An absent last cell is NOT an empty one. Coalescing the two here made
     // the column optional for any matrix without a G row: delete the header,
     // the delimiter and every cell from a matrix of E and N rows and the
     // check stayed clean, because each missing cell read as an empty audit
     // and no G row was left to complain. `undefined` reaches the check and
     // the check names it.
-    audit: cells[5],
-    // Everything past the sixth cell. GFM drops it from the render, so text
+    audit: cells[6],
+    // Everything past the last cell. GFM drops it from the render, so text
     // here is seen by no reader and was read by no check.
-    extra: cells.slice(6),
+    extra: cells.slice(7),
   }));
 }
 
@@ -209,6 +218,168 @@ const DESIGNATOR = /^\[(?:table|code) [0-9a-f]{8}\]$/;
 const UNAUDITED = 'unaudited';
 const AUDIT = /^(\d{4})-(\d{2})-(\d{2}) ([0-9a-f]{8})$/;
 
+/**
+ * What a `G` row records about the source's own words.
+ *
+ * The row's guidance cell is OUR sentence. Beside a rule identifier it reads
+ * as the rule, and a reviewer checking it has to open the source to find out.
+ * The doctrine permits quoting the rule for exactly that reason, so the row
+ * carries a cell for the source's words.
+ *
+ * `unquoted` is the honest default and the state every row starts in, as
+ * `unaudited` is for the cell beside it. An empty cell would say the same
+ * thing far less clearly, and it would not survive the column being dropped.
+ *
+ * The other spelling is a quotation, and it is marked as one. Unmarked text
+ * here would be indistinguishable from a second paraphrase of ours sitting
+ * under a heading that says `Source`, which is this repository's worst defect
+ * wearing a new cell. So the cell opens and closes with a quotation mark, and
+ * the marks pair. Words outside a pair are ours — `"a" and "b"` cites two
+ * rules — and words inside one are the source's.
+ *
+ * Quoting is bounded by substitution rather than by any count this program
+ * could hold: a matrix that quotes every rule in full has stopped citing and
+ * started republishing. No threshold here can decide that, so the run reports
+ * how much of each matrix is quoted and leaves the judgment with the person
+ * who reads the number.
+ *
+ * Every pair holds something. `""` and `"   "` opened and closed with a mark
+ * and passed, so a row could claim to quote its rule while quoting nothing,
+ * and the coverage count called it quoted. An empty pair is not a quotation of
+ * anything, and `unquoted` is the spelling for a row that carries no words.
+ */
+const UNQUOTED = 'unquoted';
+const PAIR = '"(?=[^"]*[^\\s"])[^"]*"';
+const QUOTED = new RegExp(`^${PAIR}(?:[^"]*${PAIR})*$`);
+
+/**
+ * Whether this matrix may quote its source at all.
+ *
+ * The cell grammar above says what a quotation looks like. It cannot say
+ * whether this source permits one, and three of the four matrices here do not.
+ * ASD reserves all rights, and the owner's publication decision turns on no
+ * rule text being reproduced. Nothing mechanical held that: substituting rule
+ * text into the forbidden matrix left `ground --check` green, so a prohibition
+ * recorded in prose was one cell away from being crossed by anybody who had
+ * not read the prose.
+ *
+ * So each matrix declares it, in a line a reader sees. `forbidden` refuses any
+ * cell but `unquoted`, whatever else is true of that cell. Crossing the
+ * owner's condition then takes an edit to the declaration and its stated
+ * reason, which is a decision about the source, rather than an edit to one row.
+ *
+ * The declaration is required, and its absence reads as `forbidden`. A default
+ * of `permitted` would turn the rule off for whoever forgot the line, which is
+ * a gate failing open on a missing argument and a defect this file already
+ * carries a fix for two checks over.
+ *
+ * A second declaration does not overrule the first. Both are refused, and any
+ * `forbidden` among them governs, because the way to lift a prohibition is to
+ * edit it rather than to add a line under it.
+ *
+ * Three things make a declaration unreadable, and an unreadable one governs
+ * nothing. Each was found by attacking this check rather than by imagining it.
+ *
+ * It sits ABOVE the table. A permitting line written under the matrix was
+ * accepted, and a reader looking for the state of a file reads its opening
+ * prose. A declaration below the rows it governs is a footnote to them.
+ *
+ * It sits outside raw HTML. A permitting line inside a collapsed `<details>`
+ * was accepted, and a reader on GitHub does not see it at all. That is the
+ * container asymmetry this file already refuses for a matrix row, pointing the
+ * other way: a line the reader cannot see may not carry the record.
+ *
+ * It names its state once. `permitted for the dictionary only. Rule text is
+ * forbidden.` read as permitted, and it says both. The state is a binary and
+ * the reason may not restate it, so the whole paragraph is checked and not the
+ * first line, or the qualification simply moves down a line.
+ */
+const FORBIDDEN = 'forbidden';
+// The state word ENDS the token. `\b` alone matched inside `permitted-not`,
+// which reads to a person as the opposite of what the check took it for.
+const DECLARATION = /^\*\*Quotation:\*\* (permitted|forbidden)(?![-\w])/;
+// The reason's test stays loose on purpose. Every shape it catches is refused,
+// so a wider match fails closed, and the narrower rule above governs only what
+// the check reads AS a declaration.
+const EITHER_STATE = /\b(?:permitted|forbidden)\b/i;
+
+/**
+ * Raw HTML, read as a region rather than as a block. A reader sees `<details>`
+ * hide everything to its closer, whatever blank lines fall between, and
+ * CommonMark's HTML block ends at the first of those.
+ *
+ * Up to three leading spaces, because CommonMark allows them and a renderer
+ * treats a two-space-indented `<details>` as HTML. Anchoring at column 0 read
+ * such a block as visible prose while the reader saw it collapsed, which is
+ * the same disagreement this check exists to end.
+ *
+ * A void element opens nothing. `<br>` never closes, so counting it left every
+ * declaration below it inside a region that no line could end. The check fails
+ * closed there, and a rule that refuses an honest file until somebody works out
+ * why is a rule people route around.
+ */
+const VOID = 'area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr';
+const HTML_OPENS = new RegExp(`^ {0,3}<(?!(?:${VOID})(?![\\w-]))[a-zA-Z][\\w-]*(?=[\\s>/]|$)`, 'i');
+const HTML_CLOSES = /^ {0,3}<\/[a-zA-Z][\w-]*\s*>/;
+const HTML_SELF_CLOSES = /\/>\s*$/;
+const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
+
+/**
+ * Every declaration in the file, each with what makes it unreadable. The
+ * caller decides, because an unreadable declaration is two facts at once: a
+ * finding to report, and a line that governs nothing.
+ */
+export function readDeclaration(text, headerLine = null) {
+  const found = [];
+  const lines = text.split('\n');
+  let fence = null;
+  let html = 0;
+  for (const [i, line] of lines.entries()) {
+    const marker = MATRIX_FENCE.exec(line);
+    if (fence) {
+      if (marker && marker[2][0] === fence[0] && marker[2].length >= fence.length) fence = null;
+      continue;
+    }
+    if (marker) { fence = marker[2]; continue; }
+    if (HTML_CLOSES.test(line)) html = Math.max(0, html - 1);
+    else if (HTML_OPENS.test(line) && !HTML_SELF_CLOSES.test(line)) html += 1;
+    const stated = DECLARATION.exec(line);
+    if (!stated) continue;
+    // The reason runs to the next heading or to the table, whichever comes
+    // first. Reading one line let the qualification move to the second, and
+    // reading one paragraph let it move to the paragraph after — the argument
+    // for widening the first time reaches the second time as well. A heading
+    // ends it because a heading starts a different subject, and the table ends
+    // it because there is nothing after that a declaration could be arguing.
+    //
+    // Fenced content is skipped rather than read, and skipped rather than
+    // stopped at. Reading it made a matrix that SHOWS what a declaration looks
+    // like equivocate about its own state, and stopping at it would hand the
+    // qualification the same escape one fence lower down.
+    const reason = [line.slice(stated[0].length)];
+    let shown = null;
+    for (let j = i + 1; j < lines.length; j += 1) {
+      if (headerLine !== null && j + 1 >= headerLine) break;
+      const inner = MATRIX_FENCE.exec(lines[j]);
+      if (shown) {
+        if (inner && inner[2][0] === shown[0] && inner[2].length >= shown.length) shown = null;
+        continue;
+      }
+      if (inner) { shown = inner[2]; continue; }
+      if (HEADING.test(lines[j])) break;
+      reason.push(lines[j]);
+    }
+    found.push({
+      line: i + 1,
+      state: stated[1],
+      inHtml: html > 0,
+      belowTable: headerLine !== null && i + 1 > headerLine,
+      equivocates: EITHER_STATE.test(reason.join(' ')),
+    });
+  }
+  return found;
+}
+
 const LEAP = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
 
 /**
@@ -227,12 +398,18 @@ function isRealDate(year, month, day) {
 
 /**
  * The digest an audit of this row would carry. Every cell the audit is a
- * claim about goes in: our guidance, where it sits, the rule it cites and
- * where that rule lives. The id stays out, because renumbering a matrix
- * rewrites no claim.
+ * claim about goes in: our guidance, where it sits, the rule it cites, the
+ * source's own words and where that rule lives. The id stays out, because
+ * renumbering a matrix rewrites no claim.
+ *
+ * The quotation is in for the reason every other cell is. A person auditing a
+ * row reads our sentence against the rule, and the quotation is the copy of
+ * the rule they read it against. Leaving it out would let the quoted words be
+ * rewritten under a recorded audit, which is the stale-digest defect one
+ * column over.
  */
 export function rowDigest(row) {
-  return digest([row.guidance, row.anchor, row.rule, row.location].join('\n'));
+  return digest([row.guidance, row.anchor, row.rule, row.quote, row.location].join('\n'));
 }
 
 /**
@@ -632,9 +809,66 @@ export function checkSkill({ skillText, matrixText, now }) {
   const findings = [];
 
   // The table itself, before any row in it. A matrix whose header or delimiter
-  // no longer carries six columns is not the file the audit record lives in,
+  // no longer carries every column is not the file the audit record lives in,
   // whatever its rows still say.
   const table = readMatrix(matrixText);
+
+  // Whether this matrix may quote at all, before any row is read. An absent
+  // declaration reads as `forbidden`, a second one lifts nothing, and one the
+  // reader cannot find governs nothing either.
+  const declared = readDeclaration(matrixText, table.header?.line ?? table.delimiter?.line ?? null);
+  const unreadable = [
+    ['belowTable', 'matrix-declaration-below-the-table',
+      'sits under the table it governs. A reader looking for the state of this file reads '
+      + 'its opening prose. Write it above the header row.'],
+    ['inHtml', 'matrix-declaration-inside-html',
+      'sits inside raw HTML, where a reader on GitHub may not see it at all. Write it as '
+      + 'ordinary prose at column 0.'],
+    ['equivocates', 'matrix-declaration-equivocates',
+      'names a state and then names one again in its reason. The state is a binary, and '
+      + '"permitted for some of it" is a qualification the check cannot read. Give one word, '
+      + 'and write the reason without either word in it.'],
+  ];
+  for (const d of declared) {
+    for (const [flag, code, why] of unreadable) {
+      if (!d[flag]) continue;
+      findings.push({
+        level: 'error',
+        code,
+        message: `matrix line ${d.line}: the declaration ${why} Until then it declares nothing, `
+          + 'and this matrix reads as forbidden.',
+      });
+    }
+  }
+  // What governs. A readable declaration governs, and so does an unreadable one
+  // that says `forbidden`, because everywhere else here doubt reads as
+  // forbidden and a badly written prohibition is still somebody prohibiting.
+  // A state-blind filter had a clean `permitted` beating a misplaced or
+  // equivocating `forbidden` above it, which is this design pointing backwards.
+  const readable = declared.filter((d) => !d.belowTable && !d.inHtml && !d.equivocates);
+  const governing = declared.filter((d) => readable.includes(d) || d.state === FORBIDDEN);
+  const forbids = !governing.length || governing.some((d) => d.state === FORBIDDEN);
+  if (!declared.length) {
+    findings.push({
+      level: 'error',
+      code: 'matrix-no-quotation-declaration',
+      message: 'the matrix does not declare whether it may quote its source. Write '
+        + '`**Quotation:** permitted` or `**Quotation:** forbidden` at column 0, above the '
+        + 'header row, with the reason beside it. Until it does, no row here may carry '
+        + 'anything but `unquoted`.',
+    });
+  } else if (declared.length > 1) {
+    // Every declaration, not the readable ones. Two lines are two lines, and
+    // counting only the readable ones let a second declaration hide the fact
+    // of itself by also being malformed.
+    findings.push({
+      level: 'error',
+      code: 'matrix-two-quotation-declarations',
+      message: `the matrix declares its quotation state ${declared.length} times, on line `
+        + `${declared.map((d) => d.line).join(', ')}. Lift a prohibition by editing it and its `
+        + 'reason, never by adding a line under it.',
+    });
+  }
   for (const r of table.refusals) {
     findings.push({
       level: 'error',
@@ -667,13 +901,19 @@ export function checkSkill({ skillText, matrixText, now }) {
       });
       return;
     }
-    if (what === 'header' && cells[5] !== MATRIX_COLUMNS[5]) {
+    // Every heading, not only the audit's. The check named one column because
+    // one column was the record. A second column now carries a claim about a
+    // source, and a heading is what tells the reader which cell they are
+    // reading, so renaming any of them loses a record the same way.
+    if (what !== 'header') return;
+    MATRIX_COLUMNS.forEach((name, i) => {
+      if (cells[i] === name) return;
       findings.push({
         level: 'error',
-        code: 'matrix-header-not-audited',
-        message: `the matrix names its sixth column "${cells[5]}", not "${MATRIX_COLUMNS[5]}".`,
+        code: 'matrix-header-column-name',
+        message: `the matrix names column ${i + 1} "${cells[i]}", not "${name}".`,
       });
-    }
+    });
   };
   if (!table.delimiter) {
     // The cause matters more than the absence. An indented table has a
@@ -801,12 +1041,55 @@ export function checkSkill({ skillText, matrixText, now }) {
       findings.push({
         level: 'error',
         code: 'row-missing-audit-cell',
-        message: `${row.id}: the row has no Audited cell. Every row carries six columns, `
-          + 'and only a G row fills the sixth.',
+        message: `${row.id}: the row has no Audited cell. Every row carries `
+          + `${MATRIX_COLUMNS.length} columns, and only a G row fills the last two.`,
       });
       return;
     }
-    // A seventh cell is read by nobody and was refused by nobody. GFM drops it
+    // The quotation, on the same terms as the audit and for the same reason.
+    // Only a G row cites a source, so only a G row has anything to quote from
+    // one, and the cell is present on every row either way.
+    if (kind === 'G') {
+      const remedyQuote = 'Write `unquoted`, or the rule\'s own words in quotation marks.';
+      // The prohibition first, and on its own. It is a fact about the source
+      // rather than about this cell, so it holds whatever else the cell is,
+      // and a well-formed quotation is exactly the case it exists to refuse.
+      if (forbids && row.quote && row.quote !== UNQUOTED) {
+        findings.push({
+          level: 'error',
+          code: 'quotation-forbidden-here',
+          message: `${row.id}: this matrix may not quote its source, so the Source text cell `
+            + `reads \`${UNQUOTED}\`. ${governing.some((d) => d.state === FORBIDDEN)
+              ? `The declaration on line ${governing.find((d) => d.state === FORBIDDEN).line} says so`
+              : 'The matrix declares nothing this check can read, which reads as forbidden'}. `
+            + 'Changing that is a decision about the source, and it is made in the declaration.',
+        });
+      }
+      if (!row.quote) {
+        findings.push({
+          level: 'error',
+          code: 'g-row-no-quote',
+          message: `${row.id}: a G row records whether it quotes its rule. ${remedyQuote}`,
+        });
+      } else if (row.quote !== UNQUOTED && !QUOTED.test(row.quote)) {
+        // Unmarked text beside a rule identifier reads as the rule and may be
+        // ours. The marks are what separate the source's words from our own,
+        // so a cell that carries neither is refused rather than trusted.
+        findings.push({
+          level: 'error',
+          code: 'quote-unmarked',
+          message: `${row.id}: "${row.quote}" is neither \`${UNQUOTED}\` nor a quotation. `
+            + `The cell opens and closes with a quotation mark, and the marks pair. ${remedyQuote}`,
+        });
+      }
+    } else if (row.quote) {
+      findings.push({
+        level: 'error',
+        code: 'e-row-has-quote',
+        message: `${row.id}: only a G row quotes a source, because only a G row cites one.`,
+      });
+    }
+    // A cell past the last is read by nobody and was refused by nobody. GFM drops it
     // from the render, so text could sit in a row that neither the checker nor
     // the person reading the matrix ever sees.
     if (row.extra.length) {
@@ -814,7 +1097,7 @@ export function checkSkill({ skillText, matrixText, now }) {
         level: 'error',
         code: 'row-has-extra-cell',
         message: `${row.id}: the row carries ${MATRIX_COLUMNS.length + row.extra.length} columns, `
-          + `not ${MATRIX_COLUMNS.length}. Nothing reads past the sixth, and no reader sees it.`,
+          + `not ${MATRIX_COLUMNS.length}. Nothing reads past the last, and no reader sees it.`,
       });
     }
     if (kind !== 'G') {
@@ -897,12 +1180,37 @@ export function checkSkill({ skillText, matrixText, now }) {
       code: 'audit-coverage',
       message: 'not counted: the matrix table is broken.',
     });
+    findings.push({
+      level: 'note',
+      code: 'quote-coverage',
+      message: 'not counted: the matrix table is broken.',
+    });
   } else if (sourced.length) {
     findings.push({
       level: 'note',
       code: 'audit-coverage',
       message: `${sourced.filter((r) => auditState(r, today).state === 'recorded').length} `
         + `of ${sourced.length} G rows record a person reading them against the source.`,
+    });
+    // The second number the verdict cannot carry. A reader holds the
+    // substitution limit, and they cannot hold it against a file they have to
+    // count by hand. It rises as rows are quoted and it is a note either way:
+    // an unquoted matrix is honest, and a fully quoted one is a judgment about
+    // republishing that no threshold here can make.
+    findings.push({
+      level: 'note',
+      code: 'quote-coverage',
+      // A cell the check refused is not a quotation, so it is not counted as
+      // one. Counting every cell that merely differed from `unquoted` let a
+      // malformed cell — an empty pair, or our own unmarked paraphrase —
+      // raise the number that reports how much of the source this file carries.
+      //
+      // The prohibition refuses cells too, and the first version of this rule
+      // applied it to one refusal and not the other: a forbidden matrix
+      // reported `1 of 39` beside the finding that refused that very cell. A
+      // count that contradicts the finding above it is worse than either.
+      message: `${forbids ? 0 : sourced.filter((r) => r.quote && QUOTED.test(r.quote)).length} `
+        + `of ${sourced.length} G rows carry the source's own words.`,
     });
   }
 

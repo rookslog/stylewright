@@ -106,7 +106,10 @@ function groundingMd({ name, tier, skillText, source }) {
     // anything, and seeding a date here would be the matrix lying on the day
     // it was created.
     const audit = kind === 'G' ? 'unaudited' : '';
-    return `| ${kind}-${String(counts[kind]).padStart(2, '0')} | ${cell(u.text)} | ${cell(u.anchor)} | ${rule} | ${note} | ${audit} |`;
+    // Unquoted by construction, for the reason the row is unaudited. The
+    // scaffold has read no source, so it has no words of one to carry.
+    const quote = kind === 'G' ? 'unquoted' : '';
+    return `| ${kind}-${String(counts[kind]).padStart(2, '0')} | ${cell(u.text)} | ${cell(u.anchor)} | ${rule} | ${quote} | ${note} | ${audit} |`;
   });
 
   return `# Grounding: ${name}
@@ -124,6 +127,15 @@ it. A person who checks a row writes the date and the row's digest in place of
 the word. Editing any other cell changes that digest, so the audit goes stale
 and the check says so.
 
+The \`Source text\` cell of a \`G\` row carries the rule's own words, in quotation
+marks, beside the identifier that names them. Every row starts at \`unquoted\`.
+Quote the operative sentence where the exact wording is what a reader must
+check, and stop well short of a quoted set that could stand in for the source.
+
+**Quotation:** forbidden. No licence has been checked for this source yet, so
+this file starts where every file starts. Read the licence, record the check in
+\`SOURCE.md\`, and then edit this line.
+
 A row that tells the reader to do something is never an \`N\` row. The kinds
 below are a starting guess. Revise them as you write the skill.
 
@@ -131,8 +143,8 @@ This file stays in the repository. It does not install with the skill.
 
 Checked by \`stylewright ground --check --skill ${name}\`.
 
-| ID | Our guidance | Our anchor | Source rule | Source location | Audited |
-|---|---|---|---|---|---|
+| ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
+|---|---|---|---|---|---|---|
 ${rows.join('\n')}
 `;
 }

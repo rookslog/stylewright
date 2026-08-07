@@ -14,7 +14,9 @@ below is what makes the dating visible.
   in this skill depends on a reproduction right. The governing terms of those
   pages have not been read, and no claim is made about what they permit. Anyone
   adding a quotation must read them first and replace this line with the check.
-  Recorded 2026-07-27.
+  Recorded 2026-07-27. The grounding matrix gained a `Source text` column on
+  2026-08-06 under ADR-0020, and every row reads `unquoted`. This unperformed
+  check is the reason.
 
 ## What the sources are, and what each one licenses
 

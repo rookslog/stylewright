@@ -98,6 +98,7 @@ Each row records:
 | Our guidance | The statement, quoted from our own `SKILL.md`. |
 | Our anchor | The `SKILL.md` section that contains the statement. |
 | Source rule | The rule identifier in the standard, such as `Rule 5.1`. |
+| Source text | `unquoted`, or the rule's own words in quotation marks. ADR-0020. |
 | Source location | The part and section in the standard. |
 | Audited | `unaudited`, or the date a person read the row against the source and a digest of the row. ADR-0018. |
 
@@ -179,6 +180,13 @@ Quoting a rule in order to state and check it is ordinary citation.
 4. A non-affiliation and trademark notice, per section 2.4.
 5. A grounding matrix that cites rule identifiers, per section 2.2. A matrix may
    also carry the quoted rule, which is what makes a `G` row checkable.
+
+**The column exists and it is empty.** ADR-0020 added the `Source text` cell on
+2026-08-06, and every row of the ASD matrix reads `unquoted`. Control 5 permits
+the quotation. It does not decide it, because the operator approved continued
+publication on 2026-08-04 on the stated condition that the skill reproduces no
+rule text. `SOURCE.md` beside the skill carries that condition. Writing in the
+column crosses it, so the operator reopens the decision or nobody fills it.
 
 **Amended 2026-07-27.** Controls 1 to 3 replace two earlier controls that banned
 every reproduced sentence and every dictionary entry. The earlier version applied
