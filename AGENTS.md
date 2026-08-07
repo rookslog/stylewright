@@ -317,10 +317,21 @@ published in `bench/README.md`.
   digest verified the attacker's own script. Do not reintroduce the
   indirection. If a second program is ever needed, the literal becomes a
   list in code, never a field in a study.
-- The re-run child is built an environment by name and gets no credential
-  and no home directory, the way a probe arm is built. It is killed and
-  refused by name at a deadline, because a hung re-run takes the whole
-  gate with it. ADR-0023 carries the reasoning and the flip condition.
+- **Every child either spawn starts is built an environment by name**, and
+  gets no credential and no home directory, the way a probe arm is built.
+  Two spawns ship here, one in `check:studies` and one in the promotion,
+  and only the first was built that way at first. The promotion's is the
+  one whose stdout gets committed. A doctrine that holds in one file and
+  not its neighbour is a doctrine somebody will read the wrong way, so
+  both import one allowlist rather than carrying two. The re-run is also
+  killed and refused by name at a deadline, because a hung re-run takes
+  the whole gate with it. ADR-0023 carries the reasoning and the flip
+  condition.
+- A study that is already refused for any reason is never re-run. The
+  narrower gate read the command's own problems alone, and containment
+  here is a string predicate over `path.resolve`, which resolves no
+  links — so an in-study symbolic link was refused by name and the scorer
+  still ran, reading through it to bytes outside the study.
 - Every path a study manifest names is joined only after `isBelow` says it
   lands inside the study, and every file the study holds is accounted for.
   A study holds plain files only, so a symbolic link inside one is refused

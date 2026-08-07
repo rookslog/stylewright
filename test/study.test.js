@@ -173,6 +173,30 @@ test('a retained command is checked before anything re-runs it', () => {
     /which the promotion never passes/);
 });
 
+test('a command element that is not a string is refused by name, never thrown on', () => {
+  // `bench/samples/` is untrusted data, so a malformed element is a case. It
+  // used to reach `arg.startsWith` and throw a TypeError out of the check,
+  // which stopped `checkDirectory` reaching any study after it.
+  //
+  // NOT throwing is the assertion, made explicitly. Letting the call throw into
+  // the runner would red this test for the right reason and read as a crashed
+  // suite, which is not an anchor anybody can trust.
+  const opts = { studyDir: '/s', repoRoot: '/' };
+  const refuses = (command, what) => {
+    let problems;
+    assert.doesNotThrow(() => { problems = commandProblems(command, opts); },
+      `${what} must be refused, never thrown on`);
+    assert.ok(problems.some((p) => /where an argument goes/.test(p)),
+      `${what} must be refused by name: ${problems.join(' ')}`);
+  };
+  for (const bad of [7, null, {}, ['nested'], true]) {
+    refuses(['node', SCORER, bad, 's/x.txt'], JSON.stringify(bad) ?? String(bad));
+  }
+  // And the value position of a flag, which is the other place a string method
+  // would have touched it first.
+  refuses(['node', SCORER, '--prompt', 7, 's/x.txt'], 'a non-string flag value');
+});
+
 // This check RUNS A PROGRAM, and the first version took the program's path from
 // the very file an attacker edits. A relative-escape `scorer.path` executed a
 // script outside the repository, under the operator's whole environment, and
@@ -267,6 +291,49 @@ test('a retained scorer table edited after promotion is visible', async (t) => {
   const { problems } = await checkStudy(dir, '2026-08-06-demo');
   assert.equal(problems.length, 1);
   assert.match(problems[0], /produced different output from the bytes this study retains/);
+});
+
+test('a retained stderr edited after promotion is visible', async (t) => {
+  const { dir } = await tempStudy(t);
+  const p = path.join(dir, STUDY_MANIFEST);
+  const manifest = JSON.parse(await fs.readFile(p, 'utf8'));
+  // Stderr is promoted output that no digest covers, exactly like the table.
+  manifest.analyses[0].stderr = 'a reason the scorer never gave\n';
+  await fs.writeFile(p, JSON.stringify(manifest, null, 2));
+  const { problems } = await checkStudy(dir, '2026-08-06-demo');
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /wrote different stderr from the bytes this study retains/);
+});
+
+test('a study already refused for any reason is not re-run at all', async (t) => {
+  const { dir } = await tempStudy(t);
+  // An edited sample refuses on its digest AND would change what the scorer
+  // prints, so the two gates are distinguishable: with the narrow gate the
+  // re-run happens and adds a second problem, and with this one it does not.
+  // That matters because containment is a string predicate over `path.resolve`,
+  // which resolves no symbolic links — a refusal that did not stop the spawn
+  // let the scorer read through an in-study link to bytes outside it.
+  await fs.writeFile(path.join(dir, 'arms', 'control', 'report-1.txt'),
+    'a very different answer, many more words than the one that was promoted here\n');
+  const { problems } = await checkStudy(dir, '2026-08-06-demo');
+  assert.equal(problems.length, 1, `expected the digest refusal alone: ${problems.join(' | ')}`);
+  assert.match(problems[0], /report-1\.txt does not match its recorded digest/);
+  assert.ok(!problems.some((x) => /re-running/.test(x)),
+    `a refused study still spawned: ${problems.join(' | ')}`);
+});
+
+test('an in-study symlink is refused, and the refusal precedes any spawn', async (t) => {
+  const { dir } = await tempStudy(t);
+  const outside = path.join(dir, '..', 'outside.txt');
+  await fs.writeFile(outside, 'bytes this study does not hold\n');
+  try {
+    await fs.symlink(outside, path.join(dir, 'arms', 'control', 'linked.txt'));
+  } catch {
+    return; // A platform without symlink permission has nothing to test here.
+  }
+  const { problems } = await checkStudy(dir, '2026-08-06-demo');
+  assert.ok(problems.some((x) => /linked\.txt is a symlink/.test(x)));
+  assert.ok(!problems.some((x) => /re-running/.test(x)));
 });
 
 test('a study scored under a different scorer refuses the re-run, and names the drift', async (t) => {

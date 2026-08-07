@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 import { checkStudy } from '../bench/study.mjs';
-import { PROVENANCE, provenanceGaps, sidecarProblems } from '../bench/retain.mjs';
+import { PROVENANCE, provenanceGaps, runScorer, sidecarProblems } from '../bench/retain.mjs';
 import {
   LICENSE, REPS, SCENARIO, promote, retain, run, tempArm, writeManifest,
 } from './bench-helpers.js';
@@ -70,6 +71,21 @@ test('two arms are read together, and each keeps its own figures', async (t) => 
   // Never pooled. A median across two arms is the error `--compare` exists to
   // make impossible, so there is no `all` row when the scorer grouped.
   assert.equal(results[`${SCENARIO}.all.median.words`], undefined);
+});
+
+test('the promotion scorer gets the same built environment as the check', async (t) => {
+  // Two spawns ship in this change and only one was built by name. This one has
+  // the larger blast radius of the two, because its stdout is what gets
+  // committed into `bench/samples/`.
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-retain-env-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const script = path.join(root, 'echo-env.mjs');
+  await fs.writeFile(script, 'process.stdout.write(JSON.stringify(Object.keys(process.env)));\n');
+  const seen = await runScorer([script], root);
+  const keys = JSON.parse(seen.stdout);
+  assert.ok(!keys.includes('HOME'), `the promotion scorer saw HOME: ${keys.join(', ')}`);
+  assert.ok(!keys.some((k) => /^(ANTHROPIC|CLAUDE|AWS)_/i.test(k)),
+    `the promotion scorer saw a credential-adjacent name: ${keys.join(', ')}`);
 });
 
 test('an aborted arm is promoted, and the study repeats what stopped it', async (t) => {

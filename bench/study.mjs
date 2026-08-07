@@ -411,6 +411,16 @@ export function commandProblems(command, { studyDir, repoRoot = REPO }) {
   }
   let expectPath = false;
   for (const arg of command.slice(2)) {
+    // Type before shape, and before any string method touches it. A number or
+    // an object here threw out of the check with a stack trace, which is a
+    // refusal of a kind and not the named one this returns — and it stopped
+    // `checkDirectory` reaching the studies after it. `bench/samples/` is
+    // untrusted data, so a malformed element is a case, not an accident.
+    if (typeof arg !== 'string') {
+      problems.push(`carries ${arg === null ? 'null' : typeof arg} where an argument goes.`);
+      expectPath = false;
+      continue;
+    }
     if (!expectPath && Object.hasOwn(SCORER_FLAGS, arg)) {
       expectPath = SCORER_FLAGS[arg];
       continue;
@@ -625,10 +635,20 @@ export async function checkStudy(dir, name = path.basename(dir)) {
   // Re-run every retained command over the promoted bytes. The retained output
   // was the one promoted artifact no digest covered, and every figure derives
   // from it, so a single edited cell used to pass this check outright.
+  // A study that is ALREADY refused is never re-run. The gate used to read the
+  // command's own problems alone, and that was too narrow twice over. It spends
+  // a spawn on a study no reader will believe. And containment here is a string
+  // predicate over `path.resolve`, which does not resolve links — so an
+  // in-study symbolic link was refused by name and the scorer still ran, and it
+  // read through the link to bytes outside the study. Refusing first is both
+  // the simpler rule and the one that closes that.
+  const alreadyRefused = problems.length > 0;
   for (const analysis of Array.isArray(manifest.analyses) ? manifest.analyses : []) {
+    // The command is still checked, because a named refusal is worth more to a
+    // reader than silence. Only the SPAWN is withheld.
     const found = commandProblems(analysis?.command, { studyDir: dir });
     for (const p of found) say(`the ${analysis?.scenario} command ${p}`);
-    if (found.length || !scorerFit) continue;
+    if (found.length || !scorerFit || alreadyRefused) continue;
     const again = await rerun(analysis.command);
     if (again.timed_out) {
       say(`re-running the ${analysis.scenario} command did not finish inside `
@@ -638,6 +658,13 @@ export async function checkStudy(dir, name = path.basename(dir)) {
     if (again.stdout !== analysis.stdout) {
       say(`re-running the ${analysis.scenario} command produced different output from the `
         + 'bytes this study retains, so a figure derived from them is not reproducible.');
+    }
+    // Stderr is promoted output that no digest covers, exactly like stdout. It
+    // carries the scorer's own refusal reasons and its audit line, so a study
+    // whose retained stderr no longer matches is describing a different run.
+    if (again.stderr !== analysis.stderr) {
+      say(`re-running the ${analysis.scenario} command wrote different stderr from the bytes `
+        + 'this study retains, so the run it describes is not the run that happens now.');
     }
     if (again.exit_code !== analysis.exit_code) {
       say(`re-running the ${analysis.scenario} command exited ${again.exit_code} and the `

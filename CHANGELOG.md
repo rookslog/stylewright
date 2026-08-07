@@ -117,10 +117,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   derives from it. That re-run executes a program, so the check runs
   `bench/score.mjs` by literal name and refuses a study or a command naming
   anything else. A scorer whose digest has moved refuses the re-run and names
-  both digests. The child gets an environment built by name, with no credential
-  and no home directory, and a deadline that kills it. A command naming a file
+  both digests. Every child either spawn starts gets an environment built by
+  name, with no credential and no home directory, and the re-run gets a deadline
+  that kills it. A study already refused for any reason is never re-run, because
+  containment resolves no symbolic links. A command naming a file
   outside the study is refused before it
-  runs. Every path the manifest names is checked for containment, every file
+  runs, and so is a command element that is not a string. Stdout, stderr and the
+  exit code are all compared, because none of the three carries a digest.
+  Every path the manifest names is checked for containment, every file
   the study holds is accounted for, and a symbolic link inside a study is
   refused rather than skipped. An arm that did not cover its plan still
   promotes, and every figure it had a hand in reads unaudited with the reason

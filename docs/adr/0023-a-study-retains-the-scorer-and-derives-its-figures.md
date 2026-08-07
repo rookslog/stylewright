@@ -147,6 +147,25 @@ already settled on, for the reason a review measured there. And a child still
 running at a deadline is killed and refused by name, because a hung re-run
 takes `npm run check` with it and reads as a slow machine.
 
+**Both spawns, not one.** This repository starts two child processes around a
+study: the check re-runs the scorer, and the promotion runs it once over the
+bytes it just copied. The first was built an environment by name and the second
+inherited the operator's shell, which measured out at sixty variables including
+a home directory and two credential names. Nothing there was exploitable, since
+both spawns run the same literal scorer and the scorer reads no environment.
+It is fixed because the sentence above says the child is built an environment by
+name, and a rule that holds in one file and not its neighbour is a rule the next
+reader applies to whichever file they opened. The promotion's spawn is also the
+one with the larger blast radius, because its output is what gets committed.
+One allowlist serves both, imported rather than copied.
+
+**A refused study is never re-run.** The re-run was gated on the command's own
+problems alone. Containment is a string predicate over `path.resolve`, which
+resolves no symbolic links, so a link inside a study was refused by name and the
+scorer still spawned and read through it. Refusing first is both simpler and
+stronger, and it costs nothing: no reader believes a figure from a study the
+check has already refused.
+
 **The flip condition.** If this check ever needs to run a second program, the
 literal becomes a list, and that list lives in code beside these gates rather
 than in a study manifest. A study naming its own program is the design this

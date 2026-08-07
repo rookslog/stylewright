@@ -51,7 +51,9 @@ import {
   MANIFEST_NAME, NAME, collectFiles, digestBytes, fileProblems, manifestProblems, readManifest,
 } from './arm-manifest.mjs';
 import { digest as sidecarDigest, readMeta } from './score.mjs';
-import { SCORER, STUDY_MANIFEST, STUDY_NAME, checkStudy, contentProblems } from './study.mjs';
+import {
+  SCORER, STUDY_MANIFEST, STUDY_NAME, checkStudy, contentProblems, rerunEnv,
+} from './study.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -239,10 +241,30 @@ export async function writeContained(baseDir, outPath, bytes) {
   }
 }
 
-/** One scorer run, as its own bytes. Nothing here reads the numbers. */
+/**
+ * One scorer run, as its own bytes. Nothing here reads the numbers.
+ *
+ * The child's environment is built by name, through the SAME allowlist the
+ * study check uses. Two spawns ship in this change and only one of them was
+ * built that way, which measured out as sixty variables reaching this one,
+ * `HOME` and two `ANTHROPIC_*` names among them.
+ *
+ * Nothing here was exploitable: this spawn runs the same literal scorer, and
+ * `score.mjs` reads no environment at all. It is fixed because ADR-0023 says
+ * the child is built an environment by name, and a doctrine that holds in one
+ * file and not its neighbour is a doctrine somebody will read the wrong way.
+ * This spawn also has the larger blast radius of the two, because its stdout is
+ * what gets committed into `bench/samples/`.
+ *
+ * `rerunEnv` is imported rather than copied. A second allowlist is a second
+ * thing to drift, and drift here means one spawn refusing a credential while
+ * the other hands it over.
+ */
 export function runScorer(args, cwd) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, args, {
+      cwd, env: rerunEnv(process.env), stdio: ['ignore', 'pipe', 'pipe'],
+    });
     const out = [];
     const errs = [];
     child.stdout.on('data', (d) => out.push(d));
