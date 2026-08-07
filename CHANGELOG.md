@@ -53,6 +53,39 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An install is now reversible per skill, not merely orphan-free.** A run
+  that failed part way through an update used to leave the tree holding half of
+  one release and half of another, with the record naming files that were not
+  there. A run killed after retirement left the record naming a path it had
+  already deleted. A run now states what it will DESTROY as well as what it
+  will write, and moves those bytes to `.stylewright-prev` by rename before it
+  touches the destination. A recovery puts them back. Where they are gone, the
+  record stops naming the path. The statement carries a `committed` mark, set
+  in the same manifest write that records the skill, so no recovery can roll
+  back an install whose record has landed. A skill may ship a path ending in
+  neither reserved suffix. ADR-0019 records the decision, and
+  `test/install.test.js` kills a real process at each boundary the statement
+  adds. A rollback frees the held bytes only where the destination holds
+  something that supersedes them, so a file the user wrote at a path an
+  interrupted run emptied never costs them the only copy of the old release.
+  `--force` states what it razes before it razes it, refuses a user file at
+  `.stylewright-prev` rather than deleting it, and completes a release that
+  changes only the case of a name. A rollback reads the tree three times rather
+  than once, so a release that turns a recorded file into a directory puts that
+  file back, and one that turns a directory into a file stops the record naming
+  the children it destroyed. An empty directory a killed recovery left behind no
+  longer traps a skill in a state no command could leave. A file named
+  `__proto__` is named by the statement like any other.
+- **`doctor` tells a recorded install apart from an unfinished one.** A
+  statement left after the record landed reported as an install that did not
+  finish, which told the user their skill was half installed when it is whole.
+  It now reports as `unswept-install`, naming the version still on disk.
+- **A reserved shipped name is refused before the first skill is copied.** The
+  rule ran per skill, inside the loop that installs them, so a later skill's
+  bad name was refused after an earlier skill had already been committed — and
+  the command then failed without ever reporting the install that had happened.
+  It joins the portability check in the preflight that runs over every named
+  skill.
 - **`ground --check` refuses the Markdown it cannot model, instead of reading it
   wrongly.** The extractor reads a line at a time and holds no stack of open
   containers, so a heading, a list item, a fence or a table nested inside a

@@ -317,12 +317,85 @@ Two consequences for a change you propose here:
   recorded. A file goes when it holds exactly what the statement said would be
   written there AND the manifest does not record that same content — the second
   half is what keeps a file another run committed.
-- **A copy is staged and renamed, never written into place.** `copyFile` can
-  stop half way, and a fragment at a destination is a file nothing can identify
-  afterwards. The staging name is derived from the destination, so recovery
-  finds it from the statement alone. A skill may not ship a path ending in that
-  suffix, and install refuses one that does: the copy of `A` would otherwise
-  clear a shipped `A.stylewright-part` as its own scratch space.
+- **A run states what it DESTROYS as well as what it writes, and holds the
+  bytes until it commits.** `pending[name]` has one shape with three parts.
+  `write` names each path the run will write and the bytes it will put there.
+  `keep` names each path the run will overwrite or retire and the bytes that
+  path held, which move to `.stylewright-prev` by rename before the destination
+  is touched. `committed` is set in the same manifest write that records the
+  skill, and it picks the direction: before it, recovery rolls the run back,
+  and after it, recovery only sweeps. A file comes back when the bytes under
+  the reserved name are exactly what the statement said stood there and the
+  destination is absent. Where those bytes are gone, the record stops naming
+  the path instead. ADR-0019 keeps the reasons.
+- **A copy is staged and renamed, never written into place, and so is the file
+  it replaces.** `copyFile` can stop half way, and a fragment at a destination
+  is a file nothing can identify afterwards. Both reserved names are derived
+  from the destination, so recovery finds them from the statement alone. A
+  skill may ship a path ending in neither suffix, and install refuses one that
+  does, over every named skill before the first is copied. The copy of `A`
+  would otherwise clear a shipped `A.stylewright-part` as its own scratch
+  space, and an update of `A` would bury a shipped `A.stylewright-prev`.
+- **A file at a reserved name that content cannot identify is left alone.** It
+  is named by the ordinary collision check and removed by a person, which is
+  the disposition `refuseStaleWrite` already gives the other file this tool
+  cannot prove it wrote. Deleting it on the strength of the name would destroy
+  bytes nothing can replace.
+- **Three things can stand at a destination whose old bytes are held aside,
+  and only two of them free those bytes.** The copy this run made and a version
+  another run committed both supersede the old one, so it goes. A file the USER
+  wrote there after the interrupted run supersedes nothing, and for a retired
+  path the held bytes are the only copy on the machine — no release ships them
+  and no record restores them. Enumerating only the first two deleted the
+  user's only copy silently, and it made the two halves disagree: the write
+  half leaves an unmatched destination standing for the collision check, so the
+  keep half must too.
+- **A rollback does its deletions first, and reads the tree again before the
+  kept half acts.** The ORDER is what carries this, not a count of readings. A
+  release transition makes the two halves of the statement change each other's
+  ground: while the copy of a new directory stands, the recorded FILE it
+  replaced has an occupied destination and cannot come back, and while a new
+  parent FILE stands it blocks the recorded children it replaced, so a reading
+  taken earlier drops them. In both cases the deletion that clears the way comes
+  later, and acting on the earlier reading left the record naming an absent file
+  exactly where the bytes could not be restored. One reading then serves the
+  restores and the reconciliation together: a statement cannot hold both `X` and
+  `X/y`, because `recordSkill` walks one source tree, so no restore can block
+  another kept path and a third reading would have no scenario to answer.
+- **An EMPTY directory is not an occupant.** A recovery killed between a
+  deletion and the prune that follows it leaves one standing at a recorded
+  file's path, and that state was a fixed point: the restore held its bytes, the
+  reconciliation never named the path, install and `--force` refused on the
+  reserved name, uninstall refused on the type mismatch, and the only exit
+  stranded an unrecorded `.stylewright-prev`. So a restore clears it first.
+  Removing an empty directory destroys nothing, which is the rule retirement
+  already applies — and only where the bytes are ours to put back, because one
+  this pass will not fill is not this pass's to remove.
+- **`keep` is built prototype-safely**, as a `Map` converted through
+  `Object.fromEntries`. `__proto__` is a legal filename, and assigning to it on
+  an ordinary object invokes the inherited setter instead of creating a
+  property, so the statement would not name a file the run had already moved
+  aside. The record and the write half already keep this discipline.
+- **`--force` does not dispose of a file at `.stylewright-prev`.** Force removes
+  what stands in the way of a file it must WRITE, and nothing is written at that
+  name. Choosing to preserve one file must never cost the user a different one,
+  so the run is refused and the file is named — and the message must not advise
+  `--force`, which has no power there. The staging name is the other way round:
+  the copy must have that path. Where a manifest an older release wrote RECORDS
+  a path spelled with the suffix, no install can move that skill forward, and
+  the exit is `uninstall` then `install`. Removing the file as the ordinary
+  advice suggests would strand the record, so the message names both.
+- **What `--force` razes, it states first.** A blocked ancestor it clears takes
+  every recorded path beneath it. Those bytes cannot be moved aside, so the
+  statement carries the paths with the hash the record holds and a rollback
+  withdraws them. The razing happens AFTER the statement, because a destruction
+  ahead of the record that names it is the ordering this engine forbids.
+- **A set-aside asks the filesystem whether the destination is still the file
+  the statement named.** Two spellings can be one file: a release that changes
+  only the case of a name gives a case-folding target one path, and its two
+  reserved names one path too. Without the check the second pass cleared the
+  reserved name the first had just moved the user's bytes into, then threw a raw
+  `ENOENT`.
 - **One command at a time holds a target directory**, through
   `src/lock.js`. Three review rounds found three ways for two runs to spoil each
   other's reading of the tree, and each patch produced the next one: a recovery

@@ -93,7 +93,7 @@ test('reports an install that did not finish, once per directory', async () => {
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
   const { manifest, identity } = await readManifestWithIdentity(target);
   await writeManifest(target, {
-    ...manifest, pending: { 'demo-craft': { 'SKILL.md': 'a'.repeat(64) } },
+    ...manifest, pending: { 'demo-craft': { write: { 'SKILL.md': 'a'.repeat(64) } } },
   }, identity);
 
   const findings = await doctor({ repoRoot: REPO, home, cwd: await tmp() });
@@ -102,6 +102,33 @@ test('reports an install that did not finish, once per directory', async () => {
   assert.equal(findings[0].code, 'interrupted-install');
   assert.equal(findings[0].level, 'warn');
   assert.match(findings[0].message, /demo-craft/);
+});
+
+test('a committed statement is unswept, which is the opposite of unfinished', async () => {
+  // The record has landed and the skill is whole. What is outstanding is the
+  // sweep of the version it replaced, so calling it an install that did not
+  // finish told the user their skill was half installed when it is not.
+  const home = await tmp();
+  const target = path.join(home, '.claude/skills');
+  await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
+  const { manifest, identity } = await readManifestWithIdentity(target);
+  await writeManifest(target, {
+    ...manifest,
+    pending: {
+      'demo-standard': {
+        write: { 'SKILL.md': 'a'.repeat(64) },
+        keep: { 'SKILL.md': 'b'.repeat(64) },
+        committed: true,
+      },
+    },
+  }, identity);
+
+  const findings = await doctor({ repoRoot: REPO, home, cwd: await tmp() });
+
+  assert.equal(findings.length, 1, JSON.stringify(findings));
+  assert.equal(findings[0].code, 'unswept-install');
+  assert.match(findings[0].message, /is recorded, and the version it replaced/);
+  assert.doesNotMatch(findings[0].message, /did not finish/);
 });
 
 test('reports a directory a killed run left locked', async () => {

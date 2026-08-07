@@ -7,8 +7,9 @@ import {
   removeManifest,
 } from './manifest.js';
 import {
-  hasPending, addPending, clearPending, recoverPending, discardStated, stagingPath,
-  stagingKey, STAGING_SUFFIX,
+  hasPending, addPending, clearPending, markCommitted, withdrawRecorded, recoverPending,
+  rollBack, sweepKept, stagingPath, stagingKey, previousPath, previousKey,
+  usesReservedName, RESERVED_SUFFIXES,
 } from './journal.js';
 import { withTargetLock } from './lock.js';
 import {
@@ -41,6 +42,36 @@ async function alteredFiles(destDir, recorded) {
     if (await hashFile(abs) !== expected) bad.push(rel);
   }
   return bad.sort();
+}
+
+/**
+ * Paths holding something at the name this run moves an old file ASIDE to.
+ *
+ * Separate from `untrackedCollisions`, and checked whether or not `--force` is
+ * set, which is the whole point of it standing alone. `--force` means "remove
+ * something I edited that is in the way of a file you must write". Nothing is
+ * written at this name: it is where this tool chooses to put bytes it is
+ * choosing to preserve, and choosing to preserve one file must never cost the
+ * user a different one. Inside the `--force` branch the rename simply replaced
+ * whatever stood there, with no check and no report.
+ *
+ * The staging name stays in `untrackedCollisions`, where `--force` does dispose
+ * of it. That name is scratch space the copy MUST have, so a file there really
+ * does block a write, and PR #54 settled that disposition deliberately.
+ *
+ * It stands at every path the run DESTROYS — the shipped ones it overwrites and
+ * the recorded ones it retires, so the check ranges over both. That is the same
+ * rule the two `reachability` passes below carry, and the reason is stated
+ * there.
+ */
+async function reservedCollisions(destDir, sourceRels, retiredRels) {
+  const hits = new Set();
+  for (const rel of new Set([...sourceRels, ...retiredRels])) {
+    if (await destinationState(previousPath(path.join(destDir, rel))) !== 'absent') {
+      hits.add(previousKey(rel));
+    }
+  }
+  return [...hits].sort();
 }
 
 /**
@@ -105,29 +136,22 @@ function retiredFiles(recorded, sourceRels) {
  * It reads the manifest fresh, because the run that overtook us wrote it, and
  * its record is what decides which of these paths are now somebody's.
  */
-async function undo(targetDir, name, stated, written, retired) {
+async function undo(targetDir, name, stated, written) {
   const { manifest, identity } = await readManifestWithIdentity(targetDir);
-  // `written` and not `stated`, because this run knows which of those paths it
-  // reached. A file at a path it never got to holds somebody else's work, and a
-  // user who edited it to exactly the bytes this release ships satisfies the
-  // content proof that recovery has to rely on. Recovery has no choice — it
-  // reads a statement its own run did not live to explain. This one does.
-  await discardStated(targetDir, name, stated, manifest, written);
-
-  // Retirement is a deletion this run made before it copied anything, and a
-  // commit that never lands leaves the surviving record naming those paths
-  // while they are gone. The record catches up, exactly as uninstall's does
-  // after it deletes: only paths this run removed, and only where the tree
-  // still agrees they are absent.
-  const entry = manifest.skills?.[name];
-  const files = { ...entry?.files };
-  let dropped = false;
-  for (const rel of retired) {
-    if (!Object.hasOwn(files, rel)) continue;
-    if (await destinationState(path.join(targetDir, name, rel)) !== 'absent') continue;
-    delete files[rel];
-    dropped = true;
-  }
+  // `written` and not the statement, because this run knows which of those
+  // paths it reached. A file at a path it never got to holds somebody else's
+  // work, and a user who edited it to exactly the bytes this release ships
+  // satisfies the content proof that recovery has to rely on. Recovery has no
+  // choice — it reads a statement its own run did not live to explain. This one
+  // does.
+  //
+  // The rollback puts back what this run moved aside, so the record it leaves
+  // is true about the tree again. What it could not put back it reports, and
+  // the record stops naming it — the reconciliation that used to be written out
+  // here for retirement alone, now covering every path the run destroyed.
+  const { missing } = await rollBack(targetDir, name, stated, manifest, written);
+  const withdrawn = withdrawRecorded(manifest, name, missing);
+  const dropped = withdrawn !== manifest;
 
   // The statement is ours to withdraw only while it is still ours. A run that
   // replaced it owns what it names now, and clearing it by name would leave
@@ -135,11 +159,7 @@ async function undo(targetDir, name, stated, written, retired) {
   // side.
   const mine = JSON.stringify(manifest.pending?.[name]) === JSON.stringify(stated);
   if (!mine && !dropped) return;
-  const next = mine ? clearPending(manifest, name) : manifest;
-  await writeManifest(
-    targetDir,
-    dropped ? { ...next, skills: { ...next.skills, [name]: { ...entry, files } } } : next,
-    identity);
+  await writeManifest(targetDir, mine ? clearPending(withdrawn, name) : withdrawn, identity);
 }
 
 export async function installSkills(options) {
@@ -193,14 +213,17 @@ async function installUnderLock(byName, {
   const installed = [];
   const skipped = [];
   const recovered = [];
+  const restored = [];
   const cleared = [];
 
   // An earlier run stated what it was about to write and did not come back.
   // Clearing its leavings before this run inspects the tree is what stops them
-  // from reading as the user's own files.
+  // from reading as the user's own files, and putting back what it displaced is
+  // what stops the tree holding half of two releases.
   if (hasPending(manifest)) {
     const done = await recoverPending(targetDir, manifest);
     recovered.push(...done.removed);
+    restored.push(...done.restored);
     cleared.push(...done.cleared);
     manifest = done.manifest;
     identity = await writeManifest(targetDir, manifest, identity);
@@ -223,6 +246,24 @@ async function installUnderLock(byName, {
           `Skill "${name}" ships a file whose name cannot be recorded portably: ${rel}`);
       }
     }
+    // The reserved names are the destination plus a suffix, so a skill that
+    // shipped both `A` and `A.stylewright-part` would have the copy of `A` use
+    // the second one as scratch space and clear it, and one that shipped
+    // `A.stylewright-prev` would have an update of `A` bury it. That is a
+    // shipped file treated as this engine's leavings, and no message could make
+    // it right, so the shape is refused where it enters.
+    //
+    // Here, with the portability rule, and not in the loop that copies. A rule
+    // about what a request may CONTAIN belongs with the other preflights: run
+    // per skill inside that loop, it threw after an earlier skill had already
+    // been copied and committed, so the command failed without ever reporting
+    // the install that had happened. That is issue 72.
+    const reserved = rels.filter(usesReservedName);
+    if (reserved.length) {
+      throw new Error(
+        `Skill "${name}" ships ${reserved.join(', ')}, and this tool keeps `
+        + `${RESERVED_SUFFIXES.join(' and ')} for its own scratch space. Rename the file.`);
+    }
     relsByName.set(name, rels);
   }
 
@@ -231,27 +272,6 @@ async function installUnderLock(byName, {
     const destDir = path.join(targetDir, name);
     const recorded = manifest.skills[name]?.files;
     const rels = relsByName.get(name);
-    // The staging name is the destination plus a suffix, so a skill that
-    // shipped both `A` and `A.stylewright-part` would have the copy of `A` use
-    // the second one as scratch space and clear it. That is a shipped file
-    // treated as this engine's leavings, and no message could make it right, so
-    // the shape is refused where it enters rather than handled where it bites.
-    // Every segment, not the whole path. `A.stylewright-part/B` puts the
-    // reserved name on a DIRECTORY, and the copy of a sibling `A` clears that
-    // directory as its own scratch space — the same collision, one level up.
-    // Case-insensitively, because a manifest travels and Windows and macOS
-    // fold case: a shipped `A.STYLEWRIGHT-PART` aliases the staging name of a
-    // sibling `A` on those targets, and recovery would clear a recorded
-    // installed file as scratch space. Refused on every platform, like every
-    // other spelling that means something different to one resolver.
-    const suffix = STAGING_SUFFIX.toLowerCase();
-    const reserved = rels.filter(
-      (rel) => rel.split(/[\\/]/).some((part) => part.toLowerCase().endsWith(suffix)));
-    if (reserved.length) {
-      throw new Error(
-        `Skill "${name}" ships ${reserved.join(', ')}, and "${STAGING_SUFFIX}" is the suffix `
-        + 'this tool stages a copy under. Rename the file.');
-    }
 
     // The skill's own directory is the outermost ancestor of every path it
     // ships, and it is the one `ancestorsOf` cannot name, because the paths it
@@ -261,6 +281,13 @@ async function installUnderLock(byName, {
     // A recorded ancestor that is still a plain file is the file-to-directory
     // release transition, and retirement completes it.
     const exempt = (dir, state) => state === 'file' && known.has(dir);
+    // Recorded paths that `--force` destroys by clearing an ancestor, and the
+    // ancestors themselves. Named here because the statement below has to carry
+    // the paths and the removal has to happen after it, and filled in the force
+    // branch, which is the only thing that can raze a path this way.
+    const razed = [];
+    const cleared = [];
+    const toClear = [];
     const retired = retiredFiles(recorded, rels);
     // Two passes, because `--force` disposes of one and not the other. An
     // ancestor of a path we SHIP stands in the way of a write, and force clears
@@ -273,12 +300,36 @@ async function installUnderLock(byName, {
     // paths once, so a release that dropped the last file beneath a symlinked
     // directory deleted through the link. Ranging one set over the union
     // deleted a user file through the retired half.
-    const write = await reachability(destDir, rels, exempt);
+    //
+    // `let`, because `--force` clears blockers further down and the reading has
+    // to be taken again once they are gone.
+    let write = await reachability(destDir, rels, exempt);
     const retire = await reachability(destDir, retired, exempt);
     const blockedWrite = write.blocked;
     const blockedRetire = retire.blocked;
     const blocked = new Set([...blockedWrite, ...blockedRetire]);
     const destBlocked = write.baseBlocked;
+
+    // Before the force branch, and outside it. A file at the name this run
+    // moves old bytes to blocks nothing that must be written, so `--force` has
+    // no business deleting it — the round-six rule, at the one name PR #54 did
+    // not have. Narrowed to the paths the walk could reach, like every other
+    // check: a blocker force will clear takes whatever is under it, and that is
+    // force clearing a blocker rather than force taking this file.
+    const reserved = await reservedCollisions(
+      destDir,
+      rels.filter((r) => write.reachable.includes(r)),
+      retired.filter((r) => retire.reachable.includes(r)));
+    // Reported on its own, ahead of the drift and collision checks below, so a
+    // skill carrying this AND a locally-modified file takes two runs to learn
+    // about both. That is deliberate rather than overlooked: this refusal
+    // stands whether or not `--force` is set, and the checks below do not, so
+    // merging the two reports would have to explain a remedy that applies to
+    // half of what it lists. The sequence converges on its own.
+    if (reserved.length) {
+      skipped.push({ name, reason: 'not-ours', files: reserved });
+      continue;
+    }
 
     if (!force) {
       // Only the leaves the walk could actually reach. Handing every recorded
@@ -301,14 +352,39 @@ async function installUnderLock(byName, {
         continue;
       }
     } else {
-      // Outermost first, so removing a directory takes its descendants and the
-      // inner entries become absent rather than stale. Clearing these BEFORE
-      // retirement is what stops a delete from travelling through a link.
-      if (destBlocked) await removeAt(destDir);
+      // What force will clear, decided here and REMOVED further down, after the
+      // statement is on disk. Outermost first, so removing a directory takes
+      // its descendants and the inner entries become absent rather than stale.
+      //
+      // The removal used to happen right here, and that put a destruction ahead
+      // of the record that names it — the one ordering this engine exists to
+      // forbid. A run killed at that `rm` left the record naming every path
+      // under the blocker with no statement to withdraw them, and no command
+      // could reconcile it.
+      if (destBlocked) toClear.push(destDir);
       for (const dir of [...blockedWrite].sort()) {
-        await removeAt(path.join(destDir, dir));
-        // Cleared, so it no longer blocks the retirement below either.
+        toClear.push(path.join(destDir, dir));
+        // Cleared, so it no longer blocks the retirement below either. This is
+        // bookkeeping rather than a change to the tree, so it stays here where
+        // the classification below reads it.
         blockedRetire.delete(dir);
+        cleared.push(dir);
+      }
+      if (destBlocked) cleared.push('');
+      // A recorded path beneath what force will remove is one THIS RUN
+      // destroys. Its bytes cannot be moved aside, because they sit behind a
+      // blocker this run refuses to walk through — so the statement carries the
+      // path with the hash the record holds, and nothing under the reserved
+      // name. A rollback then finds nothing to put back and withdraws the path
+      // instead, which is the repair ADR-0019 names. Leaving these out of the
+      // statement was the omission: the record went on over-claiming and no
+      // command could reconcile it.
+      if (cleared.length) {
+        for (const rel of Object.keys(recorded ?? {})) {
+          const under = cleared.includes('')
+            || ancestorsOf(rel).some((dir) => cleared.includes(dir));
+          if (under) razed.push(rel);
+        }
       }
     }
 
@@ -328,55 +404,153 @@ async function installUnderLock(byName, {
     const statedPairs = [];
     for (const rel of rels) statedPairs.push([rel, await hashFile(path.join(skill.dir, rel))]);
     const stated = Object.fromEntries(statedPairs);
-    manifest = addPending(manifest, name, stated);
+
+    // What this run will DESTROY, decided before it says so and before it does
+    // it. Orphan-free was only ever half of atomic: the statement above names
+    // the files a killed run may have created, and nothing named the files it
+    // had already deleted or overwritten. So a second pass classifies every
+    // path this run is about to take away, and the statement carries the bytes
+    // each one holds.
+    //
+    // The classification happens here rather than inside the copy loop below
+    // because a statement made after the deletion is not a statement at all.
+    // The lock is what makes the reading still true when it is acted on: only
+    // one run holds a target directory, so nothing of ours moves in between,
+    // and everything else is content-proved when the time comes.
+    // A Map, never an object literal, for the reason migrateLegacyKeys builds
+    // through fromEntries: `__proto__` is a legal filename, and assigning to it
+    // on an ordinary object invokes the inherited setter instead of creating a
+    // property. The statement would then not name a file this run had moved,
+    // and no rollback could reach it.
+    const keep = new Map();
+    const setAside = [];
+    const dropDirs = [];
+    for (const rel of retired) {
+      // Whose ancestors force did not clear, because it had no reason to. A
+      // deletion through a symbolic link is the defect PR #54 opened on, and
+      // the retired half is the last place it could still reach.
+      if (ancestorsOf(rel).some((dir) => blockedRetire.has(dir))) continue;
+      const abs = path.join(destDir, rel);
+      const state = await destinationState(abs);
+      // Nothing is written here, so the boundary decides the whole question: a
+      // retired leaf goes only if it is still the thing we wrote. Without
+      // --force `alteredFiles` refused the skill outright, and WITH --force
+      // that check is skipped, so an edit at a retired path would be deleted
+      // while the user was forcing an overwrite of some other, still-shipping
+      // file. An empty directory still goes, because removing it destroys
+      // nothing — and it is not stated, because nothing was there to keep.
+      if (state === 'directory') {
+        if (!(await fs.readdir(abs)).length) dropDirs.push(rel);
+        continue;
+      }
+      if (state !== 'file') continue; // A link. Nothing is written through it either.
+      const held = await hashFile(abs);
+      if (held !== recorded?.[rel]) continue;
+      keep.set(rel, held);
+      setAside.push(rel);
+    }
+    // Only the leaves the walk could reach, for the reason every other consumer
+    // takes this set: an `lstat` through a blocker throws ELOOP out of the
+    // command where a refusal was the whole point. Under --force a blocker
+    // cleared above is no longer in the way, and this set was taken before that
+    // — so such a path is copied without being kept. It is the same line
+    // --force already draws, one step along.
+    const open = new Set(write.reachable);
+    for (const rel of rels) {
+      // A shipping path holding a plain file is one the copy will replace, so
+      // its bytes are stated and moved aside like a retired one's. Without
+      // --force the checks above proved it is the file we recorded. WITH
+      // --force it can be anything, and the hash states what is actually there
+      // rather than what the record claims — a rollback has to put back the
+      // file that was on disk, not the one the manifest remembers.
+      //
+      // Only a plain file. A directory or a link at a shipping path is cleared
+      // by the copy below under --force, and neither can be moved aside as the
+      // bytes of a file.
+      if (!open.has(rel)) continue;
+      const abs = path.join(destDir, rel);
+      if (await destinationState(abs) !== 'file') continue;
+      keep.set(rel, await hashFile(abs));
+      setAside.push(rel);
+    }
+    // The paths force razed. Stated with the hash the record holds and never
+    // set aside, because the bytes went with the ancestor before this run could
+    // reach them. The statement is what lets a rollback withdraw them.
+    for (const rel of razed) {
+      if (!keep.has(rel)) keep.set(rel, recorded[rel]);
+    }
+
+    manifest = addPending(manifest, name, stated, Object.fromEntries(keep));
+    // Held in its own binding, because `manifest` moves under it. The commit
+    // below withdraws the statement in the same assignment that records the
+    // skill, so a failure in that write left the catch reading `pending` off a
+    // manifest that no longer had one.
+    const statement = manifest.pending[name];
     identity = await writeManifest(targetDir, manifest, identity);
 
-    // Named out here so the undo below knows what this run actually wrote and
-    // what it removed. A Map, not an object literal, for the reason
-    // migrateLegacyKeys builds through fromEntries: a file named `__proto__`
-    // must become a recorded key, and assignment would set a prototype.
+    // Named out here so the undo below knows what this run actually wrote. A
+    // Map, not an object literal, for the reason migrateLegacyKeys builds
+    // through fromEntries: a file named `__proto__` must become a recorded key,
+    // and assignment would set a prototype.
     const files = new Map();
-    const retiredHere = [];
+    let committed = false;
     try {
-      // Retire BEFORE copying, not after. A release can replace a directory of
-      // files with a single file of the same name, and `copyFile` cannot write
-      // over a directory. Retiring afterwards made that transition impossible to
-      // complete, with or without --force.
-      //
-      // The checks above already proved each retired path is either gone or the
-      // unmodified file we wrote, so removing it discards nothing the user made.
-      //
-      // Under --force those checks did not run, and --force does not reach this
-      // far. The line it draws: force may destroy what stands in the way of
-      // something it must WRITE, and may not destroy what merely stands where
-      // nothing is going. Nothing is going to a retired path. So a directory the
-      // user built over one keeps its contents, which the manifest never recorded
-      // and this engine never wrote. The same rule uninstall applies, in the
-      // other consumer of removeAt.
-      for (const rel of retired) {
-        // Whose ancestors force did not clear, because it had no reason to. A
-        // deletion through a symbolic link is the defect this whole pull request
-        // opened on, and the retired half is the last place it could still reach.
-        if (ancestorsOf(rel).some((dir) => blockedRetire.has(dir))) continue;
+      // What force asked to clear, cleared now that the statement naming
+      // everything under it is on disk. Outermost first, so an inner entry
+      // becomes absent rather than stale.
+      for (const abs of toClear) await removeAt(abs);
+
+      // Move aside BEFORE anything else, and by rename. A copy into the second
+      // reserved name could stop half way, which is the fragment problem the
+      // staging name exists to avoid, one suffix along. A rename either happened
+      // or did not, and it performs the retirement deletion in the same step:
+      // after it, the destination is absent and the bytes are still on disk
+      // under a name the statement reaches.
+      for (const rel of setAside) {
         const abs = path.join(destDir, rel);
-        const state = await destinationState(abs);
-        // Nothing is written here, so the boundary decides the whole question: a
-        // retired leaf goes only if it is still the thing we wrote. Without
-        // --force `alteredFiles` refused the skill outright, and WITH --force
-        // that check was skipped, so an edit at a retired path was deleted while
-        // the user was forcing an overwrite of some other, still-shipping file.
-        // An empty directory still goes, because removing it destroys nothing.
-        if (state === 'directory') {
-          if ((await fs.readdir(abs)).length) continue;
-        } else if (state === 'file') {
-          if (await hashFile(abs) !== recorded?.[rel]) continue;
-        } else if (state !== 'absent') {
-          continue; // A link. Nothing is written through it either.
-        }
+        const previous = previousPath(abs);
+        // Still the file the statement named, asked of the filesystem before
+        // anything is removed. Two entries can resolve to ONE file: a release
+        // that changes only the case of a name retires `Notes.md` and ships
+        // `notes.md`, and a case-folding target makes those one path — and
+        // their two reserved names one path as well. Without this guard the
+        // second pass cleared the reserved name the first had just moved the
+        // user's bytes into, then threw a raw ENOENT renaming a file that was
+        // no longer there. Whether two spellings reach one file is the
+        // filesystem's to answer and never the platform's, which is the
+        // question PR #54's `recordedAs` asks — but the answer here is
+        // cheaper. That one compares device and inode because it must say
+        // WHICH record reaches a file. This only needs to know whether the
+        // file the statement described is still there.
+        //
+        // The hash is the second half of the same question. A destination that
+        // changed under the run would be moved aside under a hash that no
+        // longer describes it, and a rollback could never identify it again —
+        // so it is left where it is and the copy overwrites it, which is what
+        // --force asked for and what `alteredFiles` already refused without it.
+        if (await destinationState(abs) !== 'file') continue;
+        if (await hashFile(abs) !== keep.get(rel)) continue;
+        // The name belongs to this tool, and the collision check refused a
+        // file the user had put there. What can still stand here is this
+        // engine's own leftover, and recovery cleared those before this ran.
+        await removeAt(previous);
+        await fs.rename(abs, previous);
+      }
+      // Retire the empty directories the statement does not name. Nothing was
+      // in them, so nothing has to come back.
+      for (const rel of dropDirs) {
+        const abs = path.join(destDir, rel);
         await removeAt(abs);
-        retiredHere.push(rel);
         await pruneEmpty(path.dirname(abs), destDir);
       }
+      // Retirement is what makes a file-to-directory release transition
+      // possible: a release can replace a directory of files with a single file
+      // of the same name, and `copyFile` cannot write over a directory. Doing it
+      // after the copies made that transition impossible to complete, with or
+      // without --force.
+      //
+      // The pruning a retired path's directory would get happens in the sweep
+      // instead, because the bytes moved aside are still sitting in it.
 
       for (const rel of rels) {
         const from = path.join(skill.dir, rel);
@@ -416,21 +590,50 @@ async function installUnderLock(byName, {
         await fs.rename(staged, to);
       }
 
-      // The commit. It records the files and withdraws the statement about them
-      // in one write, so no reader ever sees both, and a run that dies before
-      // it leaves the statement standing for the next one.
-      manifest = clearPending(
-        recordSkill(manifest, {
-          name, tier: skill.tier, pathway, files: Object.fromEntries(files), now,
-        }), name);
-      identity = await writeManifest(targetDir, manifest, identity);
-      installed.push(name);
+      // The commit. It records the files in one write, so a run that dies
+      // before it leaves the statement standing for the next one.
+      const withRecord = recordSkill(manifest, {
+        name, tier: skill.tier, pathway, files: Object.fromEntries(files), now,
+      });
+      if (!setAside.length) {
+        // Nothing was moved aside, so the record and the withdrawal are one
+        // write — the shape a first install has always had, and the one the
+        // conformance suite compares.
+        manifest = clearPending(withRecord, name);
+        identity = await writeManifest(targetDir, manifest, identity);
+        committed = true;
+        installed.push(name);
+      } else {
+        // The record and the mark that turns the statement forwards go on disk
+        // together. That single write is the commit: before it, a recovery
+        // rolls this run back, and after it, no recovery can — the same write
+        // that makes the new version the recorded one makes the old bytes
+        // rubbish to be swept.
+        manifest = markCommitted(withRecord, name);
+        identity = await writeManifest(targetDir, manifest, identity);
+        committed = true;
+        installed.push(name);
+        // Tidying, after the fact. The statement stays on disk until the bytes
+        // it names are gone, so a run killed in here leaves them reachable from
+        // a record that was written before them — which is the whole of the
+        // orphan rule, applied to the one thing this change adds to a tree.
+        await sweepKept(targetDir, name, statement);
+        manifest = clearPending(manifest, name);
+        identity = await writeManifest(targetDir, manifest, identity);
+      }
     } catch (err) {
       // The original failure is the one the caller needs. A failure inside the
       // undo leaves the pending statement on disk, which is exactly the state
       // the next command recovers from, so it is not worth reporting over the
       // error that caused it.
-      await undo(targetDir, name, stated, Object.fromEntries(files), retiredHere).catch(() => {});
+      //
+      // Not once the record has landed. A rollback then would delete the files
+      // the manifest names, and the statement on disk already says which
+      // direction the next command must run.
+      if (!committed) {
+        await undo(
+          targetDir, name, statement, Object.fromEntries(files)).catch(() => {});
+      }
       throw err;
     }
   }
@@ -451,5 +654,5 @@ async function installUnderLock(byName, {
       await writeManifest(targetDir, manifest, identity);
     }
   }
-  return { installed, skipped, recovered, cleared, emptied };
+  return { installed, skipped, recovered, restored, cleared, emptied };
 }

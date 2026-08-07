@@ -558,9 +558,10 @@ test('removing the manifest takes only the file the command read', async () => {
 // --- The statement a run writes before it copies --------------------------
 
 test('a pending statement is held to the shape and the containment rules', async () => {
-  // `pending` is read as a list of files to delete, so it is the same kind of
-  // thing the skills map is. Trusting it for being ours is how a recorded `..`
-  // took a whole skills directory once already.
+  // `pending` is read as an instruction to delete files, to move files back and
+  // to withdraw entries from the record, so it is the same kind of thing the
+  // skills map is. Trusting it for being ours is how a recorded `..` took a
+  // whole skills directory once already.
   const dir = await tmp();
   const write = async (body) => fs.writeFile(path.join(dir, MANIFEST_NAME), body);
 
@@ -568,17 +569,43 @@ test('a pending statement is held to the shape and the containment rules', async
   await assert.rejects(readManifest(dir), /"pending" is not an object/);
 
   await write('{"schema":1,"skills":{},"pending":{"a":["SKILL.md"]}}\n');
-  await assert.rejects(readManifest(dir), /"pending" lists no paths for "a"/);
+  await assert.rejects(readManifest(dir), /"pending" holds no statement for "a"/);
+
+  // One shape, and `write` is the part of it recovery cannot do without. A
+  // statement missing it is refused rather than read as an empty one.
+  await write('{"schema":1,"skills":{},"pending":{"a":{"keep":{}}}}\n');
+  await assert.rejects(readManifest(dir), /"pending" states no writes for "a"/);
+
+  await write('{"schema":1,"skills":{},"pending":{"a":{"write":{},"keep":[]}}}\n');
+  await assert.rejects(readManifest(dir), /"pending" states no kept files for "a"/);
+
+  // A statement rolls back unless it says otherwise, and any value other than
+  // `true` would have to be interpreted. That is the reading a file anyone can
+  // edit must never get.
+  await write('{"schema":1,"skills":{},"pending":{"a":{"write":{},"committed":"yes"}}}\n');
+  await assert.rejects(readManifest(dir), /marks "a" committed as "yes", not true/);
 
   // The hash is what proves a file at that path belongs to the interrupted run,
-  // so a statement without one is a statement recovery cannot act on.
-  await write('{"schema":1,"skills":{},"pending":{"a":{"SKILL.md":null}}}\n');
-  await assert.rejects(readManifest(dir), /"pending" states no hash for "a\/SKILL.md"/);
+  // so a statement without one is a statement recovery cannot act on. Both
+  // halves carry one, because both halves are dereferenced.
+  await write('{"schema":1,"skills":{},"pending":{"a":{"write":{"SKILL.md":null}}}}\n');
+  await assert.rejects(
+    readManifest(dir), /"pending" states no hash for "a\/SKILL.md" under "write"/);
 
-  await write('{"schema":1,"skills":{},"pending":{"a":{"../../victim":"ab"}}}\n');
+  await write('{"schema":1,"skills":{},"pending":{"a":{"write":{},"keep":{"SKILL.md":1}}}}\n');
+  await assert.rejects(
+    readManifest(dir), /"pending" states no hash for "a\/SKILL.md" under "keep"/);
+
+  await write('{"schema":1,"skills":{},"pending":{"a":{"write":{"../../victim":"ab"}}}}\n');
   await assert.rejects(readManifest(dir), /awaits a path outside "a"/);
 
-  await write('{"schema":1,"skills":{},"pending":{"..":{"SKILL.md":"ab"}}}\n');
+  // And the kept half is walked too. A path there is one recovery renames a
+  // file back over, so an escape spelled under `keep` reaches just as far.
+  await write(
+    '{"schema":1,"skills":{},"pending":{"a":{"write":{},"keep":{"../../victim":"ab"}}}}\n');
+  await assert.rejects(readManifest(dir), /awaits a path outside "a"/);
+
+  await write('{"schema":1,"skills":{},"pending":{"..":{"write":{"SKILL.md":"ab"}}}}\n');
   await assert.rejects(readManifest(dir), /awaits a skill name that is not a directory name/);
 });
 
