@@ -255,8 +255,20 @@ test('the scorer runs as a command, and prints its table', async () => {
 /** The one spelling that works on every platform. */
 const GUARD = 'if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {';
 
-/** Modules that run unconditionally as scripts, so they have no guard to carry. */
-const UNGUARDED = { 'bench/extract.mjs': 'runs top to bottom as a script, with no main to guard' };
+/**
+ * Modules that run unconditionally as scripts, so they have no guard to carry.
+ *
+ * `scripts/check-resident.mjs` arrived with #86 and this test caught it, which
+ * is what the inventory is for. It is unguarded on purpose, like the extractor:
+ * nothing imports either one, and both do their work at the top level. The
+ * assertion below is what keeps that classification honest — a module listed
+ * here that starts reading `process.argv[1]` has grown a main and needs a
+ * guard, not an exemption.
+ */
+const UNGUARDED = {
+  'bench/extract.mjs': 'runs top to bottom as a script, with no main to guard',
+  'scripts/check-resident.mjs': 'runs top to bottom as a script, with no main to guard',
+};
 
 test('every entry point guards itself the one way that works on both platforms', async () => {
   const root = path.dirname(import.meta.dirname);
@@ -266,7 +278,7 @@ test('every entry point guards itself the one way that works on both platforms',
       found.push(`${sub}/${name}`);
     }
   }
-  assert.equal(found.length, 9, `the entry-point inventory moved: ${found.sort().join(', ')}`);
+  assert.equal(found.length, 10, `the entry-point inventory moved: ${found.sort().join(', ')}`);
   for (const rel of found) {
     const text = await fs.readFile(path.join(root, rel), 'utf8');
     if (Object.hasOwn(UNGUARDED, rel)) {
