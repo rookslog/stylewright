@@ -22,8 +22,8 @@ what a pristine control exists to exclude.
 environment, over a home that stays empty. The owner sets the key. The
 collector reads its presence and refuses to run without it, and no part of
 this repository reads, writes, prints, or records the value. The environment
-class in the identity tuple is `api-key-empty-home`, named for how the arm
-authenticates, because a home that held a credential would be a different
+class in the identity tuple is `empty-home`, named for the home rather than for
+the credential, because a home that held a credential would be a different
 environment and needs a different name to compare as one. `check:probes`
 refuses a record carrying anything shaped like a key, since a record is
 committed and a leaked key would be published.
@@ -47,3 +47,45 @@ subscription route wins when both are set, and the missing-credential refusal
 names both. Issue #77 carries the implementation and the open question of
 whether a record names the route it authenticated by. Until #77 lands, the
 collector reads the API key alone.
+
+Amended again on 2026-08-06, closing that open question. **A record names the
+route, and the route is not part of the identity tuple.** It is provenance,
+beside the flags and the planted nonce.
+
+Two routes can bill, rate-limit, and tier a request differently, and any of
+those could move what a harness returns. A record that stayed silent would
+leave a reader unable to ask whether it mattered, which is the failure the
+whole design exists to prevent. So the route is recorded, and `check:probes`
+refuses a record without it.
+
+It stays out of the tuple because the tuple is defined once, in section 4.1 of
+the measurement design, and nothing generalises across any element of it.
+Adding an element would split probe coverage in two overnight, so that a
+subscription probe stopped covering an API-key study, on a suspicion nobody has
+measured. The evidence for that split does not exist yet. Recording the route
+is what makes gathering it possible: when two probes differ only by route and
+their bytes disagree, the tuple gains an element and this note is the thing
+that gets amended. Silence would have made that comparison impossible to run.
+
+That flip condition says "differ only by route", and it is worth nothing unless
+something makes it true. A shell can set a base URL, an auth token, or a
+provider switch, and any of them changes what a request meets on the way out.
+So the arm's environment is built from an allowlist rather than by removing the
+variables this repository happens to know: an arm inherits a named set, one
+credential, and a redirected home, and nothing else. A shell that configures a
+route the collector does not model is refused by name rather than guessed at.
+Until that held, two probes could differ by a great deal while their records
+differed only by route, and the comparison this note promises would have
+compared the wrong thing.
+
+The class named `api-key-empty-home` was the same mistake in the other
+direction. Both routes build the same environment, so a class named for one of
+them put the route inside the tuple by the back door, and every subscription
+run carried a false class while the check said nothing. It is `empty-home`, and
+a home that HELD a credential would be a different class.
+
+The credential itself never enters a record. `check:probes` refuses anything
+shaped like one, by either route, and every message it prints is redacted at
+the point of emission rather than message by message — the refusal for a bad
+flag once quoted that flag's value, one line above the refusal promising
+nothing is quoted.

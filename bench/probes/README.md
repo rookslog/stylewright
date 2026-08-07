@@ -34,7 +34,7 @@ Every pathway runs the same flags, because the bench runs one control:
 
 ```
 node bench/collect-probe.mjs --skill <name> --pathway claude:user --dry-run
-ANTHROPIC_API_KEY=... node bench/collect-probe.mjs --skill <name> --pathway claude:user
+CLAUDE_CODE_OAUTH_TOKEN=... node bench/collect-probe.mjs --skill <name> --pathway claude:user
 ```
 
 The collector installs the skill into a throwaway redirected home through one
@@ -79,18 +79,45 @@ and answers that it is not logged in. Observed on 2026-08-06 on macOS, with the
 Claude Code CLI, on an empty home and again on a home holding only an
 onboarding flag.
 
-ADR-0017 settles it. Set `ANTHROPIC_API_KEY` in the shell that runs the
-collector, and both homes stay empty. The collector refuses to run without the
-key, and nothing here reads, prints, or records its value. The check refuses a
-record that carries anything shaped like a key, because a record is committed
-and a leaked key would be published.
+ADR-0017 settles it, and there are two routes. Run `claude setup-token` once and
+set `CLAUDE_CODE_OAUTH_TOKEN`, which bills a subscription. Or set
+`ANTHROPIC_API_KEY`, which bills the API. Either one reaches the arm as
+environment over an empty home, so neither changes the isolation.
 
-A subscription token is the other route, and issue #77 carries it. It reaches an
-arm the same way, as environment over an empty home, so nothing about the
-isolation changes. The collector reads the API key alone until #77 lands.
+Set both and the subscription wins. The collector hands the arm exactly one
+credential, so the route a record names is the route that served it.
 
-That is the environment class, and the record names it `api-key-empty-home`. A
-home holding a credential would be a different environment, so it would need
+An arm inherits a named list of variables, that one credential, and its
+redirected home. Nothing else reaches it. The list is an allowlist because the
+first version subtracted the few names it knew, and a review measured an auth
+token, a base URL, and a Bedrock credential all reaching the harness while the
+record named the API key. If your shell sets a variable that configures another
+route, the collector refuses by name rather than guessing, and it never reads
+what any of them hold.
+
+Two things about that list are unverified. Nobody has run the probe on a real
+Windows host, and nobody has checked that the list carries everything the
+harness needs to start. A variable it omits and the harness wants shows up as a
+probe that failed, in a committed record, which is the outcome this protocol
+prefers to a silent difference.
+
+Nothing here reads, prints, or records what either variable holds. The check
+refuses a record carrying anything shaped like a credential, by either route,
+and it never quotes back what it matched. A record is committed, and a leaked
+credential would be published.
+
+A record names its route, and the route is not part of the identity tuple. Two
+routes can bill and rate-limit differently, so silence would leave a reader
+unable to ask whether that mattered. The tuple stays as section 4.1 defines it,
+because splitting probe coverage by route on an unmeasured suspicion would cost
+more than it buys. ADR-0017 carries the reasoning and the condition that would
+change it.
+
+That is the environment class, and the record names it `empty-home`. It is
+named for the home and not for the route, because both routes build the same
+environment — a class named for one of them would carry the route into the
+identity tuple, and every run of the other route would be labelled wrongly. A
+home that HELD a credential would be a different environment, so it would need
 its own class name to compare as one.
-Give the harness a credential the home does not supply, such as an API key in
-the environment, and the probe reaches its question.
+Give the harness a credential the home does not supply, by either route above,
+and the probe reaches its question.

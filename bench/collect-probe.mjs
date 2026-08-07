@@ -29,10 +29,12 @@
  *   --model ALIAS         the model alias the arms run under. Default: opus.
  *   --dry-run             prepare both homes, print the plan, call no model.
  *
- * The environment class is always `api-key-empty-home`: two empty homes, with
- * ANTHROPIC_API_KEY in the environment (ADR-0017). A representative stack needs
- * a protocol that builds the stack, and this collector does not have one, so it
- * never labels a record with that class.
+ * The environment class is always `empty-home`: two empty homes, each handed
+ * one credential from the environment and nothing else (ADR-0017). Either route
+ * builds the same environment, so the class is named for the home rather than
+ * for the credential. A representative stack needs a protocol that builds the
+ * stack, and this collector does not have one, so it never labels a record with
+ * that class.
  */
 
 import { spawn } from 'node:child_process';
@@ -266,6 +268,47 @@ export async function plantNonce(skillDir, nonce, {
 }
 
 /**
+ * The record, assembled from what the run produced.
+ *
+ * Pure, and separate from `main`, because everything a reader depends on is
+ * decided here: which arm names the tuple's model, which route authenticated,
+ * and which environment class the collector actually built. Inside `main` none
+ * of it could be tested without paying for two live calls.
+ */
+export function buildRecord({
+  date, skill, nonce, pathway, flags, route, build, installedArm, controlArm, treeDigest: digest,
+}) {
+  return {
+    kind: 'isolation-probe',
+    date,
+    skill,
+    nonce,
+    nonce_plant: 'appended to SKILL.md in a throwaway install, which no study measures',
+    ask: ASK,
+    flags,
+    // Provenance, not identity. The route names how the arm authenticated, and
+    // ADR-0017 states why it sits outside the tuple.
+    auth_route: route,
+    identity: {
+      harness_build: build,
+      model: tupleModel(installedArm, controlArm),
+      platform: `${process.platform}-${process.arch}`,
+      pathway,
+      // Named for the home, never for the route. Both routes build the same
+      // environment, so naming it for one carried the route into the tuple,
+      // falsely, on every run of the other. A representative stack is a
+      // different protocol, and labelling this one with that class would let
+      // an empty-home probe cover a study that ran under an operator's own
+      // configuration.
+      environment_class: 'empty-home',
+      stack_digest: null,
+    },
+    installed: { ...installedArm, tree_digest: digest, trace: null },
+    control: { ...controlArm, trace: null },
+  };
+}
+
+/**
  * The record's filename. One probe, one file, named for what it covers.
  *
  * Built from the PARSED pathway, never from the string an operator typed, so
@@ -340,21 +383,128 @@ export function readRun({ raw, err = '', home }) {
 }
 
 /**
+ * The two routes a probe arm can authenticate by, in precedence order.
+ *
+ * A subscription token wins when both are set, by owner directive on #77. The
+ * order of this list IS the precedence, so there is one place to read it.
+ */
+export const AUTH_ROUTES = [
+  { route: 'subscription', variable: 'CLAUDE_CODE_OAUTH_TOKEN' },
+  { route: 'api-key', variable: 'ANTHROPIC_API_KEY' },
+];
+
+/**
+ * Which route this environment authenticates by, or null for neither.
+ *
+ * Presence, never the value. Nothing in this repository reads, prints, or
+ * records what either variable holds — the route NAME is what a record carries.
+ *
+ * The answer is only true of an arm built by `armEnv`, which hands the harness
+ * one credential and nothing else. Asked of a raw shell it describes that
+ * shell's first supported route and says nothing about the others, which is
+ * why `unmodelledCredentials` exists beside it.
+ */
+export function authRoute(env) {
+  for (const { route, variable } of AUTH_ROUTES) {
+    if (env[variable]) return route;
+  }
+  return null;
+}
+
+/**
+ * Variables the harness reads for credentials, endpoints, or headers, beyond
+ * the two routes this collector models.
+ *
+ * The list is this repository's reading of one CLI build, so it is a statement
+ * about a moving target and it will go stale. That is exactly why it is not
+ * load-bearing: `armEnv` builds an arm from an ALLOWLIST, so a variable nobody
+ * here has heard of never reaches the harness. This list drives a refusal
+ * instead — an operator whose shell configures a route the probe does not
+ * model gets told so, rather than getting a record that names one route while
+ * the shell meant another.
+ */
+export const UNMODELLED_CREDENTIAL_VARS = [
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_CUSTOM_HEADERS',
+  'ANTHROPIC_FOUNDRY_API_KEY',
+  'ANTHROPIC_FOUNDRY_AUTH_TOKEN',
+  'ANTHROPIC_AWS_API_KEY',
+  'AWS_BEARER_TOKEN_BEDROCK',
+  'CLAUDE_CODE_USE_BEDROCK',
+  'CLAUDE_CODE_USE_VERTEX',
+  'CLAUDE_CODE_USE_FOUNDRY',
+  'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR',
+  'CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR',
+  'CLAUDE_CODE_HOST_AUTH_ENV_VAR',
+  'CLAUDE_BG_AUTH_SNAPSHOT_PATH',
+];
+
+/** The names, never the values, of unmodelled credential variables that are set. */
+export function unmodelledCredentials(env) {
+  return UNMODELLED_CREDENTIAL_VARS.filter((name) => env[name]);
+}
+
+/**
+ * The variables an arm inherits, besides its credential and its home.
+ *
+ * An ALLOWLIST, because the arm's environment is part of the treatment. The
+ * first version subtracted a handful of names it knew about, and a review
+ * measured what survived: an auth token, a base URL, and a Bedrock credential
+ * all reached the harness while the record named the API key. Correctness by
+ * enumeration decays with every CLI release, which is the same reason this
+ * repository refuses an unrecorded install path rather than listing the ones it
+ * knows.
+ *
+ * What is missing is deliberate. `APPDATA` and `LOCALAPPDATA` point into the
+ * real profile and would undo the redirected home on Windows. A proxy, a
+ * certificate bundle, and `NODE_OPTIONS` all change how the harness talks or
+ * what it loads. A variable this list omits and the harness needs shows up as a
+ * probe that failed, in a committed record, which is the outcome this design
+ * prefers to a silent difference.
+ */
+export const INHERITED_VARS = [
+  'PATH', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
+  'SHELL', 'USER', 'LOGNAME',
+  'SystemRoot', 'windir', 'COMSPEC', 'PATHEXT', 'SystemDrive',
+  'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'OS',
+];
+
+/**
+ * The environment one arm runs under: the allowlist, one credential, and a
+ * redirected home.
+ *
+ * Precedence is delivered by handing over the winner alone rather than by
+ * asking the harness to prefer one. The arm therefore holds exactly one
+ * credential, and the route a record names is the route that served it.
+ *
+ * Windows environment names are case-insensitive, so the allowlist is matched
+ * that way. Comparing exactly would have dropped `Path` and left an arm unable
+ * to find the harness at all.
+ */
+export function armEnv(parent, home) {
+  const wanted = new Map(INHERITED_VARS.map((name) => [name.toLowerCase(), true]));
+  const env = {};
+  for (const [name, value] of Object.entries(parent)) {
+    if (wanted.has(name.toLowerCase())) env[name] = value;
+  }
+  const winner = AUTH_ROUTES.find(({ route }) => route === authRoute(parent));
+  if (winner) env[winner.variable] = parent[winner.variable];
+  env.HOME = home;
+  env.USERPROFILE = home;
+  return env;
+}
+
+/**
  * One harness run, with the home redirected. Returns the answer verbatim and
  * the build that served it, or the reason neither exists.
  *
- * The environment carries ANTHROPIC_API_KEY through, and that is how the
- * harness authenticates over an empty home (ADR-0017). Nothing here reads the
- * value, and nothing writes it anywhere. The config variables are deleted
- * instead, because one naming the operator's own configuration directory
- * survives a redirected HOME and points the harness back at the tree the probe
- * exists to exclude.
+ * The environment carries one credential through, and that is how the harness
+ * authenticates over an empty home (ADR-0017). Nothing here reads its value,
+ * and nothing writes it anywhere.
  */
 export function runArm({ harness, flags, cwd, home, ask }) {
-  const env = { ...process.env };
-  for (const key of ['CLAUDE_CONFIG_DIR', 'XDG_CONFIG_HOME', 'CLAUDE_HOME']) delete env[key];
-  env.HOME = home;
-  env.USERPROFILE = home;
+  const env = armEnv(process.env, home);
   return new Promise((resolve) => {
     const child = spawn(harness, [...flags, ask], {
       cwd, env, stdio: ['ignore', 'pipe', 'pipe'],
@@ -482,14 +632,28 @@ async function main(argv) {
   const nonce = `sw-probe-${crypto.randomBytes(8).toString('hex')}`;
 
   // ADR-0017: the harness authenticates from the environment, over an empty
-  // home. Without the key both arms answer that they are not logged in, and the
-  // probe never reaches its question. The value is never read, printed, or
-  // written — only its presence is.
-  if (!opts.dryRun && !process.env.ANTHROPIC_API_KEY) {
+  // home. Without a credential both arms answer that they are not logged in,
+  // and the probe never reaches its question. Presence is all that is read.
+  const route = authRoute(process.env);
+  if (!opts.dryRun && !route) {
     throw new Error(
-      'ANTHROPIC_API_KEY is not set. The probe runs over an empty home, so the '
-      + 'harness has nothing else to authenticate with. Set it in this shell and '
-      + 'run again.');
+      `Set one of ${AUTH_ROUTES.map((r) => r.variable).join(' or ')} in this shell. `
+      + 'The probe runs over an empty home, so the harness has nothing else to '
+      + 'authenticate with. `claude setup-token` issues a subscription token, and '
+      + 'the subscription route wins when both are set.');
+  }
+  // Refuse rather than guess. The allowlist above already keeps these away from
+  // the arm, so the run would be well defined — but it would not be the run the
+  // operator's shell describes, and a record naming one route while the shell
+  // configured another is the failure the route field exists to prevent. Names
+  // only, never values.
+  const unmodelled = unmodelledCredentials(process.env);
+  if (!opts.dryRun && unmodelled.length) {
+    throw new Error(
+      `This shell sets ${unmodelled.join(', ')}, and the probe models two routes `
+      + `only: ${AUTH_ROUTES.map((r) => r.variable).join(' and ')}. An arm never `
+      + 'inherits those variables, so the run would not be the one this shell '
+      + 'describes. Unset them, or run the probe from a shell without them.');
   }
 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-probe-'));
@@ -536,29 +700,10 @@ async function main(argv) {
     harness, flags, cwd: arms.control.cwd, home: arms.control.home, ask: ASK,
   });
 
-  const record = {
-    kind: 'isolation-probe',
-    date,
-    skill: opts.skill,
-    nonce,
-    nonce_plant: 'appended to SKILL.md in a throwaway install, which no study measures',
-    ask: ASK,
-    flags,
-    identity: {
-      harness_build: build,
-      model: tupleModel(installedArm, controlArm),
-      platform: `${process.platform}-${process.arch}`,
-      pathway: opts.pathway,
-      // This collector builds one environment: two empty homes, with the key
-      // in the environment. A representative stack is a different protocol,
-      // and labelling this one with that class would let a pristine probe
-      // cover a study that ran under an operator's own configuration.
-      environment_class: 'api-key-empty-home',
-      stack_digest: null,
-    },
-    installed: { ...installedArm, tree_digest: digest, trace: null },
-    control: { ...controlArm, trace: null },
-  };
+  const record = buildRecord({
+    date, skill: opts.skill, nonce, pathway: opts.pathway, flags, route, build,
+    installedArm, controlArm, treeDigest: digest,
+  });
 
   // One directory, always. A record written anywhere else is not committed, and
   // an uncommitted probe record is the retention gap in miniature. It also

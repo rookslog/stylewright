@@ -36,14 +36,19 @@ export const TUPLE = [
 /**
  * The environment classes, and the one that needs a digest.
  *
- * `api-key-empty-home` is the pristine class as the owner settled it on
- * 2026-08-06, in ADR-0017. The home is empty, and the harness authenticates
- * from an API key in the environment, so nothing about the operator's own
- * configuration reaches either arm. The class is named for how it
- * authenticates, because a home that held a credential would be a different
- * environment and must be a different name.
+ * `empty-home` is the pristine class as the owner settled it on 2026-08-06, in
+ * ADR-0017. The home is empty and the harness authenticates from the
+ * environment, so nothing of the operator's own configuration reaches either
+ * arm.
+ *
+ * The class is named for the HOME, never for the credential. Two routes
+ * authenticate into the same empty home, and a class named for one of them put
+ * the route inside the identity tuple by the back door: every subscription run
+ * was labelled `api-key-empty-home`, and the check said nothing. A home that
+ * HELD a credential would be a different environment and would need its own
+ * name.
  */
-export const ENV_CLASSES = ['api-key-empty-home', 'representative'];
+export const ENV_CLASSES = ['empty-home', 'representative'];
 export const STACK_CLASS = 'representative';
 
 /**
@@ -74,8 +79,78 @@ const ASSERTED = ['outcome', 'pass', 'passed', 'fail', 'failed', 'verdict', 'res
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ARMS = ['installed', 'control'];
-/** An Anthropic key, in the shape the vendor issues them. */
-const SECRET = /sk-ant-[A-Za-z0-9_-]{8,}/;
+/**
+ * A credential, in the shapes this vendor issues.
+ *
+ * Both routes are covered: an API key and a subscription token from
+ * `claude setup-token` share the `sk-ant-` family and differ in the segment
+ * that follows, so the pattern is written over the family. It is
+ * case-insensitive, because `SK-ANT-` is the same credential and read past an
+ * exact-case pattern.
+ *
+ * Two residues, both stated rather than papered over. A credential encoded so
+ * that its characters are not adjacent — base64, or split across fields — is
+ * out of scope, because catching that needs a decoder for every encoding and
+ * the result would still be a guess. And a credential of some other shape
+ * entirely would pass. This is a BACKSTOP. The mechanism is that nothing writes
+ * a credential into a record, and `armEnv` hands an arm one credential it never
+ * reads.
+ */
+const SECRET = /sk-ant-[a-z0-9_-]{8,}/i;
+
+/**
+ * Text with the noise a credential can hide behind removed, for matching only.
+ *
+ * A record is JSON, and JSON wraps and escapes. A value carrying a newline
+ * inside its first characters, or a `\n` escape, or quotes from a nested
+ * encoding, read straight past a pattern that expects adjacency — measured, and
+ * such a record passed `check:probes` end to end. The stderr field carries
+ * hundreds of raw bytes of harness output, so the wrapping is realistic rather
+ * than theoretical.
+ *
+ * The class covers what a log or a JSON encoder inserts: whitespace, quotes,
+ * backslashes, and the comma a list format adds. It stops there, and the
+ * residue is stated rather than implied — a credential split by some other
+ * separator, or encoded so its characters are not adjacent at all, is outside
+ * what this sees. Widening it to every non-credential character would glue the
+ * whole record into one string and refuse records that carry no credential.
+ */
+function unwrap(text) {
+  return String(text).replace(/[\s"',\\]/g, '');
+}
+
+/**
+ * Text safe to print.
+ *
+ * EVERY message this module emits goes through it, at the point of emission
+ * rather than per message. Redacting message by message is how the first leak
+ * happened: the refusal for a bad flag quoted the flag's value verbatim, one
+ * line above the refusal that promises nothing is quoted.
+ *
+ * ONE question, asked of the UNWRAPPED text, and the whole message is withheld
+ * when the answer is yes. An earlier version asked a surgical question first —
+ * replace what looks like a credential, then check what remains — and that
+ * order leaked. The surgical pass ate the HEAD of a wrapped credential and left
+ * the high-entropy tail standing, with nothing recognisable in front of it for
+ * the second pass to catch. Measured: a wrap eight characters in printed
+ * `[credential redacted]` followed by the rest of the token. A wrap that early
+ * withheld safely, and a wrap at a column a real log breaks on did not, so the
+ * realistic case was the leaking one.
+ *
+ * Withholding whole costs a readable message. That is the correct trade for a
+ * checker whose messages are diagnostics and whose records must never carry a
+ * credential at all. The caller keeps attribution outside this function, so a
+ * withheld line still says which record it came from.
+ */
+export function redact(text) {
+  if (SECRET.test(unwrap(text))) {
+    return '[a message here carried something credential-shaped, so it is withheld]';
+  }
+  return String(text);
+}
+
+/** The auth routes a record may name, from `bench/collect-probe.mjs`. */
+export const AUTH_ROUTE_NAMES = ['subscription', 'api-key'];
 
 const isText = (v) => typeof v === 'string' && v.trim().length > 0;
 
@@ -192,7 +267,11 @@ export function isolationProblems(flags) {
  */
 export function checkRecord(record, name = 'record') {
   const problems = [];
-  const say = (p) => problems.push(`${name}: ${p}`);
+  // Redaction at the point of emission, so no message has to remember the rule.
+  // The name sits OUTSIDE the redaction, so a withheld line still says which
+  // record it came from. Redacting the whole line erased the attribution, and a
+  // run over several records could not say which one was withheld.
+  const say = (p) => problems.push(`${name}: ${redact(p)}`);
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     return [`${name}: not a JSON object.`];
   }
@@ -259,6 +338,12 @@ export function checkRecord(record, name = 'record') {
     say('nonce is a string of at least eight characters.');
   }
   if (!isText(record.ask)) say('ask retains the question both arms answered.');
+  // The route, never the credential. Two routes can bill and rate-limit
+  // differently, so a record that stayed silent about which one served it would
+  // leave a reader unable to ask whether that mattered.
+  if (!AUTH_ROUTE_NAMES.includes(record.auth_route)) {
+    say(`auth_route names how the arm authenticated: ${AUTH_ROUTE_NAMES.join(' or ')}.`);
+  }
   if (isText(record.nonce) && isText(record.ask) && record.ask.includes(record.nonce)) {
     say('the ask carries the nonce, so a repeat proves nothing about the installed tree.');
   }
@@ -299,11 +384,21 @@ export function checkRecord(record, name = 'record') {
 
   for (const p of isolationProblems(record.flags)) say(p);
 
-  // The probe authenticates from an API key in the environment, per ADR-0017,
-  // and the key never enters the tree. A record is committed, so a key that
-  // reached one would be published. The match is never quoted back.
-  if (SECRET.test(JSON.stringify(record))) {
-    say('something in this record looks like an API key. Nothing here may carry one.');
+  // The probe authenticates from a credential in the environment, by either
+  // route, per ADR-0017, and neither form ever enters the tree. A record is
+  // committed, so a credential that reached one would be published. Nothing
+  // here quotes what it matched.
+  //
+  // This asks the question of the WHOLE record, so a credential split across
+  // two fields is seen only when the key name between them survives unwrapping
+  // at eight characters or more — the colon breaks the run otherwise. Which
+  // seams that covers is an accident of what the keys are called, not a
+  // property anything here decides. It sits inside the split-across-fields
+  // residue the pattern already declares, and it is written down because an
+  // accident that looks like coverage is worse than a stated gap.
+  if (SECRET.test(unwrap(JSON.stringify(record)))) {
+    say('something in this record looks like a credential. Nothing here may carry one, '
+      + 'by either route.');
   }
 
   for (const at of keyPaths(record)) {
@@ -350,10 +445,19 @@ export function deriveOutcome(record) {
 /** One line per record, for a person reading the check's output. */
 export function describe(name, record) {
   const o = deriveOutcome(record);
-  const tuple = TUPLE.map((f) => `${f}=${record.identity?.[f] ?? '-'}`).join(' ');
+  // Each VALUE is asked about on its own. Redacting the assembled line let
+  // `unwrap` glue one field's tail to the next field's head and see a
+  // credential that no field carried, which withheld the filename, the verdict
+  // and the whole tuple from a run that was clean. A value is the unit a
+  // credential could actually occupy, so it is the unit that gets the question.
+  const tuple = TUPLE
+    .map((f) => `${f}=${redact(String(record.identity?.[f] ?? '-'))}`)
+    .join(' ');
   // `control_served` is printed beside `control_clean`, because a control that
   // never ran and a control that ran clean are opposite readings of the same
   // empty answer, and a line that showed only the second would hide the first.
+  // The name and the derived flags are this module's own words, so they carry
+  // nothing to redact and stay outside the question.
   return `${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
     + `(installed_served=${o.installed_served} discovered=${o.discovered} `
     + `control_served=${o.control_served} control_clean=${o.control_clean} `
@@ -374,8 +478,11 @@ export async function readRecords(dir) {
     const text = await fs.readFile(path.join(dir, name), 'utf8');
     try {
       records.push({ name, record: JSON.parse(text) });
-    } catch (err) {
-      records.push({ name, record: null, unreadable: err.message });
+    } catch {
+      // The parser's message is not repeated. V8 truncates it to a few
+      // characters of the offending text, which tells a reader nothing and is
+      // one more path for a byte from the file to reach a printed line.
+      records.push({ name, record: null, unreadable: true });
     }
   }
   return records;
@@ -387,7 +494,7 @@ export async function checkDirectory(dir) {
   const lines = [];
   for (const { name, record, unreadable } of await readRecords(dir)) {
     if (unreadable) {
-      problems.push(`${name}: not readable as JSON. ${unreadable}`);
+      problems.push(`${name}: not readable as JSON.`);  // Our own words only.
       continue;
     }
     const found = checkRecord(record, name);
