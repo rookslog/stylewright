@@ -50,6 +50,11 @@ jobs:
       - name: Check the resident fragment against its skill
         run: npm run check:resident
 
+      # Fails when a promoted study's digests no longer match the bytes it
+      # holds, or when a retained file carries operator configuration.
+      - name: Check every promoted study
+        run: npm run check:studies
+
   # Windows support is a claim, and a claim nothing runs stops being true
   # quietly. This job is separate from `check` rather than an `os` dimension on
   # its matrix, because adding a dimension renames every existing job and the

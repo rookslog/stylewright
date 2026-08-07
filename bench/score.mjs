@@ -14,6 +14,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Longest first. `hedges` consumes each match, so "it is worth noting" must be
 // found as one hedge before "worth noting" and "it is worth" can each claim it.
@@ -428,6 +429,13 @@ async function main(argv) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// The path is compared as a PATH, never as a URL built by hand. `file://` glued
+// to `process.argv[1]` is `file://D:\a\repo\bench\score.mjs` on Windows, and
+// `import.meta.url` is `file:///D:/a/repo/bench/score.mjs`, so the two could
+// never be equal there and this file did nothing when it was run. Nothing in
+// CI ran it until promotion did, so the scorer silently printed no table and a
+// promoted study derived no figure. Every other entry point here already
+// compares this way, and `test/score.test.js` holds the whole set to it.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   process.exitCode = await main(process.argv.slice(2));
 }

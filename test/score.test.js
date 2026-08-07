@@ -227,3 +227,68 @@ test('an arm that disagrees with itself about its size is caught', async () => {
   const b = await sample(dir, 'a-2.txt', 'text', cell({ rep: 2, reps: 3 }));
   assert.match((await audit([a, b])).join(' '), /disagrees with itself about its size/);
 });
+
+// The scorer is a command as well as a module, and nothing in CI ran it as one
+// until promotion did. Its entry guard compared `import.meta.url` against a
+// URL glued together from `process.argv[1]`, which can never match on Windows,
+// so `node bench/score.mjs` printed nothing there. A promoted study then
+// derived no figure from a run that had reported success.
+
+test('the scorer runs as a command, and prints its table', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const dir = await tmpdir();
+  const file = await sample(dir, 'a-1.txt', 'a short reply\n', cell({ rep: 1, reps: 5 }));
+  const scorer = path.join(path.dirname(import.meta.dirname), 'bench', 'score.mjs');
+  const { stdout } = await promisify(execFile)(process.execPath, [scorer, '--unaudited', file]);
+  assert.match(stdout, /^audit\tarm\tfile\t/m);
+  assert.match(stdout, /\tMEDIAN\t/);
+});
+
+// Forbidding the one broken spelling was the weaker test: it says nothing about
+// a module that grows a `main` and guards it some third way, and nothing about
+// one that loses its guard entirely. So every entry point is named, and each is
+// asserted to carry the guard verbatim. A new module under `bench/` or
+// `scripts/` fails here until somebody puts it on one of the two lists, which
+// is the point — the list is the inventory.
+
+/** The one spelling that works on every platform. */
+const GUARD = 'if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {';
+
+/**
+ * Modules that run unconditionally as scripts, so they have no guard to carry.
+ *
+ * `scripts/check-resident.mjs` arrived with #86 and this test caught it, which
+ * is what the inventory is for. It is unguarded on purpose, like the extractor:
+ * nothing imports either one, and both do their work at the top level. The
+ * assertion below is what keeps that classification honest — a module listed
+ * here that starts reading `process.argv[1]` has grown a main and needs a
+ * guard, not an exemption.
+ */
+const UNGUARDED = {
+  'bench/extract.mjs': 'runs top to bottom as a script, with no main to guard',
+  'scripts/check-resident.mjs': 'runs top to bottom as a script, with no main to guard',
+};
+
+test('every entry point guards itself the one way that works on both platforms', async () => {
+  const root = path.dirname(import.meta.dirname);
+  const found = [];
+  for (const sub of ['bench', 'scripts']) {
+    for (const name of (await fs.readdir(path.join(root, sub))).filter((n) => n.endsWith('.mjs'))) {
+      found.push(`${sub}/${name}`);
+    }
+  }
+  assert.equal(found.length, 10, `the entry-point inventory moved: ${found.sort().join(', ')}`);
+  for (const rel of found) {
+    const text = await fs.readFile(path.join(root, rel), 'utf8');
+    if (Object.hasOwn(UNGUARDED, rel)) {
+      assert.ok(!text.includes('process.argv[1]'),
+        `${rel} is listed as unguarded because it ${UNGUARDED[rel]}, and it reads argv[1]`);
+      continue;
+    }
+    // A URL built by hand out of a Windows path never equals `import.meta.url`,
+    // so a module guarded that way runs as a command on one platform and does
+    // nothing on the other.
+    assert.ok(text.includes(GUARD), `${rel} does not carry the entry guard verbatim`);
+  }
+});

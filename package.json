@@ -30,7 +30,8 @@
     "check:docs": "node scripts/check-docs-meta.mjs",
     "check:probes": "node bench/probe.mjs",
     "check:resident": "node scripts/check-resident.mjs",
-    "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs && npm run check:probes && npm run check:resident"
+    "check:studies": "node bench/study.mjs",
+    "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs && npm run check:probes && npm run check:resident && npm run check:studies"
   },
   "dependencies": { "@inquirer/prompts": "^7.0.0" },
   "devDependencies": { "acorn": "^8.18.0" }
