@@ -28,7 +28,7 @@ authority. You can check the trace. That is the point.
 | Tier | What it means |
 |---|---|
 | `standards/` | Every skill is distilled from a named standard that you can read at a public URL. Every statement is accounted for: it cites a numbered rule, or it is marked as our own guidance, or it is marked as narrative. |
-| `craft/` | Every skill encodes writing discipline that has no external standard behind it. The authority is ours, and the skill says so. |
+| `craft/` | Every skill encodes discipline that has no external standard behind it. The authority is ours, and the skill says so. A craft skill may govern how an agent works as well as how it writes, which ADR-0005 decided. |
 
 Install one tier, the other, or both.
 
@@ -40,6 +40,7 @@ Install one tier, the other, or both.
 | `plain-language` | standards | Federal Plain Language Guidelines | CC0 1.0 Universal. Public domain. |
 | `compressed-deliberation` | craft | None. Anthropic documents the defaults, and our own baseline traces the inflation to the instruction stack above them. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
 | `navigable-references` | craft | None. The rule is ours, and no measurement stands behind it yet. See the skill `SOURCE.md`. | Not applicable. Nothing is reproduced. |
+| `proportionate-execution` | craft | None. Anthropic documents the behaviours, and every rule answering them is ours. See the skill `SOURCE.md`. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
 
 A craft skill has no standard behind it, so measurement is the only evidence its
 rules can have. `bench/` holds that protocol, and `bench/README.md` states the
@@ -50,6 +51,12 @@ aimed at the wrong thing.
 Measurement is the evidence a craft rule can have, and not the evidence each one
 already has. `navigable-references` ships with none, and its `SOURCE.md` says so
 in those words. Read it as discipline that we assert.
+
+`proportionate-execution` ships with none either, and for a harder reason. Its
+rules govern a session of many steps, and the bench runner drives one prompt.
+ADR-0005 accepted that gap when it admitted operating discipline to this tier,
+so no rule in that skill claims a measured effect until the runner can drive a
+session.
 
 More skills are in progress. See `CONTRIBUTING.md` to add one.
 
@@ -265,7 +272,7 @@ source's. No program checked that claim either. The marks say where a
 quotation starts and stops, and the source says whether it is accurate.
 
 Every matrix here says `unquoted` in every row today. Each one declares whether
-it may quote its source at all, in a line you can read, and three of the four
+it may quote its source at all, in a line you can read, and four of the five
 say it may not. `stylewright ground --check` prints how many rows quote their
 source, beside the audited count.
 

@@ -256,7 +256,7 @@ const QUOTED = new RegExp(`^${PAIR}(?:[^"]*${PAIR})*$`);
  * Whether this matrix may quote its source at all.
  *
  * The cell grammar above says what a quotation looks like. It cannot say
- * whether this source permits one, and three of the four matrices here do not.
+ * whether this source permits one, and four of the five matrices here do not.
  * ASD reserves all rights, and the owner's publication decision turns on no
  * rule text being reproduced. Nothing mechanical held that: substituting rule
  * text into the forbidden matrix left `ground --check` green, so a prohibition

@@ -38,7 +38,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   inside a collapsed `<details>`, and again qualified into meaning both. An
   absent declaration reads as `forbidden`, so does an unreadable one, and a
   second one is refused rather than lifting the first. ADR-0020 records both
-  decisions. Every matrix ships `unquoted` throughout, and three of the four
+  decisions. Every matrix ships `unquoted` throughout, and four of the five
   forbid quotation.
 - The grounding check reads the matrix table as a reader sees it. The header and
   the delimiter carry seven columns, every heading is checked by name, and an
@@ -55,6 +55,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and each row now carries an `extra` field holding any cells past the last.
   Nothing in this repository reads it other than the grounding check.
 
+- The `proportionate-execution` skill, in the craft tier. It holds an agent in a
+  session to the size of the task: report a step the reader can act on, do the
+  work the request defines, and name a condition at the severity it carries. It
+  keeps the narration a reader relies on to intervene, which is the one case the
+  first three rules must not cut. Five `G` rows describe behaviour Anthropic
+  documents in Claude Opus 5, and every rule answering them is ours. ADR-0005
+  admitted operating discipline to this tier, and it forbids a measured claim
+  until the bench can drive a multi-step session. No arm has been run, and the
+  skill `SOURCE.md` says so.
 - The `navigable-references` skill, in the craft tier. It asks a writer to give
   every named thing a form the reader can follow, in the form the medium
   renders, and to find a line at the moment of citing it rather than from

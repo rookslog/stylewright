@@ -102,7 +102,7 @@ declaration reads as `forbidden`, because a default of `permitted` turns the
 rule off for whoever forgot the line. A second declaration is refused and any
 `forbidden` among them governs, so lift a prohibition by editing it and never
 by adding a line under it. Every matrix here ships `unquoted` throughout, and
-three of the four forbid quotation outright. ADR-0020 records the decision.
+four of the five forbid quotation outright. ADR-0020 records the decision.
 
 A declaration is read where a reader finds it, and three placements are not
 that. It sits above the header row, because one under the table is a footnote
