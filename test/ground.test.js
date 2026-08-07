@@ -380,6 +380,75 @@ test('a declaration a reader cannot find governs nothing', () => {
   }
 });
 
+test('a declaration is hidden by indented HTML too, because CommonMark allows the indent', () => {
+  // Anchoring the tag at column 0 read a two-space-indented `<details>` as
+  // visible prose. A renderer collapses it, so the reader and the check
+  // disagreed again, one space over.
+  const permits = '**Quotation:** permitted. The Demo Standard is invented.';
+  const bare = MATRIX.replace(`${DECLARED}\n\n`, '');
+  for (const indent of ['', ' ', '  ', '   ']) {
+    const hidden = bare.replace('# Grounding: s',
+      `# Grounding: s\n\n${indent}<details>\n\n${permits}\n\n${indent}</details>`);
+    const found = check({ skillText: SKILL, matrixText: hidden });
+    assert.ok(found.some((f) => f.code === 'matrix-declaration-inside-html'),
+      `${indent.length} spaces of indent hid the tag from the check and not from the reader`);
+    assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+      `${indent.length} spaces of indent permitted the quotation`);
+  }
+
+  // The closer takes the same indent, or the region never ends and every
+  // declaration below an indented block is refused for sitting in it.
+  for (const indent of ['', ' ', '  ', '   ']) {
+    const closed = bare.replace('# Grounding: s',
+      `# Grounding: s\n\n${indent}<details>\n\nHidden prose.\n\n${indent}</details>\n\n${permits}`);
+    assert.deepEqual(errors(check({ skillText: SKILL, matrixText: closed })), [],
+      `a closer indented ${indent.length} spaces left the region open`);
+  }
+});
+
+test('a void element opens no region, so a bare line break does not swallow the file', () => {
+  // `<br>` never closes, so counting it put every declaration below it inside
+  // a region no line could end. That fails closed, which is a rule people
+  // route around rather than a rule that holds.
+  for (const tag of ['<br>', '<br />', '<hr>', '<img src="x.png">']) {
+    const after = MATRIX.replace(DECLARED, `${tag}\n\n${DECLARED}`);
+    assert.deepEqual(errors(check({ skillText: SKILL, matrixText: after })), [],
+      `${tag} opened a region that never closed`);
+  }
+});
+
+test('the state word ends the token, so permitted-not does not read as permitted', () => {
+  // `\b` matched inside the word, so a line a person reads as the opposite of
+  // permission was taken for permission.
+  const hyphenated = MATRIX.replace(DECLARED, '**Quotation:** permitted-not. Read this as no.');
+  const found = check({ skillText: SKILL, matrixText: hyphenated });
+  assert.ok(found.some((f) => f.code === 'matrix-no-quotation-declaration'),
+    'permitted-not was read as a declaration');
+  assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
+    'permitted-not permitted the quotation');
+});
+
+test('a forbidden that is badly written still forbids', () => {
+  // Doubt reads as forbidden everywhere else here. A state-blind filter had a
+  // clean `permitted` beat a misplaced or equivocating `forbidden` above it,
+  // which is this design pointing backwards.
+  const bare = MATRIX.replace(`${DECLARED}\n\n`, '');
+  const messy = [
+    ['below the table', `${bare}\n**Quotation:** forbidden. The owner said no.\n`],
+    ['inside HTML', bare.replace('# Grounding: s',
+      '# Grounding: s\n\n<details>\n\n**Quotation:** forbidden. The owner said no.\n\n</details>')],
+    ['equivocating', bare.replace('# Grounding: s',
+      '# Grounding: s\n\n**Quotation:** forbidden. No cell here is permitted to carry words.')],
+  ];
+  for (const [how, prohibition] of messy) {
+    // The clean permitting line sits below it and must not win.
+    const both = prohibition.replace('| ID |', `${DECLARED}\n\n| ID |`);
+    assert.ok(check({ skillText: SKILL, matrixText: both })
+      .some((f) => f.code === 'quotation-forbidden-here'),
+      `a prohibition ${how} stopped governing while a clean permitted won`);
+  }
+});
+
 test('a qualification cannot escape by moving to the next line', () => {
   // The reason is a paragraph, and reading only the first line of it would
   // move the equivocation down one line rather than refuse it.
@@ -390,6 +459,28 @@ test('a qualification cannot escape by moving to the next line', () => {
     'the second line of the reason named a state and the check did not read it');
   assert.ok(found.some((f) => f.code === 'quotation-forbidden-here'),
     'the wrapped qualification permitted the quotation');
+});
+
+test('the reason runs to the next heading or the table, not to the next blank line', () => {
+  // Reading one line let the qualification move to the second, and reading one
+  // paragraph let it move to the paragraph after. The argument for widening the
+  // first time reaches the second time, so it stops where a subject changes.
+  const after = MATRIX.replace(DECLARED, `${DECLARED}\n\nRule text stays forbidden.`);
+  assert.ok(check({ skillText: SKILL, matrixText: after })
+    .some((f) => f.code === 'matrix-declaration-equivocates'),
+    'a qualification one paragraph down escaped the reason');
+
+  // A heading ends it, because a heading starts a different subject.
+  const parted = MATRIX.replace(DECLARED, `${DECLARED}\n\n## Elsewhere\n\nRule text stays forbidden.`);
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: parted })), [],
+    'prose under a later heading was read as part of the reason');
+
+  // And a fenced example is skipped rather than read, so a matrix that shows
+  // what a declaration looks like does not equivocate about its own state.
+  const shows = MATRIX.replace(DECLARED,
+    `${DECLARED}\n\n\`\`\`\n**Quotation:** forbidden\n\`\`\`\n\nNothing here says otherwise.`);
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: shows })), [],
+    'a fenced example poisoned the reason around it');
 });
 
 test('a declaration inside a fenced block is an example, not a state', () => {

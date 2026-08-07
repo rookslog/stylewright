@@ -37,7 +37,7 @@ line and the record in `SOURCE.md`.
 This file cites rule numbers and section locations, and it carries no rule text.
 Quoting the operative sentence beside each identifier would make a `G` row
 checkable without opening a 400-page PDF, and the authoring doctrine has
-permitted that since 2026-07-27.
+allowed that since 2026-07-27.
 
 Nobody may write in this column yet. ASD reserves all rights and grants free
 reproduction to eight kinds of organization, none of which is this repository,

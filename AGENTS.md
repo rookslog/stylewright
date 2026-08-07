@@ -112,7 +112,16 @@ whole paragraph and not merely the first line, because `permitted for the
 dictionary only. Rule text is forbidden.` read as permitted. Each of those was
 accepted until somebody attacked the check rather than imagined it, and each
 now reads as forbidden as well as being refused. A refusal that left the
-quotation standing would have won the attacker everything.
+quotation standing would have won the attacker everything. A badly written
+`forbidden` still forbids, for the same reason: doubt reads as forbidden here,
+so a clean `permitted` must not beat a malformed prohibition above it.
+
+The declaration is read a line at a time, and a renderer is not. Report a fifth
+divergence on the issue 37 and 70 track, which carries that class, rather than
+here as a sixth guard. ADR-0016 settled how this repository answers a new shape,
+and the declaration inherits it: ask which form the checker read the line as,
+and remember that an unmodelled shape costs a false refusal rather than a
+quotation nobody sanctioned.
 
 The marks say which words a row CLAIMS are the source's. They say nothing about
 whether the quotation is accurate, and no check here can: a well-formed

@@ -195,16 +195,23 @@ attacked the check:
 - A declaration under the table. A reader looking for the state of a file reads
   its opening prose, not a footnote to the rows.
 - A declaration inside raw HTML. A permitting line inside a collapsed
-  `<details>` is a line the reader on GitHub never sees.
+  `<details>` is a line the reader on GitHub never sees. Up to three spaces of
+  indent still open one, because a renderer treats those as HTML too.
 - A reason that names a state again. `permitted for the dictionary only. Rule
-  text is forbidden.` says both, and the check read it as permitted. The whole
-  paragraph is read, so moving the qualification to the next line does not help.
+  text is forbidden.` says both, and the check read it as permitted. The reason
+  runs to the next heading or to the table, so moving the qualification to the
+  next line or the next paragraph does not help. A fenced example inside it is
+  skipped, so a matrix may show what a declaration looks like.
+
+Write the state word on its own. `permitted-not` is not a declaration at all,
+and a matrix carrying only that one reads as `forbidden`.
 
 Every matrix carries the line, and a matrix that carries none is read as
 `forbidden`. So is one whose only declaration is refused above. A default of
-`permitted` would turn the rule off for whoever forgot the line. Two readable
-lines are refused, and any `forbidden` among them governs, so lift a prohibition
-by editing it rather than by writing a permitting line under it.
+`permitted` would turn the rule off for whoever forgot the line. Two lines are
+refused, and any `forbidden` among them governs even when that one is the
+refused line, so lift a prohibition by editing it rather than by writing a
+permitting line under it.
 
 Do three things before you write a quotation, in this order:
 

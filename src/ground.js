@@ -295,15 +295,34 @@ const QUOTED = new RegExp(`^${PAIR}(?:[^"]*${PAIR})*$`);
  * first line, or the qualification simply moves down a line.
  */
 const FORBIDDEN = 'forbidden';
-const DECLARATION = /^\*\*Quotation:\*\* (permitted|forbidden)\b/;
+// The state word ENDS the token. `\b` alone matched inside `permitted-not`,
+// which reads to a person as the opposite of what the check took it for.
+const DECLARATION = /^\*\*Quotation:\*\* (permitted|forbidden)(?![-\w])/;
+// The reason's test stays loose on purpose. Every shape it catches is refused,
+// so a wider match fails closed, and the narrower rule above governs only what
+// the check reads AS a declaration.
 const EITHER_STATE = /\b(?:permitted|forbidden)\b/i;
 
-// Raw HTML at column 0, read as a region rather than as a block. A reader sees
-// `<details>` hide everything to its closer, whatever blank lines fall between,
-// and CommonMark's HTML block ends at the first of those.
-const HTML_OPENS = /^<[a-zA-Z][\w-]*(?=[\s>/]|$)/;
-const HTML_CLOSES = /^<\/[a-zA-Z][\w-]*\s*>/;
+/**
+ * Raw HTML, read as a region rather than as a block. A reader sees `<details>`
+ * hide everything to its closer, whatever blank lines fall between, and
+ * CommonMark's HTML block ends at the first of those.
+ *
+ * Up to three leading spaces, because CommonMark allows them and a renderer
+ * treats a two-space-indented `<details>` as HTML. Anchoring at column 0 read
+ * such a block as visible prose while the reader saw it collapsed, which is
+ * the same disagreement this check exists to end.
+ *
+ * A void element opens nothing. `<br>` never closes, so counting it left every
+ * declaration below it inside a region that no line could end. The check fails
+ * closed there, and a rule that refuses an honest file until somebody works out
+ * why is a rule people route around.
+ */
+const VOID = 'area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr';
+const HTML_OPENS = new RegExp(`^ {0,3}<(?!(?:${VOID})(?![\\w-]))[a-zA-Z][\\w-]*(?=[\\s>/]|$)`, 'i');
+const HTML_CLOSES = /^ {0,3}<\/[a-zA-Z][\w-]*\s*>/;
 const HTML_SELF_CLOSES = /\/>\s*$/;
+const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
 
 /**
  * Every declaration in the file, each with what makes it unreadable. The
@@ -326,10 +345,30 @@ export function readDeclaration(text, headerLine = null) {
     else if (HTML_OPENS.test(line) && !HTML_SELF_CLOSES.test(line)) html += 1;
     const stated = DECLARATION.exec(line);
     if (!stated) continue;
-    // The reason is the whole paragraph the declaration opens, so a
-    // qualification cannot escape the check by moving to the next line.
+    // The reason runs to the next heading or to the table, whichever comes
+    // first. Reading one line let the qualification move to the second, and
+    // reading one paragraph let it move to the paragraph after — the argument
+    // for widening the first time reaches the second time as well. A heading
+    // ends it because a heading starts a different subject, and the table ends
+    // it because there is nothing after that a declaration could be arguing.
+    //
+    // Fenced content is skipped rather than read, and skipped rather than
+    // stopped at. Reading it made a matrix that SHOWS what a declaration looks
+    // like equivocate about its own state, and stopping at it would hand the
+    // qualification the same escape one fence lower down.
     const reason = [line.slice(stated[0].length)];
-    for (let j = i + 1; j < lines.length && lines[j].trim(); j += 1) reason.push(lines[j]);
+    let shown = null;
+    for (let j = i + 1; j < lines.length; j += 1) {
+      if (headerLine !== null && j + 1 >= headerLine) break;
+      const inner = MATRIX_FENCE.exec(lines[j]);
+      if (shown) {
+        if (inner && inner[2][0] === shown[0] && inner[2].length >= shown.length) shown = null;
+        continue;
+      }
+      if (inner) { shown = inner[2]; continue; }
+      if (HEADING.test(lines[j])) break;
+      reason.push(lines[j]);
+    }
     found.push({
       line: i + 1,
       state: stated[1],
@@ -801,8 +840,14 @@ export function checkSkill({ skillText, matrixText, now }) {
       });
     }
   }
+  // What governs. A readable declaration governs, and so does an unreadable one
+  // that says `forbidden`, because everywhere else here doubt reads as
+  // forbidden and a badly written prohibition is still somebody prohibiting.
+  // A state-blind filter had a clean `permitted` beating a misplaced or
+  // equivocating `forbidden` above it, which is this design pointing backwards.
   const readable = declared.filter((d) => !d.belowTable && !d.inHtml && !d.equivocates);
-  const forbids = !readable.length || readable.some((d) => d.state === FORBIDDEN);
+  const governing = declared.filter((d) => readable.includes(d) || d.state === FORBIDDEN);
+  const forbids = !governing.length || governing.some((d) => d.state === FORBIDDEN);
   if (!declared.length) {
     findings.push({
       level: 'error',
@@ -812,12 +857,15 @@ export function checkSkill({ skillText, matrixText, now }) {
         + 'header row, with the reason beside it. Until it does, no row here may carry '
         + 'anything but `unquoted`.',
     });
-  } else if (readable.length > 1) {
+  } else if (declared.length > 1) {
+    // Every declaration, not the readable ones. Two lines are two lines, and
+    // counting only the readable ones let a second declaration hide the fact
+    // of itself by also being malformed.
     findings.push({
       level: 'error',
       code: 'matrix-two-quotation-declarations',
-      message: `the matrix declares its quotation state ${readable.length} times, on line `
-        + `${readable.map((d) => d.line).join(', ')}. Lift a prohibition by editing it and its `
+      message: `the matrix declares its quotation state ${declared.length} times, on line `
+        + `${declared.map((d) => d.line).join(', ')}. Lift a prohibition by editing it and its `
         + 'reason, never by adding a line under it.',
     });
   }
@@ -1011,8 +1059,8 @@ export function checkSkill({ skillText, matrixText, now }) {
           level: 'error',
           code: 'quotation-forbidden-here',
           message: `${row.id}: this matrix may not quote its source, so the Source text cell `
-            + `reads \`${UNQUOTED}\`. ${readable.length
-              ? `The declaration on line ${readable.find((d) => d.state === FORBIDDEN).line} says so`
+            + `reads \`${UNQUOTED}\`. ${governing.some((d) => d.state === FORBIDDEN)
+              ? `The declaration on line ${governing.find((d) => d.state === FORBIDDEN).line} says so`
               : 'The matrix declares nothing this check can read, which reads as forbidden'}. `
             + 'Changing that is a decision about the source, and it is made in the declaration.',
         });

@@ -163,6 +163,33 @@ disagrees with the reader's, which is the failure this file names in
 other places, so a nested mark is a shape to avoid rather than one the
 grammar handles. Nothing refuses it today.
 
+**The declaration is read a line at a time, and a renderer is not.**
+This is the residue as a CLASS rather than as a list, and naming it is
+what lets this decision close.
+
+Four rounds of review each found one more place where the checker's
+reading and a reader's diverge: a row inside a blockquote, a row indented
+four spaces, a declaration under the table, a declaration inside a
+collapsed `<details>`, an indented `<details>`, a state word inside
+`permitted-not`. Each was real and each was patched. The supply is not
+exhausted, because the checker models no container and Markdown has many.
+
+ADR-0016 already settled how this repository answers that. The grammar
+states the forms it reads and refuses the rest, and a new shape is a
+question about which form the checker read it as, never an occasion for a
+rule that names the shape. The declaration inherits that. Its guards are
+stated the same way round: it is read where it is found, above the table,
+outside HTML, naming its state once, and every divergence outside those
+reads as forbidden.
+
+A fifth shape therefore goes to the issue #37 and #70 track, which
+carries the Markdown-versus-renderer class and the decision that closes
+it. It does not come back here as a sixth guard. Patching one variant
+produced the next one five rounds running on the extractor, and the same
+arithmetic holds one file over. What this decision owns is the direction:
+doubt reads as forbidden, so an unmodelled shape costs a false refusal
+rather than a quotation nobody sanctioned.
+
 **A quoted row and an audited row are counted separately, and the pair is
 not.** A row can carry the source's words and no audit, which is a row
 whose quotation nobody has checked. The two notes report two numbers, and
