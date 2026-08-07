@@ -6,15 +6,40 @@
  *
  * The measurement design, section 4.2, makes this probe a blocking prerequisite
  * for installed delivery. Its acceptance test: an installed skill is
- * discoverable under the exact flag set the control arm runs, in a redirected
- * home the harness fully respects. So this file runs `bench/run.sh`'s flags and
- * changes nothing else. The flags live in `probe.mjs`, next to the check that
- * enforces them, because a second copy is a second thing to drift.
+ * discoverable under the acceptance flag set, plus at most the trace flag, in a
+ * redirected home the harness fully respects. That set is the probe's own —
+ * `-p`, the model alias, `--setting-sources user`, `--strict-mcp-config`,
+ * `--output-format json` — and it lives in `probe.mjs`, next to the check that
+ * enforces it, because a second copy is a second thing to drift.
+ *
+ * It DIVERGES from `bench/run.sh` on one flag, deliberately. `run.sh` selects
+ * `--setting-sources ''` for its no-guidance control, because that control runs
+ * in the operator's real home and the empty spelling is what suppresses their
+ * CLAUDE.md and their settings. A probe arm's home is a throwaway empty one, so
+ * there is nothing there to suppress, and the empty spelling suppressed the
+ * user SKILL directory too — which switched off the very thing under test.
+ * Measured 2026-08-07, ADR-0024. Reconciling the two spellings reintroduces
+ * that fault.
  *
  * What it does, in order: install the skill into a throwaway redirected home
  * through one real pathway, plant a nonce in the installed copy, ask both that
  * home and an identical empty one to repeat the nonce, and write both answers
  * verbatim with the identity tuple and the date.
+ *
+ * **What this measures, and what it does not.** Amended 2026-08-07, ADR-0024.
+ * The nonce goes in the skill's frontmatter DESCRIPTION, which is what the
+ * harness puts in front of the model: skills arrive as an attachment of names
+ * and descriptions, and a SKILL.md body loads only when the model invokes the
+ * skill. So this probe measures the ATTACHMENT SURFACE — can this harness, on
+ * this build, through this pathway, surface an installed skill at all — which
+ * is the job section 4.1 gives it, in those words.
+ *
+ * It deliberately does NOT measure invocation, selection, or loading. Those are
+ * section 4.2's territory, and section 4.2 keeps them entangled on purpose. The
+ * nonce used to sit in the body, which made this probe measure invocation with
+ * section 4.1's apparatus: a FAIL could not be attributed, because a body that
+ * never loads and a skill that was never discovered produce the same answer.
+ * One did, and it took four call pairs to tell the two apart.
  *
  * What it never does: say whether the probe passed. `probe.mjs` derives that
  * from these bytes, and `npm run check:probes` prints what it derived.
@@ -48,7 +73,7 @@ import { fileURLToPath } from 'node:url';
 import { installSkills } from '../src/install.js';
 import { resolveTarget, PLATFORMS, SCOPES } from '../src/targets.js';
 import { destinationState, ensureDir, isBelow, walk } from '../src/tree.js';
-import { armAnswered } from './probe.mjs';
+import { armAnswered, TRACE_FLAG } from './probe.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -94,12 +119,24 @@ export function parsePathway(pathway) {
 }
 
 /**
- * The flag set both arms run. It is the control arm's, from `bench/run.sh`,
- * with the model alias substituted. `probe.mjs` refuses anything else.
+ * The flag set both arms run. It is a probe arm's, defined by `REQUIRED_FLAGS`
+ * and `FIXED_VALUES` in `probe.mjs`, with the model alias substituted.
+ * `probe.mjs` refuses anything else.
+ *
+ * It is not `bench/run.sh`'s. That file selects `--setting-sources ''` for a
+ * no-guidance control in the operator's real home, and here the same spelling
+ * suppresses the user skill directory in a home that has nothing else in it.
+ * The divergence is the whole point rather than a drift, and the file header
+ * carries the argument.
+ *
+ * `debugFile` adds the one allowed extra, `--debug-file`, which retains the
+ * harness trace section 4.1 asks a record to carry. Omit it and the arm runs
+ * the acceptance set alone.
  */
-export function armFlags(model) {
-  return ['-p', '--model', model, '--setting-sources', '', '--strict-mcp-config',
+export function armFlags(model, debugFile = null) {
+  const flags = ['-p', '--model', model, '--setting-sources', 'user', '--strict-mcp-config',
     '--output-format', 'json'];
+  return debugFile ? [...flags, TRACE_FLAG, debugFile] : flags;
 }
 
 /**
@@ -116,11 +153,69 @@ export function tupleModel(installedArm, controlArm) {
   return '';
 }
 
-/** The text planted in the installed copy. The nonce is the only payload. */
-export function plantedText(nonce) {
-  return `\n## Installed probe marker\n\nThis installed copy carries the probe nonce `
-    + `${nonce}. When a reader asks for the stylewright probe nonce, answer with that `
-    + 'exact string and nothing else.\n';
+/** The sentence the nonce rides into the frontmatter description. */
+export function plantedSentence(nonce) {
+  return `The stylewright probe nonce is ${nonce}.`;
+}
+
+/**
+ * The installed `SKILL.md`, with the nonce woven into the frontmatter
+ * DESCRIPTION. Pure, so the rewrite is testable without a filesystem.
+ *
+ * The description is where the plant belongs, because the description is what
+ * the harness puts in front of the model. Measured 2026-08-07: the harness
+ * sends skills as an attachment of names and descriptions, and a SKILL.md BODY
+ * loads only when the model invokes the skill. The nonce used to go in the
+ * body, so a probe could return NONE with the skill perfectly discovered, and
+ * did. ADR-0024 records the move.
+ *
+ * The rewrite refuses rather than guesses. A file with no frontmatter, or a
+ * frontmatter with no `description`, is not a skill this probe can plant in,
+ * and a plant that silently did nothing would read as a failed probe.
+ *
+ * It refuses four YAML value shapes for the same reason, because appending to
+ * the line CORRUPTS each of them rather than extending it. A quoted scalar puts
+ * the sentence outside the closing quote, which is a parse error or a second
+ * value. A block scalar, `|` or `>`, opens on the next lines, so the sentence
+ * lands on the header where it is not part of the value at all. Every skill
+ * this repository ships writes a plain scalar, so the refusal costs nothing
+ * today and stops a silent miscollection the day one does not. Handling these
+ * needs a YAML writer, and a probe that mis-plants pays two live calls to
+ * report a failure about itself.
+ */
+const UNPLANTABLE = {
+  '"': 'a double-quoted scalar',
+  "'": 'a single-quoted scalar',
+  '|': 'a literal block scalar',
+  '>': 'a folded block scalar',
+};
+
+export function plantInDescription(text, nonce) {
+  const lines = String(text).split('\n');
+  if (lines[0]?.trim() !== '---') {
+    throw new Error('The installed SKILL.md opens with no frontmatter, so the nonce has '
+      + 'nowhere to go that the harness would read.');
+  }
+  const close = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  if (close === -1) {
+    throw new Error('The installed SKILL.md has frontmatter that never closes.');
+  }
+  // The FIRST description line inside the frontmatter, and only there. A later
+  // `description:` in the body is prose about descriptions.
+  const at = lines.findIndex((l, i) => i > 0 && i < close && /^description:\s*/.test(l));
+  if (at === -1) {
+    throw new Error('The installed SKILL.md frontmatter carries no description, and the '
+      + 'description is the surface this probe measures.');
+  }
+  const value = lines[at].replace(/^description:\s*/, '');
+  const shape = UNPLANTABLE[value[0]];
+  if (shape) {
+    throw new Error(`The installed SKILL.md writes its description as ${shape}, and appending `
+      + 'to that line changes the value into something the harness never reads. Planting '
+      + 'there would buy a probe that failed about itself.');
+  }
+  lines[at] = `${lines[at].replace(/\s+$/, '')} ${plantedSentence(nonce)}`;
+  return lines.join('\n');
 }
 
 /**
@@ -151,7 +246,10 @@ export async function treeDigest(dir) {
  * platform actually permits rather than taking a docstring's word for it.
  */
 export function plantFlags(noFollow = constants.O_NOFOLLOW ?? 0) {
-  return constants.O_WRONLY | constants.O_APPEND | noFollow;
+  // `O_RDWR`, because the plant now REWRITES a frontmatter line rather than
+  // appending a section. One handle still does the whole job, so the file the
+  // read saw is the file the write lands on.
+  return constants.O_RDWR | noFollow;
 }
 
 /**
@@ -255,7 +353,12 @@ export async function plantNonce(skillDir, nonce, {
     if (!st.isFile()) {
       throw new Error(`${target} is not a plain file, and nothing is written through it.`);
     }
-    await fh.write(plantedText(nonce));
+    // Read, rewrite, write back, all on the ONE handle the checks above
+    // classified. Re-opening by path between the read and the write would put
+    // the whole swap window back that this function exists to close.
+    const planted = plantInDescription(await fh.readFile('utf8'), nonce);
+    await fh.truncate(0);
+    await fh.write(planted, 0);
   } finally {
     await fh.close();
   }
@@ -283,7 +386,8 @@ export function buildRecord({
     date,
     skill,
     nonce,
-    nonce_plant: 'appended to SKILL.md in a throwaway install, which no study measures',
+    nonce_plant: 'the frontmatter description line of SKILL.md, rewritten in a throwaway '
+      + 'install, which no study measures',
     ask: ASK,
     flags,
     // Provenance, not identity. The route names how the arm authenticated, and
@@ -303,8 +407,8 @@ export function buildRecord({
       environment_class: 'empty-home',
       stack_digest: null,
     },
-    installed: { ...installedArm, tree_digest: digest, trace: null },
-    control: { ...controlArm, trace: null },
+    installed: { ...installedArm, tree_digest: digest, trace: installedArm.trace ?? null },
+    control: { ...controlArm, trace: controlArm.trace ?? null },
   };
 }
 
@@ -496,6 +600,54 @@ export function armEnv(parent, home) {
 }
 
 /**
+ * The trace lines a record keeps, and the only ones.
+ *
+ * Section 4.1 asks a probe to record "the harness trace where one exists", and
+ * says a trace naming the loaded file is better evidence than either answer.
+ * This is the selector that decides which lines those are: the harness's own
+ * statements about where it looked for skills and how many it loaded. Four
+ * documents in this repository quote those lines as the warrant for the flag
+ * amendment, and until now no artifact retained one.
+ *
+ * The rest of a debug log is not kept. It runs to megabytes, most of it about
+ * transport and tool wiring, and a record is committed — so retaining the whole
+ * thing would bury the evidence and widen every surface a credential could
+ * reach. `TRACE_LINE_LIMIT` bounds even the kept set, because the log repeats
+ * these lines per session and a record is read by a person.
+ *
+ * The lines are kept VERBATIM, in the harness's words, never summarised. A
+ * summary of a trace is the author's word about the evidence, which is the one
+ * thing this protocol refuses everywhere else.
+ */
+export const TRACE_PATTERNS = [/Loading skills from/i, /Loaded \d+ unique skills/i];
+export const TRACE_LINE_LIMIT = 40;
+
+export function skillTraceLines(text) {
+  return String(text).split('\n')
+    .map((line) => line.replace(/\s+$/, ''))
+    .filter((line) => TRACE_PATTERNS.some((pattern) => pattern.test(line)))
+    .slice(0, TRACE_LINE_LIMIT);
+}
+
+/**
+ * The trace for one arm, or `null` when the harness left none.
+ *
+ * The two states are different and the record keeps them apart. An empty list
+ * says a debug log was written and named no skill loading, which is itself a
+ * reading. `null` says no log reached this collector at all — the harness
+ * refused before it wrote one, or no `--debug-file` was asked for. Collapsing
+ * the two would let a missing file read as a harness that loaded nothing.
+ */
+export async function readTrace(file) {
+  if (!file) return null;
+  try {
+    return skillTraceLines(await fs.readFile(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * One harness run, with the home redirected. Returns the answer verbatim and
  * the build that served it, or the reason neither exists.
  *
@@ -680,7 +832,14 @@ async function main(argv) {
   await plantNonce(skillDir, nonce, { baseDir: arms.installed.home });
   const digest = await treeDigest(skillDir);
 
-  const flags = armFlags(opts.model);
+  // ONE debug path, and the arms run one after the other through it. Two paths
+  // would put a different `--debug-file` value in each arm's invocation, and
+  // the record carries ONE flag set — which would then be true of neither arm.
+  // The trace is read and the file removed before the next arm starts, so
+  // attribution rests on the sequencing below and not on a guess about which
+  // lines came from where.
+  const debugFile = path.join(root, 'harness-debug.log');
+  const flags = armFlags(opts.model, debugFile);
   if (opts.dryRun) {
     process.stdout.write(`installed tree: ${skillDir}\n`);
     process.stdout.write(`control home:   ${arms.control.home}\n`);
@@ -696,9 +855,12 @@ async function main(argv) {
   const installedArm = await runArm({
     harness, flags, cwd: arms.installed.cwd, home: arms.installed.home, ask: ASK,
   });
+  installedArm.trace = await readTrace(debugFile);
+  await fs.rm(debugFile, { force: true });
   const controlArm = await runArm({
     harness, flags, cwd: arms.control.cwd, home: arms.control.home, ask: ASK,
   });
+  controlArm.trace = await readTrace(debugFile);
 
   const record = buildRecord({
     date, skill: opts.skill, nonce, pathway: opts.pathway, flags, route, build,

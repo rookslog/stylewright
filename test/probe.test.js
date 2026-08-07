@@ -2,9 +2,9 @@
 //
 // Two properties carry the design's claims, and each has cases here. A record
 // never states its own outcome, so `checkRecord` refuses one and `deriveOutcome`
-// computes it from the retained bytes. And the probe runs the control arm's
-// exact flag set, so a record collected under any other flags fails the
-// acceptance test in section 4.2 of the measurement design.
+// computes it from the retained bytes. And the probe runs a probe arm's exact
+// flag set, so a record collected under any other flags fails the acceptance
+// test in section 4.2 of the measurement design.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,11 +15,13 @@ import path from 'node:path';
 
 import {
   TUPLE, ENV_CLASSES, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory,
-  describe, redact,
+  describe, redact, summarise, traceProblems,
+  REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG, flagShapeProblems,
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
-  parsePathway, plantFlags, plantNonce, plantedText, readRun, recordName, servingBuild,
+  parsePathway, plantFlags, plantInDescription, plantNonce, plantedSentence, readRun, recordName,
+  servingBuild, skillTraceLines, readTrace, TRACE_LINE_LIMIT,
   treeDigest, tupleModel, writeRecord, ASK, AUTH_ROUTES,
 } from '../bench/collect-probe.mjs';
 
@@ -235,27 +237,37 @@ test('the control installs nothing, so it records no tree', () => {
   assert.match(checkRecord(bad).join(' '), /control installs nothing/);
 });
 
-test('the flags are the control arm\'s, and any other surface is refused', () => {
+// The flag set moved on 2026-08-07, on measurement. `--setting-sources ''`
+// suppresses the user SKILL directory as well as the settings, so the old
+// acceptance test asked its question in a configuration with skills switched
+// off. A probe home is a throwaway empty one, so `user` admits nothing but the
+// installed tree. ADR-0024.
+test('the flags are the probe arm\'s, and any other surface is refused', () => {
   assert.deepEqual(isolationProblems(armFlags('opus')), []);
+  assert.ok(armFlags('opus').includes('user'));
+  // The old spelling is now the refused one, in both directions.
   assert.match(
-    isolationProblems(['-p', '--setting-sources', 'user', '--strict-mcp-config']).join(' '),
-    /--setting-sources carried "user"/);
+    isolationProblems(['-p', '--setting-sources', '', '--strict-mcp-config']).join(' '),
+    /--setting-sources carried ""/);
   assert.match(
-    isolationProblems(['-p', '--setting-sources', '', '--strict-mcp-config',
+    isolationProblems(['-p', '--setting-sources', 'user', '--strict-mcp-config',
       '--dangerously-skip-permissions']).join(' '),
-    /--dangerously-skip-permissions is not a flag the control arm runs/);
-  assert.match(isolationProblems(['-p', '--setting-sources', '']).join(' '),
+    /--dangerously-skip-permissions is not a flag a probe arm runs/);
+  assert.match(isolationProblems(['-p', '--setting-sources', 'user']).join(' '),
     /omit --strict-mcp-config/);
 });
 
 // The harness obeys the LAST spelling of a repeated flag, so a check reading
 // the first one accepts a record whose arm ran with the operator's config open.
 test('a repeated flag is refused, and every occurrence is read', () => {
-  const twice = ['-p', '--setting-sources', '', '--strict-mcp-config',
-    '--setting-sources', 'user'];
+  // The dangerous direction inverted with the flag set. It is now a record that
+  // opens with the probe's spelling and repeats it as `''`, whose arm therefore
+  // ran with the user skill source switched off.
+  const twice = ['-p', '--setting-sources', 'user', '--strict-mcp-config',
+    '--setting-sources', ''];
   const problems = isolationProblems(twice).join(' ');
   assert.match(problems, /--setting-sources appears twice/);
-  assert.match(problems, /--setting-sources carried "user"/);
+  assert.match(problems, /--setting-sources carried ""/);
   assert.equal(deriveOutcome({ nonce: 'x', flags: twice }).isolated, false);
 });
 
@@ -288,7 +300,7 @@ test('a stray positional is refused, not skipped', () => {
   const stray = ['-p', 'extra-prompt', '--model', 'opus', '--setting-sources', '',
     '--strict-mcp-config', '--output-format', 'json'];
   assert.match(isolationProblems(stray).join(' '),
-    /"extra-prompt" at position 1 is not part of the control arm's invocation/);
+    /"extra-prompt" at position 1 is not part of a probe arm's invocation/);
   assert.equal(deriveOutcome({ ...record(), flags: stray }).isolated, false);
 });
 
@@ -466,9 +478,13 @@ test('the environment class names the home, not the route', () => {
 // The refusal below the flag check promises nothing is quoted. The flag check
 // above it quoted its value verbatim, so a credential-shaped flag leaked.
 test('a credential-shaped value in any message is withheld at emission', () => {
+  // A stray positional is quoted back by the refusal that names it, so it is
+  // the shape that proves redaction happens at emission. The refusal for a
+  // fixed-value flag used to quote too, and no longer does: `checkRecord` reads
+  // the flag SHAPE now and leaves the values to the acceptance test.
   const leaky = record({
-    flags: ['-p', '--model', 'opus', '--setting-sources', 'sk-ant-oat01-LEAKEDCREDENTIAL0123',
-      '--strict-mcp-config', '--output-format', 'json'],
+    flags: ['-p', '--model', 'opus', '--setting-sources', 'user',
+      'sk-ant-oat01-LEAKEDCREDENTIAL0123', '--strict-mcp-config', '--output-format', 'json'],
   });
   const problems = checkRecord(leaky, 'r.json');
   const joined = problems.join(' ');
@@ -477,6 +493,19 @@ test('a credential-shaped value in any message is withheld at emission', () => {
   // A withheld line still says which record it came from.
   assert.ok(problems.every((line) => line.startsWith('r.json: ')),
     'attribution belongs outside the withheld region');
+});
+
+test('a credential in a flag value is refused without being quoted', () => {
+  // The value reading no longer runs inside `checkRecord`, so nothing quotes
+  // this one. The whole-record scan is what still catches it, and it names
+  // nothing it matched.
+  const leaky = record({
+    flags: ['-p', '--model', 'opus', '--setting-sources', 'sk-ant-oat01-LEAKEDCREDENTIAL0123',
+      '--strict-mcp-config', '--output-format', 'json'],
+  });
+  const joined = checkRecord(leaky, 'r.json').join(' ');
+  assert.equal(joined.includes('LEAKEDCREDENTIAL'), false, 'no message may quote it');
+  assert.match(joined, /looks like a credential/);
 });
 
 // The first version replaced what it recognised and then asked whether anything
@@ -669,16 +698,48 @@ test('a tie in the model usage names no build, the way extract.mjs refuses one',
   assert.equal(servingBuild({}), '');
 });
 
-test('the planted text carries the nonce, and the ask never does', () => {
-  assert.match(plantedText(NONCE), new RegExp(NONCE));
+test('the planted sentence carries the nonce, and the ask never does', () => {
+  assert.match(plantedSentence(NONCE), new RegExp(NONCE));
   assert.equal(ASK.includes(NONCE), false);
+});
+
+// The plant site is the whole point of the instrument. Measured 2026-08-07:
+// the harness attaches names and descriptions, and a body loads only on
+// invocation, so a body-planted nonce measures invocation and returns NONE
+// against a skill that was discovered perfectly. ADR-0024.
+const SKILL_MD = '---\nname: demo\ndescription: Use when a reply runs long.\n---\n\n'
+  + '# demo\n\n## Purpose\n\nSomething.\n';
+
+test('the nonce lands in the frontmatter description, not the body', () => {
+  const planted = plantInDescription(SKILL_MD, NONCE);
+  const lines = planted.split('\n');
+  const close = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  const description = lines.find((l, i) => i > 0 && i < close && l.startsWith('description:'));
+  assert.match(description, new RegExp(NONCE), 'the description must carry the nonce');
+  // The body is untouched, so nothing depends on the model invoking the skill.
+  assert.equal(planted.slice(planted.indexOf('# demo')).includes(NONCE), false);
+  // The original description survives beside it.
+  assert.match(description, /Use when a reply runs long\./);
+});
+
+test('a file the probe cannot plant in is refused rather than silently missed', () => {
+  // Each of these would otherwise produce a probe that derives FAIL for a
+  // reason that has nothing to do with the harness.
+  assert.throws(() => plantInDescription('# A skill\n', NONCE), /opens with no frontmatter/);
+  assert.throws(() => plantInDescription('---\nname: x\n', NONCE), /never closes/);
+  assert.throws(() => plantInDescription('---\nname: x\n---\n\ndescription: not here\n', NONCE),
+    /carries no description/);
 });
 
 test('the nonce lands in the installed SKILL.md', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-plant-'));
-  await fs.writeFile(path.join(dir, 'SKILL.md'), '# A skill\n');
+  await fs.writeFile(path.join(dir, 'SKILL.md'), SKILL_MD);
   await plantNonce(dir, NONCE);
-  assert.match(await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8'), new RegExp(NONCE));
+  const planted = await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8');
+  assert.match(planted, new RegExp(NONCE));
+  // A rewrite, not an append: the file is truncated to exactly the new text, so
+  // no tail of the old one survives past the end of the new.
+  assert.equal(planted, plantInDescription(SKILL_MD, NONCE));
 });
 
 // `appendFile` resolves the path, so a SKILL.md swapped for a link between the
@@ -703,7 +764,7 @@ test('a tree that moves while the nonce is planted is reported', async () => {
   const home = path.join(root, 'home');
   const skill = path.join(home, 'skill');
   await fs.mkdir(skill, { recursive: true });
-  await fs.writeFile(path.join(skill, 'SKILL.md'), '# A skill\n');
+  await fs.writeFile(path.join(skill, 'SKILL.md'), SKILL_MD);
   await assert.rejects(
     plantNonce(skill, NONCE, {
       baseDir: home,
@@ -779,9 +840,9 @@ test('O_NOFOLLOW refuses a swapped leaf, and a platform without it does not', as
 
 test('the tree digest names contents, so an edit inside the tree moves it', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-tree-'));
-  await fs.writeFile(path.join(dir, 'SKILL.md'), '# A skill\n');
+  await fs.writeFile(path.join(dir, 'SKILL.md'), SKILL_MD);
   const before = await treeDigest(dir);
-  await fs.appendFile(path.join(dir, 'SKILL.md'), plantedText(NONCE));
+  await fs.writeFile(path.join(dir, 'SKILL.md'), plantInDescription(SKILL_MD, NONCE));
   assert.notEqual(await treeDigest(dir), before);
 });
 
@@ -859,4 +920,163 @@ test('a symlinked record directory is refused, and nothing is written through it
   await assert.rejects(
     writeRecord(path.join(link, 'r.json'), record(), link), /never written through one/);
   assert.deepEqual(await fs.readdir(real), []);
+});
+
+// The lane split, pinned by name. `checkRecord` reads the flag SHAPE and
+// `deriveOutcome` reads the VALUES, and the two questions must stay apart.
+//
+// This case is written against a record collected under the old spelling,
+// which is the record that already sits in `bench/probes/`. Fold the two
+// readings back into one and it fails in the direction that matters: the
+// record becomes malformed, so the repository cannot keep the evidence its own
+// amendment rests on. ADR-0024.
+test('a record under the old flag spelling is well formed, and derives a failure', () => {
+  const old = record({
+    flags: ['-p', '--model', 'opus', '--setting-sources', '', '--strict-mcp-config',
+      '--output-format', 'json'],
+  });
+  assert.deepEqual(checkRecord(old), [],
+    'a wrong-flag record is a failed probe, and checkRecord reads shape alone');
+  assert.equal(deriveOutcome(old).isolated, false,
+    'the acceptance test reads the value, so the old spelling is not isolated');
+  assert.equal(deriveOutcome(old).passes, false);
+});
+
+// The trace, which section 4.1 asks for and no record carried until now.
+test('a trace is null or the harness\'s own lines, and nothing else', () => {
+  assert.deepEqual(traceProblems(null), []);
+  assert.deepEqual(traceProblems(undefined), []);
+  assert.deepEqual(traceProblems([]), []);
+  assert.deepEqual(traceProblems(['Loaded 1 unique skills']), []);
+  assert.match(traceProblems('Loaded 1 unique skills').join(' '), /list of strings/);
+  assert.match(traceProblems([{ line: 'x' }]).join(' '), /list of strings/);
+  assert.match(traceProblems({ lines: [] }).join(' '), /list of strings/);
+});
+
+test('a record retaining its trace passes the check, and a summarised one does not', () => {
+  const withTrace = record();
+  withTrace.installed.trace = ['Loading skills from /tmp/a/home/.claude/skills',
+    'Loaded 1 unique skills (user: 1, project: 0)'];
+  withTrace.control.trace = ['Loaded 0 unique skills (user: 0, project: 0)'];
+  assert.deepEqual(checkRecord(withTrace), []);
+
+  const summarised = record();
+  summarised.installed.trace = 'the harness loaded one skill';
+  assert.match(checkRecord(summarised).join(' '), /installed.trace is null/);
+});
+
+test('the trace keeps the skill-loading lines verbatim, and drops the rest', () => {
+  const log = [
+    '2026-08-07 [DEBUG] Loading skills from /tmp/home/.claude/skills   ',
+    '2026-08-07 [DEBUG] connecting to the transport',
+    '2026-08-07 [DEBUG] Loaded 1 unique skills (builtin: 0, user: 1, project: 0)',
+    '2026-08-07 [DEBUG] a line about something else entirely',
+  ].join('\n');
+  assert.deepEqual(skillTraceLines(log), [
+    '2026-08-07 [DEBUG] Loading skills from /tmp/home/.claude/skills',
+    '2026-08-07 [DEBUG] Loaded 1 unique skills (builtin: 0, user: 1, project: 0)',
+  ]);
+  // A log naming no skill loading is an empty list, and that is a reading.
+  assert.deepEqual(skillTraceLines('nothing here\n'), []);
+});
+
+test('the trace is bounded, because a record is read by a person', () => {
+  const many = Array.from({ length: TRACE_LINE_LIMIT + 20 }, () => 'Loaded 1 unique skills');
+  assert.equal(skillTraceLines(many.join('\n')).length, TRACE_LINE_LIMIT);
+});
+
+// An absent log and a log naming nothing are different states, and the record
+// keeps them apart. Collapsing them lets a harness that never wrote a log read
+// as one that loaded no skills.
+test('a missing debug log is no trace, and an empty one is a trace of nothing', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-trace-'));
+  assert.equal(await readTrace(null), null);
+  assert.equal(await readTrace(path.join(dir, 'absent.log')), null);
+  const written = path.join(dir, 'quiet.log');
+  await fs.writeFile(written, 'nothing about skills\n');
+  assert.deepEqual(await readTrace(written), []);
+});
+
+test('the trace flag is the one allowed extra, and it carries a path', () => {
+  const traced = armFlags('opus', '/tmp/debug.log');
+  assert.deepEqual(isolationProblems(traced), []);
+  assert.deepEqual(traced.slice(-2), [TRACE_FLAG, '/tmp/debug.log']);
+  // Still not REQUIRED, so an untraced record is not a failed probe.
+  assert.deepEqual(isolationProblems(armFlags('opus')), []);
+  // And it is a flag like any other: a missing value is refused.
+  assert.match(isolationProblems([...armFlags('opus'), TRACE_FLAG]).join(' '),
+    /--debug-file carries no value/);
+});
+
+// The summary answers what the records DERIVED. "Clean" said only that they
+// were well formed, and a reader took it for a green probe.
+test('the summary names the derived outcomes, never a bare verdict', () => {
+  assert.match(summarise({ pass: 1, fail: 1 }), /2 checked: 1 derives PASS, 1 derives FAIL/);
+  assert.match(summarise({ pass: 0, fail: 2 }), /2 checked: 2 derives FAIL/);
+  assert.doesNotMatch(summarise({ pass: 0, fail: 2 }), /PASS/);
+  assert.match(summarise({ pass: 0, fail: 0 }), /No probe records yet/);
+});
+
+test('a directory of records reports what each one derived', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-probe-dir-'));
+  await fs.writeFile(path.join(dir, 'pass.json'), JSON.stringify(record()));
+  await fs.writeFile(path.join(dir, 'fail.json'), JSON.stringify(record({
+    control: {
+      answer: NONCE, model_id: 'claude-opus-4-6-20260514', is_error: false,
+      home: '/tmp/b/home', trace: null,
+    },
+  })));
+  const { outcomes } = await checkDirectory(dir);
+  assert.deepEqual(outcomes, { pass: 1, fail: 1 });
+});
+
+// A description this probe cannot extend by appending to its line. Every skill
+// here writes a plain scalar, so the refusal costs nothing today and stops a
+// silent miscollection the day one does not.
+test('a description shape the plant would corrupt is refused, one shape at a time', () => {
+  const withValue = (value) => `---\nname: demo\ndescription: ${value}\n---\n\n# demo\n`;
+  assert.throws(() => plantInDescription(withValue('"Use when a reply runs long."'), NONCE),
+    /double-quoted scalar/);
+  assert.throws(() => plantInDescription(withValue("'Use when a reply runs long.'"), NONCE),
+    /single-quoted scalar/);
+  assert.throws(() => plantInDescription(withValue('|'), NONCE), /literal block scalar/);
+  assert.throws(() => plantInDescription(withValue('>'), NONCE), /folded block scalar/);
+  // The plain scalar every skill here writes still plants.
+  assert.match(plantInDescription(withValue('Use when a reply runs long.'), NONCE),
+    new RegExp(NONCE));
+});
+
+// The README spells the flag set out for a reader. `bench/probe.mjs` claims to
+// hold one copy of it, so the spelled-out one is held to the constants rather
+// than trusted to stay in step by hand.
+test('the probes README spells the flag set the constants define', async () => {
+  const readme = await fs.readFile(
+    new URL('../bench/probes/README.md', import.meta.url), 'utf8');
+  const expected = REQUIRED_FLAGS.flatMap((flag) => {
+    if (!FLAGS_TAKING_A_VALUE.includes(flag)) return [flag];
+    return [flag, FIXED_VALUES[flag] ?? `<${flag === '--model' ? 'alias' : 'value'}>`];
+  }).join(' ');
+  assert.ok(readme.includes(expected),
+    `the README must spell the flag set as: ${expected}`);
+});
+
+// The trace flag's value is the one place a probe arm could reach into a real
+// configuration tree and still derive PASS, because nothing else in the record
+// shows the path. It is refused on either separator.
+test('a trace path inside a .claude directory is refused, and never quoted back', () => {
+  const inside = (p) => [...armFlags('opus'), TRACE_FLAG, p];
+  for (const p of ['/Users/someone/.claude/debug.log',
+    'C:\\Users\\someone\\.claude\\debug.log',
+    '/var/tmp/x/.claude/nested/debug.log']) {
+    const problems = isolationProblems(inside(p)).join(' ');
+    assert.match(problems, /writes into a .claude directory/, `refused: ${p}`);
+    assert.equal(problems.includes('someone'), false, 'the path is never quoted back');
+  }
+  // A throwaway path, which is what the collector builds, still passes.
+  assert.deepEqual(isolationProblems(inside('/tmp/sw-probe-ab12/harness-debug.log')), []);
+  // A directory merely NAMED .claude-something is not a .claude segment.
+  assert.deepEqual(isolationProblems(inside('/tmp/.claude-probe/debug.log')), []);
+  // The VALUE reading owns this, so such a record is a failed probe and not a
+  // broken file, the way every other wrong value is.
+  assert.deepEqual(flagShapeProblems(inside('/Users/someone/.claude/debug.log')), []);
 });

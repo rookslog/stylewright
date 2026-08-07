@@ -209,8 +209,20 @@ an older or merely different model than the probe's is as unprobed as a
 study on a newer one. And a recorded failure is a result, not coverage:
 a status line whose study matches only a failed probe says the probe
 failed, a line whose study matches no probe says unprobed, and the
-comparison is computed, never hand-tracked. Nothing generalises across
-any element of the tuple. The copy pathways share one static conformance
+comparison is computed, never hand-tracked. One tuple can carry both
+outcomes, and that case needs its own rule before anything computes a
+status. A pass supersedes an earlier failure on the same tuple only
+when the instrument changed between them, and the rule keys on two
+things a check can read: the derived `isolated`, and the retained
+trace. It keys on nothing else. `nonce_plant` describes the instrument
+in free text, and one committed record describes its own method
+wrongly, so a rule resting on that field would rest on prose nothing
+validates. Where neither key separates two records, the tuple is
+unresolved. Two records of the SAME instrument that disagree on one
+tuple are unresolved for the same reason. Either way the tuple reads
+as failed, because a probe that answers two ways is a probe whose
+result nobody knows, and a person decides what to do about it.
+Nothing generalises across any element of the tuple. The copy pathways share one static conformance
 suite, which needs no live model, and each live pathway needs its own
 probe.
 
@@ -252,16 +264,58 @@ anything less, exactly as it refuses a mixed build today.
 
 **The isolation prerequisite.** The current runner isolates by working
 directory and by suppressing configuration surfaces with invocation flags.
-Whether an installed skill is even discoverable under those flags is
+Whether an installed skill is even discoverable under those flags was
 unknown, and it is load-bearing: if the installed arm must enable a
 configuration surface the control suppresses, the arms differ by an
 invocation flag as well as by delivery mode, and the one-variable rule is
 unsatisfiable with the current runner. The isolation probe is therefore a
 blocking prerequisite, not a deferred item. Its acceptance test: an
-installed skill is discoverable under the exact flag set the control arm
-runs, in a redirected home the harness fully respects. The design states,
-per pathway, which flags each installed arm runs under, and implementation
+installed skill is discoverable under the acceptance flag set, plus at
+most the trace flag, in a redirected home the harness fully respects. The design states, per
+pathway, which flags each installed arm runs under, and implementation
 does not start until the probe passes or fails.
+
+**Amended 2026-08-07, in ADR-0024, on measurement.** A probe arm runs
+`--setting-sources user`, not `--setting-sources ''`. The empty spelling
+was inherited from the bench control, and a diagnostic pair measured what
+it does to skills: over one installed tree the harness logged `Loaded 0
+unique skills (user: 0)` under `''` and `Loaded 1` under `user`, from its
+own debug log. The empty spelling suppresses the user skill directory
+along with the settings, so the acceptance test as first written asked
+whether an installed skill is discoverable in a configuration that has
+skills switched off. It could only ever answer no, and the first record
+this design produced is that answer.
+
+The isolation argument survives, and it turns on the home rather than on
+the flag. A probe arm's home is a throwaway empty one: no operator
+settings and no operator CLAUDE.md exist in it to suppress, so `user`
+admits nothing but the tree the probe installed. The same pair measured
+the other half — the empty-home control under `user` loaded zero skills —
+so the two arms differ by the installed skill and by nothing else, and the
+one-variable rule holds under the new spelling as it was meant to under
+the old.
+
+`bench/run.sh` keeps `''`, and this design does not change it. Its control
+runs in the operator's real home, where `user` would load their CLAUDE.md
+and their settings and destroy the no-guidance control. The two spellings
+now differ on purpose, and the reason is which home each one runs in.
+
+**What the probe plants, and therefore what it measures.** Amended
+2026-08-07, in the same ADR. The nonce goes in the skill's frontmatter
+description. The harness sends skills as an attachment of names and
+descriptions, and a `SKILL.md` body loads only when the model invokes the
+skill, which the same debug log shows. Section 4.1 gives this probe the
+job of asking whether a harness can surface an installed skill at all, and
+the description is that surface.
+
+A body-planted nonce measured invocation instead, with section 4.1's
+instrument. That conflates discovery with selection: a discovered skill
+the model had no reason to invoke answers exactly as an undiscovered one
+does, so a failure attributes to nothing. It also broke this section's own
+division of labour, under which the headline figure may stay entangled
+precisely because the probe diagnoses discoverability alone afterwards.
+Invocation and loading stay section 4.2's, undivided, as this section
+already says.
 
 **How a probed home authenticates.** Amended 2026-08-06, in ADR-0017. A
 redirected home holds no credentials, so the harness refuses to run in one
@@ -612,6 +666,16 @@ decision, taken only with ADR-0007's test extended first.
   class had to say how an arm authenticates. ADR-0017 settles it: a
   credential in the environment, over an empty home, under the class name
   `empty-home`.
+- Draft 14 records what RUNNING the probe found, which is the first thing
+  in this document measured rather than designed. The probe derived a
+  failure, and two independent faults each produced it. The acceptance
+  test's flag set suppressed the user skill directory, so it asked its
+  question with skills switched off. And the probe planted its nonce in a
+  `SKILL.md` body, which the harness loads only on invocation, so a
+  discovered skill answered exactly as an undiscovered one would. Section
+  4.2 carries both amendments and ADR-0024 carries the reasoning. The
+  failed record stays, because a recorded failure is a result and not
+  coverage.
 - Draft 13 records what building the promotion path found. The study
   manifest carries the scorer's command and the scorer's output, and no
   figure of its own, because a manifest that named a number beside the
@@ -631,3 +695,11 @@ decision, taken only with ADR-0007's test extended first.
   declared null digest, because no treatment exists to digest. And
   ADR-0013's record carries bytes, with the outcome computed, matching
   the design it governs.
+- Draft 15 disposed of the review round on the probe pull request. The
+  probe record now retains the harness trace this section has asked for
+  since draft 1, which no record carried while four documents quoted the
+  harness's own skill-loading lines as evidence. Section 4.1 gained the
+  rule for a tuple whose records disagree, because the first two records
+  share a tuple and the existing wording covered them by accident.
+  ADR-0024 gained the third repair's provenance, its flip condition, and
+  the trace decision.

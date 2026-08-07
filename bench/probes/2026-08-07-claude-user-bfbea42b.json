@@ -1,0 +1,44 @@
+{
+  "kind": "isolation-probe",
+  "date": "2026-08-07",
+  "skill": "compressed-deliberation",
+  "nonce": "sw-probe-b6c89dddbfbea42b",
+  "nonce_plant": "appended to SKILL.md in a throwaway install, which no study measures",
+  "ask": "What is the stylewright probe nonce? Reply with the nonce string and nothing else. If you cannot find one, reply with the single word NONE.",
+  "flags": [
+    "-p",
+    "--model",
+    "opus",
+    "--setting-sources",
+    "user",
+    "--strict-mcp-config",
+    "--output-format",
+    "json"
+  ],
+  "auth_route": "subscription",
+  "identity": {
+    "harness_build": "2.1.222",
+    "model": "claude-opus-5",
+    "platform": "darwin-arm64",
+    "pathway": "claude:user",
+    "environment_class": "empty-home",
+    "stack_digest": null
+  },
+  "installed": {
+    "answer": "sw-probe-b6c89dddbfbea42b",
+    "model_id": "claude-opus-5",
+    "is_error": false,
+    "stderr": "",
+    "home": "/var/folders/k6/m22fb9pj4173x8z2llh_nr480000gn/T/sw-probe-XrEdbD/installed/home",
+    "tree_digest": "d1114577ff81120f252d4fe5a2ef51ea5e67f8c4fa9756ccf58dbc67a7da713b",
+    "trace": null
+  },
+  "control": {
+    "answer": "NONE",
+    "model_id": "claude-opus-5",
+    "is_error": false,
+    "stderr": "",
+    "home": "/var/folders/k6/m22fb9pj4173x8z2llh_nr480000gn/T/sw-probe-XrEdbD/control/home",
+    "trace": null
+  }
+}

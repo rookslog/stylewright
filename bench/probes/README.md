@@ -16,19 +16,54 @@ surface the control closes, the two arms differ by a flag as well as by
 delivery mode, and the one-variable rule fails.
 
 The acceptance test is that one sentence. An installed skill is discoverable
-under the exact flag set the control arm runs, in a redirected home the harness
-respects. `bench/probe.mjs` holds that flag set and refuses a record collected
-under any other.
+under the acceptance flag set, plus at most the trace flag, in a redirected home
+the harness respects. `bench/probe.mjs` holds that flag set, and a record collected under
+any other derives a failure rather than passing. It is kept, because a recorded
+failure is a result.
+
+That flag set changed on 2026-08-07, on measurement, and ADR-0024 records it.
+The probe ran `--setting-sources ''` because the bench control does. A
+diagnostic then measured what the empty spelling does to skills: the harness
+logged `Loaded 0 unique skills` over an installed tree it was watching, and
+`Loaded 1` over the same tree under `user`. The empty spelling suppresses the
+user skill directory along with the settings, so the old test asked its question
+in a configuration where skills are switched off.
+
+Isolation survives, because a probe home is a throwaway empty one. There is no
+operator configuration in it to suppress, so `user` admits nothing but the tree
+the probe installed. Measured on the same pair: the empty-home control under
+`user` loaded zero skills, so the two arms differ by the installed skill and
+nothing else.
+
+One thing a redirected home does not control. The harness also consults a
+machine-global managed skills path, which `HOME` does not move, so the
+environment class names the home and never the machine. The `d80e11b7` trace
+shows `managed: 0` on both arms, which is a reading of that one run rather than
+a property of the design.
+
+`bench/run.sh` keeps `''`, and the difference is the home. Its control runs in
+the operator's real home, where `user` would load their CLAUDE.md and their
+settings and destroy the no-guidance control.
 
 The collector drives the Claude Code harness, so it probes the pathways that
 harness reads. A Codex pathway needs its own runner, and the collector refuses
 it rather than attributing one harness's answer to another pathway.
 
-Every pathway runs the same flags, because the bench runs one control:
+Every pathway runs the same flags, because every pathway answers one question:
 
 ```
--p --model <alias> --setting-sources '' --strict-mcp-config --output-format json
+-p --model <alias> --setting-sources user --strict-mcp-config --output-format json
 ```
+
+`bench/probe.mjs` holds that set as `REQUIRED_FLAGS` and `FIXED_VALUES`, and it
+holds it once. The block above is a second spelling of it for a reader, so
+`test/probe.test.js` holds this file to those constants. Edit the constants and
+this block goes red until it follows.
+
+A run adds one flag beyond the block, `--debug-file <path>`, which is how the
+harness hands over the trace section 4.1 asks a record to carry. It is allowed
+and never required, and it opens no configuration surface. A record collected
+without it is a probe like any other, carrying no trace.
 
 ## Collect a record
 
@@ -46,6 +81,24 @@ The nonce goes into a throwaway install, never into a tree a study measures.
 That is the second of the two options section 4.1 allows, and it is the one
 that keeps the probed tree and the measured tree from differing silently.
 
+## Where the nonce goes, and what that makes this measure
+
+The nonce goes in the skill's frontmatter description. The harness sends skills
+to the model as an attachment of names and descriptions, and a `SKILL.md` body
+loads only when the model invokes the skill. Measured 2026-08-07, from the
+harness's own debug log.
+
+So this probe measures the attachment surface, which is the job section 4.1
+gives it: can this harness surface an installed skill at all. It measures
+nothing about invocation, selection, or loading, and it is not meant to. Those
+belong to section 4.2, which keeps them entangled on purpose.
+
+The nonce used to sit in the body, and that made the probe measure invocation
+with section 4.1's instrument. A discovered skill the model had no reason to
+invoke answered NONE, exactly as an undiscovered one would, so a failure could
+not be attributed to anything. The first record here is that failure, and it
+stays. ADR-0024 records the move and the reasoning.
+
 ## The record states no outcome
 
 A record carries bytes. `npm run check:probes` derives the outcome from them
@@ -56,7 +109,7 @@ reader is owed the evidence instead.
 A probe derives a pass when both arms answered and three things then hold. The
 installed arm repeated the nonce. The empty-home control answered and did not
 repeat it, which catches a probe passing for the wrong reason. And the flags
-were the control arm's.
+were a probe arm's.
 
 `armAnswered` in `bench/probe.mjs` defines what answering means, and every
 check reads it from there. Saying only that the control did not repeat the nonce
@@ -65,6 +118,52 @@ rounds each caught in a different place.
 
 A failure is a result. A record of a probe that failed stays here, and the
 status a later reader computes says the probe failed rather than saying nothing.
+
+## The record retains the harness trace
+
+Section 4.1 asks a probe to record the harness trace where one exists, and calls
+a trace that names the loaded file better evidence than either answer. Each arm
+therefore carries a `trace` field, and the shape is the smallest one that holds
+evidence: `null`, or the harness's own lines as a list of strings.
+
+The lines are kept verbatim and they are selected, not summarised. A run keeps
+what the harness said about where it looked for skills and how many it loaded,
+which is the sentence four documents here quote as the warrant for the flag
+amendment. The rest of a debug log runs to megabytes of transport detail, a
+record is committed, and a summary of a trace is the author's word about the
+evidence rather than the evidence.
+
+`null` and an empty list are different states. `null` says no log reached the
+collector, and an empty list says a log was written and named no skill loading.
+Every record collected before 2026-08-07 carries `null`, and so would a record
+from a harness that offers no trace at all.
+
+The derivation reads the answers and not the trace, so the better evidence is
+retained and not consulted. That gap is named here rather than closed, and
+issue #94 carries the work that closes it.
+
+## The records here, and what each one is
+
+`0969efef` derives FAIL. It is the first probe, collected under
+`--setting-sources ''` with the nonce in a `SKILL.md` body, and both faults are
+in it.
+
+`bfbea42b` derives PASS and carries one wrong field. Its `nonce_plant` says the
+nonce was appended to `SKILL.md`, and the run that wrote it planted in the
+frontmatter description. The collector's string had not followed the code. The
+record stays as it was written, because a record is history and not a draft, and
+this paragraph is the correction.
+
+`d80e11b7` derives PASS, describes its own method truthfully, and retains the
+trace. The harness logged `Loaded 1 unique skills` over the installed arm's home
+and `Loaded 0` over the control's.
+
+Read that trace for what it settles, which is one half of the argument and not
+both. Both arms ran under `user`, so the pair corroborates that the redirected
+home is respected and that the two arms differ by the installed skill alone. It
+says nothing about the empty spelling. The measurement that `''` loads zero
+skills over an installed tree came from a scratchpad diagnostic, and no
+committed record carries it.
 
 One residue, stated. The record is the author's own file, like every other
 record in this protocol. The check derives the outcome from the bytes, and it

@@ -4,8 +4,13 @@
  *
  * The measurement design, section 4.1, defines the probe. Section 4.2 makes the
  * isolation probe a blocking prerequisite for installed delivery, with one
- * acceptance test: an installed skill is discoverable under the exact flag set
- * the control arm runs, in a redirected home the harness fully respects.
+ * acceptance test: an installed skill is discoverable under the acceptance flag
+ * set, plus at most the trace flag, in a redirected home the harness fully
+ * respects.
+ *
+ * That flag set is this file's own, and it is NOT `bench/run.sh`'s. The two
+ * diverge on `--setting-sources`, deliberately, and the reason is the home each
+ * one runs in. `REQUIRED_FLAGS` below carries the argument.
  *
  * Two rules shape everything here.
  *
@@ -52,22 +57,77 @@ export const ENV_CLASSES = ['empty-home', 'representative'];
 export const STACK_CLASS = 'representative';
 
 /**
- * The flags the control arm runs under, as `bench/run.sh` invokes them. The
- * probe's acceptance test is about these and nothing else: a probe that had to
- * enable a configuration surface the control suppresses has answered the
- * question with a no.
+ * The flags a probe arm runs under. Defined ONCE, here, beside the check that
+ * enforces them, because a second copy is a second thing to drift.
  *
- * `--setting-sources ''` is the isolation. It suppresses the operator's
- * settings and their CLAUDE.md together, which is what makes a true no-guidance
- * control possible. `--strict-mcp-config` suppresses the servers.
+ * `--setting-sources user` is the isolation, and it reads backwards until you
+ * know what the home is. Amended 2026-08-07, on measurement, and ADR-0024
+ * carries the reasoning.
+ *
+ * This spelling was `''` until a diagnostic pair measured what that does. With
+ * `''` the harness logged `Loaded 0 unique skills (user: 0)` over an installed
+ * tree it was watching, and with `user` it logged `Loaded 1` over the same
+ * tree. The empty spelling suppresses the user SKILL directory along with the
+ * settings, so the old acceptance test asked whether an installed skill is
+ * discoverable in a configuration where skills are switched off. It can only
+ * ever answer no.
+ *
+ * Isolation survives the change because a probe arm's home is a THROWAWAY
+ * EMPTY one. There is no operator CLAUDE.md and no operator settings in it to
+ * suppress, so `user` admits nothing but the tree the probe installed. Measured
+ * on the same pair: the empty-home control under `user` loaded zero skills, so
+ * the arms differ by the installed skill and nothing else, and the one-variable
+ * rule holds.
+ *
+ * One residue in that argument: the harness also consults a machine-global
+ * managed skills path that `HOME` does not redirect, so `environment_class`
+ * names the home and never the machine.
+ *
+ * `bench/run.sh` does NOT follow this change, and the difference is the home.
+ * It SELECTS a spelling from `--rules`: `none` gives its no-guidance control
+ * `''`, and `user` gives its treatment arm `user`. Both of those run in the
+ * operator's REAL home, where `''` is what suppresses their CLAUDE.md and their
+ * settings for the control. The two files now spell the flag differently on
+ * purpose, and the reason is the environment each one runs in rather than a
+ * drift between them.
+ *
+ * `--strict-mcp-config` suppresses the servers, unchanged.
  */
 export const REQUIRED_FLAGS = [
   '-p', '--model', '--setting-sources', '--strict-mcp-config', '--output-format',
 ];
-export const ALLOWED_FLAGS = REQUIRED_FLAGS;
-const FLAGS_TAKING_A_VALUE = ['--model', '--setting-sources', '--output-format'];
-/** Values a flag must carry, where the control arm fixes one. */
-const FIXED_VALUES = { '--setting-sources': '', '--output-format': 'json' };
+
+/**
+ * The one flag an arm may add, and the only one.
+ *
+ * Section 4.1 asks a probe to record "the harness trace where one exists", and
+ * calls a trace naming the loaded file better evidence than either answer. This
+ * harness offers one through `--debug-file`, so retaining it is the design's
+ * instruction rather than an extra.
+ *
+ * It is ALLOWED and not REQUIRED, and it carries no fixed value, because the
+ * path is a throwaway one. It opens no configuration surface: it redirects
+ * diagnostic output to a file and changes nothing about settings, skills, MCP,
+ * or the model. `--debug` would have done the same job through stderr, and it
+ * takes an OPTIONAL argument, so it swallowed the prompt and cost a call pair
+ * that produced nothing. ADR-0024 records the decision.
+ *
+ * Its VALUE is checked, and that is the hardening the trace flag buys back.
+ * Accepting any path would let a run write its trace under a real `.claude`
+ * directory, which reaches into the configuration a redirected home exists to
+ * exclude — and that record would derive PASS, because nothing else in it shows
+ * the path. A `.claude` segment is refused on either separator. The collector
+ * builds its own path under a throwaway root and never produces one, so this
+ * closes a cell only a later caller or a hand-written record could reach.
+ */
+export const TRACE_FLAG = '--debug-file';
+export const TRACE_PATH_REFUSED = /[/\\]\.claude[/\\]/;
+export const ALLOWED_FLAGS = [...REQUIRED_FLAGS, TRACE_FLAG];
+export const FLAGS_TAKING_A_VALUE = [
+  '--model', '--setting-sources', '--output-format', TRACE_FLAG,
+];
+/** Values a flag must carry, where the probe arm fixes one. */
+export const FIXED_VALUES = { '--setting-sources': 'user', '--output-format': 'json' };
 
 /**
  * Words a record may not carry. Each one states an outcome, and the outcome is
@@ -216,11 +276,41 @@ function keyPaths(value, prefix = '') {
 /**
  * Problems with the flag set the probe ran under. An unknown flag is refused
  * rather than ignored, because the acceptance test is that the probe ran the
- * control's flags EXACTLY. A flag the control never passes is a configuration
- * surface the control never opened, and a probe that needed one has failed the
- * test it exists to run.
+ * acceptance flag set, plus at most the trace flag. A flag outside that is a
+ * configuration surface the arm never opened, and a probe that needed one has
+ * failed the test it exists to run.
+ */
+/**
+ * The flag walk, in two readings.
+ *
+ * `isolationProblems` is the ACCEPTANCE TEST: it reads the values too, so a
+ * record whose arm ran the wrong `--setting-sources` fails it. `deriveOutcome`
+ * asks this one.
+ *
+ * `flagShapeProblems` is the RECORD CHECK: it reads the structure and leaves the
+ * values alone. `checkRecord` asks this one, and the difference matters because
+ * of what the two questions are for.
+ *
+ * Both were one function, and `checkRecord` asked the acceptance test. That made
+ * a probe which ran the wrong flags a MALFORMED RECORD rather than a FAILED
+ * PROBE — so the repository could not keep one, and the design's own rule that a
+ * recorded failure is a result did not hold for the isolation failure. It became
+ * visible when the acceptance flag set moved on 2026-08-07: the record of the
+ * probe that motivated the move could not survive it. ADR-0024.
+ *
+ * Nothing is weakened. A record under the wrong flags still derives FAIL,
+ * `check:probes` still prints it as one, and no such record can ever read as a
+ * pass. What changed is that it reads as evidence rather than as a broken file.
  */
 export function isolationProblems(flags) {
+  return flagProblems(flags, true);
+}
+
+export function flagShapeProblems(flags) {
+  return flagProblems(flags, false);
+}
+
+function flagProblems(flags, values) {
   if (!Array.isArray(flags) || !flags.length) return ['flags is a non-empty array.'];
   const problems = [];
   // EVERY element is consumed, as a flag or as the value of the flag before it.
@@ -240,8 +330,8 @@ export function isolationProblems(flags) {
     }
     if (!ALLOWED_FLAGS.includes(flag)) {
       problems.push(flag.startsWith('-')
-        ? `${flag} is not a flag the control arm runs.`
-        : `"${flag}" at position ${i} is not part of the control arm's invocation.`);
+        ? `${flag} is not a flag a probe arm runs.`
+        : `"${flag}" at position ${i} is not part of a probe arm's invocation.`);
       i += 1;
       continue;
     }
@@ -256,13 +346,23 @@ export function isolationProblems(flags) {
     if (i + 1 >= flags.length) {
       problems.push(`${flag} carries no value.`);
     } else if (fixed !== undefined) {
-      if (value !== fixed) {
+      // A flag whose value IS the acceptance test. The shape reading still
+      // refuses a stray flag sitting in the value position, because that is
+      // malformed however the acceptance test comes out.
+      if (typeof value !== 'string' || value.startsWith('-')) {
+        problems.push(`${flag} carries no value.`);
+      } else if (values && value !== fixed) {
         problems.push(
-          `${flag} carried "${value}", and the control arm passes `
+          `${flag} carried "${value}", and a probe arm passes `
           + `${fixed === '' ? 'an empty value' : `"${fixed}"`}.`);
       }
     } else if (typeof value !== 'string' || value === '' || value.startsWith('-')) {
       problems.push(`${flag} carries no value.`);
+    } else if (values && flag === TRACE_FLAG && TRACE_PATH_REFUSED.test(value)) {
+      // The value, never quoted. A path is where an operator's own directory
+      // names would appear, and this file quotes nothing it matched.
+      problems.push(`${flag} writes into a .claude directory, and a probe arm `
+        + 'touches no configuration tree.');
     }
     i += 2;
   }
@@ -272,6 +372,28 @@ export function isolationProblems(flags) {
     if (!seen.has(required)) problems.push(`flags omit ${required}.`);
   }
   return problems;
+}
+
+/**
+ * The trace field's shape, which is deliberately the smallest one that carries
+ * the evidence.
+ *
+ * A trace is `null`, or a LIST OF LINES the harness wrote. Nothing more, because
+ * a richer shape would invite a summary, and a summary of a trace is the
+ * author's word again — the thing this whole protocol refuses. Lines are the
+ * harness's own bytes, so a reader compares them against a run of their own.
+ *
+ * `null` stays legal, and it means the run kept no trace. Every record written
+ * before 2026-08-07 carries that, and a harness offering no trace would too.
+ * Section 4.1 asks for the trace "where one exists", so absence is a state and
+ * not a defect.
+ */
+export function traceProblems(trace) {
+  if (trace === null || trace === undefined) return [];
+  if (!Array.isArray(trace) || trace.some((line) => typeof line !== 'string')) {
+    return ['trace is null, or the harness\'s own lines as a list of strings.'];
+  }
+  return [];
 }
 
 /**
@@ -381,6 +503,7 @@ export function checkRecord(record, name = 'record') {
       say(`${arm}.model_id names the build that served it, or is empty when none did.`);
     }
     if (!isText(side.home)) say(`${arm}.home records the redirected home.`);
+    for (const p of traceProblems(side.trace)) say(`${arm}.${p}`);
   }
   if (record.installed && !isText(record.installed.tree_digest)) {
     say('installed.tree_digest records the tree the probe measured.');
@@ -395,7 +518,11 @@ export function checkRecord(record, name = 'record') {
     say('identity.model disagrees with the build that served an arm.');
   }
 
-  for (const p of isolationProblems(record.flags)) say(p);
+  // The SHAPE, not the acceptance test. A record whose arm ran the wrong flags
+  // is a probe that failed, and `deriveOutcome` says so through `isolated`.
+  // Refusing it here made it a broken file instead, which is how the design's
+  // "a recorded failure is a result" stopped holding for isolation failures.
+  for (const p of flagShapeProblems(record.flags)) say(p);
 
   // The probe authenticates from a credential in the environment, by either
   // route, per ADR-0017, and neither form ever enters the tree. A record is
@@ -431,6 +558,10 @@ export function checkRecord(record, name = 'record') {
  * `control_clean` is the empty-home control that catches a probe passing for
  * the wrong reason. `isolated` is section 4.2's acceptance test. A probe passes
  * only on all three, and a caller that wants one word reads `passes`.
+ *
+ * All three read the ANSWERS and the flags, and none reads the trace, so the
+ * better evidence a record now retains is not consulted here. Issue #94 carries
+ * that work, and the gap is stated rather than left to be discovered.
  */
 export function deriveOutcome(record) {
   const nonce = record?.nonce ?? '';
@@ -501,10 +632,11 @@ export async function readRecords(dir) {
   return records;
 }
 
-/** Returns `{ problems, lines }` over a directory of records. */
+/** Returns `{ problems, lines, outcomes }` over a directory of records. */
 export async function checkDirectory(dir) {
   const problems = [];
   const lines = [];
+  const outcomes = { pass: 0, fail: 0 };
   for (const { name, record, unreadable } of await readRecords(dir)) {
     if (unreadable) {
       problems.push(`${name}: not readable as JSON.`);  // Our own words only.
@@ -512,19 +644,36 @@ export async function checkDirectory(dir) {
     }
     const found = checkRecord(record, name);
     problems.push(...found);
-    if (!found.length) lines.push(describe(name, record));
+    if (!found.length) {
+      lines.push(describe(name, record));
+      outcomes[deriveOutcome(record).passes ? 'pass' : 'fail'] += 1;
+    }
   }
-  return { problems, lines };
+  return { problems, lines, outcomes };
+}
+
+/**
+ * The summary line, which names what the records DERIVED.
+ *
+ * "Clean" said only that every record was well formed, and a reader took it for
+ * a green probe. The two are different questions, and this run answers the
+ * second one out loud: a directory holding nothing but failures is clean and
+ * says the probe failed.
+ */
+export function summarise({ pass, fail }) {
+  const total = pass + fail;
+  if (!total) return 'No probe records yet. The isolation probe is a manual protocol.';
+  const derived = [];
+  if (pass) derived.push(`${pass} derives PASS`);
+  if (fail) derived.push(`${fail} derives FAIL`);
+  return `Probe records well formed. ${total} checked: ${derived.join(', ')}.`;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const dir = process.argv[2] ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'probes');
-  const { problems, lines } = await checkDirectory(dir);
+  const { problems, lines, outcomes } = await checkDirectory(dir);
   for (const line of lines) process.stdout.write(`${line}\n`);
   for (const p of problems) process.stderr.write(`${p}\n`);
   if (problems.length) process.exit(1);
-  process.stdout.write(
-    lines.length
-      ? `Probe records clean. ${lines.length} checked.\n`
-      : 'No probe records yet. The isolation probe is a manual protocol.\n');
+  process.stdout.write(`${summarise(outcomes)}\n`);
 }
