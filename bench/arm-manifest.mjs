@@ -88,7 +88,23 @@ export async function collectFiles(dir) {
  * Pure and separate from the writer, because everything a later reader depends
  * on is decided here.
  */
+/**
+ * Names a result identifier can carry.
+ *
+ * A derived figure is `<scenario>.<arm>.<statistic>.<metric>`, so a dot inside
+ * an arm or a scenario name makes the identifier ambiguous the moment anybody
+ * splits it. The refusal sits here, where the name first becomes a record,
+ * rather than in the check that would have to live with it.
+ */
+export const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
 export function buildManifest({ arm, scenarios, reps, at, abort = null, files }) {
+  for (const [what, value] of [['arm', arm], ...scenarios.map((s) => ['scenario', s])]) {
+    if (!NAME.test(String(value))) {
+      throw new Error(`"${value}" is not a ${what} name. A dot makes a derived result `
+        + 'identifier ambiguous, so a name is letters, digits, dashes and underscores.');
+    }
+  }
   return {
     kind: 'arm-manifest',
     arm,
@@ -118,9 +134,11 @@ export function manifestProblems(manifest, name = 'arm manifest') {
   const problems = [];
   const say = (p) => problems.push(`${name}: ${p}`);
   if (manifest.kind !== 'arm-manifest') say('kind must be "arm-manifest".');
-  if (!isText(manifest.arm)) say('arm names the arm this manifest covers.');
+  // The same names the builder refuses, checked again on the way in, because a
+  // manifest read off disk was not necessarily written by the builder.
+  if (!NAME.test(String(manifest.arm))) say('arm names the arm this manifest covers.');
   if (!Array.isArray(manifest.scenarios) || !manifest.scenarios.length
-    || !manifest.scenarios.every(isText)) {
+    || !manifest.scenarios.every((s) => NAME.test(String(s)))) {
     say('scenarios is a non-empty list of scenario names.');
   }
   if (!Number.isInteger(manifest.reps) || manifest.reps < 1) {

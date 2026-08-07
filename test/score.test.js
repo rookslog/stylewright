@@ -245,17 +245,38 @@ test('the scorer runs as a command, and prints its table', async () => {
   assert.match(stdout, /\tMEDIAN\t/);
 });
 
-test('every bench entry point compares its own path as a path', async () => {
-  const dir = path.join(path.dirname(import.meta.dirname), 'bench');
-  const names = (await fs.readdir(dir)).filter((n) => n.endsWith('.mjs'));
-  assert.ok(names.length > 1);
-  for (const name of names) {
-    const text = await fs.readFile(path.join(dir, name), 'utf8');
+// Forbidding the one broken spelling was the weaker test: it says nothing about
+// a module that grows a `main` and guards it some third way, and nothing about
+// one that loses its guard entirely. So every entry point is named, and each is
+// asserted to carry the guard verbatim. A new module under `bench/` or
+// `scripts/` fails here until somebody puts it on one of the two lists, which
+// is the point — the list is the inventory.
+
+/** The one spelling that works on every platform. */
+const GUARD = 'if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {';
+
+/** Modules that run unconditionally as scripts, so they have no guard to carry. */
+const UNGUARDED = { 'bench/extract.mjs': 'runs top to bottom as a script, with no main to guard' };
+
+test('every entry point guards itself the one way that works on both platforms', async () => {
+  const root = path.dirname(import.meta.dirname);
+  const found = [];
+  for (const sub of ['bench', 'scripts']) {
+    for (const name of (await fs.readdir(path.join(root, sub))).filter((n) => n.endsWith('.mjs'))) {
+      found.push(`${sub}/${name}`);
+    }
+  }
+  assert.equal(found.length, 9, `the entry-point inventory moved: ${found.sort().join(', ')}`);
+  for (const rel of found) {
+    const text = await fs.readFile(path.join(root, rel), 'utf8');
+    if (Object.hasOwn(UNGUARDED, rel)) {
+      assert.ok(!text.includes('process.argv[1]'),
+        `${rel} is listed as unguarded because it ${UNGUARDED[rel]}, and it reads argv[1]`);
+      continue;
+    }
     // A URL built by hand out of a Windows path never equals `import.meta.url`,
-    // so the module runs as a command on one platform and does nothing on the
-    // other. The comparison belongs to `fileURLToPath`.
-    assert.ok(
-      !/import\.meta\.url === `file:\/\/\$\{process\.argv\[1\]\}`/.test(text),
-      `${name} compares a hand-built file:// URL against import.meta.url`);
+    // so a module guarded that way runs as a command on one platform and does
+    // nothing on the other.
+    assert.ok(text.includes(GUARD), `${rel} does not carry the entry guard verbatim`);
   }
 });

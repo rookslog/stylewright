@@ -347,7 +347,15 @@ async function main(argv, now) {
     const manifestBytes = await fs.readFile(path.join(arm.dir, MANIFEST_NAME));
     const manifestDigest = digestBytes(manifestBytes);
     armDigests.push(manifestDigest);
-    armRecords.push({ arm: arm.name, path: rel, manifest_digest: manifestDigest });
+    armRecords.push({
+      arm: arm.name,
+      path: rel,
+      manifest_digest: manifestDigest,
+      // The runner's own line, repeated into the study so a reader sees an
+      // aborted arm without opening it. `check:studies` compares the two, and
+      // it disqualifies every figure an unfinished arm had a hand in.
+      abort: arm.manifest.abort ?? null,
+    });
   }
   for (const prompt of prompts) {
     await writeContained(studyDir, path.join(studyDir, 'prompts', `${prompt.scenario}.txt`),

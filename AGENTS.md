@@ -286,7 +286,11 @@ published in `bench/README.md`.
 - An arm carries a manifest naming what it planned to hold and the digest
   of what it holds. `run.sh` writes one when the arm stops, finished or
   aborted, and promotion refuses an arm without one. The manifest states
-  no verdict. `armState` derives whether the arm finished from the bytes.
+  no verdict. `armState` derives whether the arm finished from the bytes,
+  and `check:studies` enforces it: an arm that did not cover its plan
+  still promotes, because the design retains a failed attempt, and every
+  figure it had a hand in then reads unaudited with the reason on the
+  figure. A derived state nothing reads is a comment.
 - A study manifest states no figure. It retains the scorer's command and
   the scorer's output, and `check:studies` derives one figure per cell of
   the scorer's own table. A key that states a figure is refused. ADR-0023
@@ -294,6 +298,17 @@ published in `bench/README.md`.
   the platform, the environment class, the stack digest, the delivery mode
   and the installed pathway all need a runner that does not exist, so a
   manifest names each of them as a gap rather than inventing a value.
+- **The retained scorer output is re-run, never trusted.** It was the one
+  promoted artifact no digest covered, and every figure derives from it,
+  so a single edited table cell passed the check outright. `check:studies`
+  re-runs each retained command over the promoted bytes and compares. It
+  refuses a command that names a file outside the study, and it refuses to
+  re-run at all when the scorer's own digest has moved, because that run
+  would not be the run the study describes.
+- Every path a study manifest names is joined only after `isBelow` says it
+  lands inside the study, and every file the study holds is accounted for.
+  A study holds plain files only, so a symbolic link inside one is refused
+  by name rather than skipped by a walker that filters on file type.
 - The measurement checks join `npm run check` as they are implemented,
   each as a named script. A check that exists locally and not in the CI
   gate is the defect PR #59's review caught. Do not reopen it.

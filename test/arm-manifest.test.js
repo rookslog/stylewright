@@ -130,6 +130,21 @@ test('a file the manifest does not name is reported, and so is one it names and 
   assert.ok(problems.some((p) => /planted\.txt is here and the manifest does not name it/.test(p)));
 });
 
+test('a dot in an arm or scenario name is refused where the manifest is built', () => {
+  // A derived figure is `<scenario>.<arm>.<statistic>.<metric>`, so a dot in
+  // either name makes the identifier ambiguous the moment anybody splits it.
+  const build = (over) => buildManifest({
+    arm: 'control', scenarios: ['report'], reps: 1, at: 'now', files: {}, ...over,
+  });
+  assert.throws(() => build({ arm: 'control.v2' }), /is not a arm name/);
+  assert.throws(() => build({ scenarios: ['report.long'] }), /is not a scenario name/);
+  assert.doesNotThrow(() => build({ arm: 'with-skill_2' }));
+  // And again on the way in, because a manifest read off disk was not
+  // necessarily written by the builder.
+  const problems = manifestProblems({ ...build({}), arm: 'control.v2' });
+  assert.ok(problems.some((p) => /arm names the arm/.test(p)));
+});
+
 test('a malformed manifest is refused field by field', () => {
   assert.deepEqual(manifestProblems(null), ['arm manifest: not a JSON object.']);
   const problems = manifestProblems({

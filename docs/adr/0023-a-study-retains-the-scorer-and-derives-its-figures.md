@@ -65,6 +65,44 @@ rule. `npm run check:studies` validates the studies a marker would point at,
 which is the half that has to exist first. No study exists yet, so no marker
 can resolve, and a reviewer holds the rest.
 
+Amended 2026-08-06, after a review of the first implementation. The decision
+above is unchanged. What changed is that the check now earns it.
+
+**The retained output is re-run, not read.** Retaining the scorer's output and
+deriving from it made the figure honest and left the output itself uncovered:
+no digest reached it, and a reviewer edited one table cell from 45 to 12 while
+the check exited zero and derived the figure as audited. So `check:studies`
+re-runs each retained command over the promoted bytes and compares. The
+manifest already pins the scorer, its digest, the command, and the arm digests,
+which is what makes the re-run the same run rather than a new one.
+
+Three consequences follow, and each closes a hole the re-run would otherwise
+open. The scorer's digest is recomputed, and a drift refuses the re-run and
+names both digests, because a comparison against a different scorer proves
+nothing. The command is checked before it runs: it must name the recorded
+scorer, and every path in it must land inside the study, or a rewired command
+would reproduce its own retained output from bytes the study does not hold. And
+`bench/study.mjs` now spawns, where the probe check does not. That is the cost
+of the promise, and the promise was already written in two READMEs.
+
+**A derived state that nothing reads is a comment.** `armState` derived whether
+an arm covered its plan and nothing consulted it, so an arm whose manifest
+recorded an abort promoted and derived figures marked audited. Gating promotion
+would be the wrong repair, because the design retains a failed attempt on
+purpose. The state propagates into the figures instead: every figure an unfit
+arm had a hand in reads unaudited, with the reason on the figure. That is this
+ADR's own rule for the audit status, applied to the other thing that
+disqualifies a figure. An ungrouped `all` figure is disqualified by any unfit
+arm, because a set the scorer did not group pooled all of them.
+
+**Containment and inventory.** Every path a study manifest names is joined only
+after `isBelow` admits it, because `path.join` collapses `..` in silence. Every
+file the study holds is accounted for against the manifest, because scanning a
+file's contents says nothing about whether the study claims to hold it. And a
+study holds plain files only: filtering a walk on `isFile()` let a symbolic link
+escape the scan entirely, and a link's target string is committed content like
+any other byte.
+
 An arm manifest in `bench/out/` is replaced when a resumed run recomputes it,
 because `run.sh` resumes an interrupted arm and the record should describe
 where the arm ended. Nothing is edited in that replacement. A manifest inside a

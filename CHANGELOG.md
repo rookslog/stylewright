@@ -107,15 +107,22 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   option for a `--rules user` arm and nothing builds it, so that refusal is
   total.
 
-- **A promoted study states no figure.** The scorer runs after the copy, over
-  the promoted bytes, one scenario at a time, and the study manifest retains
-  its command and its output verbatim. `npm run check:studies` derives one
-  figure per cell of the scorer's own table, under
-  `<scenario>.<arm>.<statistic>.<metric>`, and recomputes every digest, so an
-  edit to promoted evidence stops being silent. A manifest carrying a key that
-  states a figure is refused. ADR-0023 records the decision, the deferred
-  redaction, and the provenance a study cannot yet carry, which it names as
-  gaps rather than inventing.
+- **A promoted study states no figure, and the check recomputes every one.**
+  The scorer runs after the copy, over the promoted bytes, one scenario at a
+  time, and the study manifest retains its command and its output verbatim.
+  `npm run check:studies` derives one figure per cell of the scorer's own
+  table, under `<scenario>.<arm>.<statistic>.<metric>`. It then re-runs each
+  retained command over the promoted bytes and compares, because the retained
+  table was the one promoted artifact no digest covered and every figure
+  derives from it. A scorer whose digest has moved refuses the re-run and names
+  both digests. A command naming a file outside the study is refused before it
+  runs. Every path the manifest names is checked for containment, every file
+  the study holds is accounted for, and a symbolic link inside a study is
+  refused rather than skipped. An arm that did not cover its plan still
+  promotes, and every figure it had a hand in reads unaudited with the reason
+  on the figure. ADR-0023 records the decision, the deferred redaction, and the
+  provenance a study cannot yet carry, which it names as gaps rather than
+  inventing.
 
 ### Changed
 

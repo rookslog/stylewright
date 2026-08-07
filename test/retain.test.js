@@ -1,14 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
-import { buildManifest, collectFiles, writeArmManifest } from '../bench/arm-manifest.mjs';
-import { digest } from '../bench/score.mjs';
 import { checkStudy } from '../bench/study.mjs';
 import { PROVENANCE, provenanceGaps, sidecarProblems } from '../bench/retain.mjs';
+import {
+  LICENSE, REPS, SCENARIO, promote, retain, run, tempArm, writeManifest,
+} from './bench-helpers.js';
 
 /**
  * Promotion is the mechanism the retention gap needed. Every figure in
@@ -17,78 +16,6 @@ import { PROVENANCE, provenanceGaps, sidecarProblems } from '../bench/retain.mjs
  * named refusals, because a promotion path that promotes everything is the
  * same gap with a committed directory.
  */
-
-const repoRoot = path.dirname(import.meta.dirname);
-const retain = path.join(repoRoot, 'bench', 'retain.mjs');
-const SCENARIO = 'report';
-const REPS = 5;
-
-function run(args) {
-  return new Promise((resolve) => {
-    execFile(process.execPath, [retain, ...args], { cwd: repoRoot }, (err, stdout, stderr) => {
-      resolve({ code: err ? err.code ?? 1 : 0, stdout, stderr });
-    });
-  });
-}
-
-function metaLine(over = {}) {
-  const fields = {
-    arm: 'control',
-    scenario: SCENARIO,
-    rep: '1',
-    reps: String(REPS),
-    rules: '',
-    system: 'none',
-    system_sha: 'none',
-    user_rules_sha: 'none',
-    user_rules: 'none',
-    prompt_sha: 'PROMPT',
-    model_id: 'claude-demo-1',
-    cli: '2.1.220',
-    at: '2026-08-06T00:00:00Z',
-    ...over,
-  };
-  return `${Object.entries(fields).map(([k, v]) => `${k}=${v}`).join(' ')}\n`;
-}
-
-/** An arm that promotion should accept, unless a test breaks one thing in it. */
-async function tempArm(t, { name = 'control', meta = {}, samples = {} } = {}) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-retain-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const from = path.join(root, 'out');
-  const out = path.join(root, 'samples');
-  const dir = path.join(from, name);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.mkdir(out, { recursive: true });
-
-  const promptSha = digest(
-    await fs.readFile(path.join(repoRoot, 'bench', 'prompts', `${SCENARIO}.txt`)));
-  for (let rep = 1; rep <= REPS; rep += 1) {
-    const sample = `${SCENARIO}-${rep}.txt`;
-    await fs.writeFile(path.join(dir, sample),
-      samples[sample] ?? `The guard tests raw === '' so whitespace still throws. Fixed in rep ${rep}.\n`);
-    await fs.writeFile(path.join(dir, `${sample}.meta`),
-      metaLine({ arm: name, rep: String(rep), prompt_sha: promptSha, ...meta }));
-  }
-  return { root, from, out, dir, name, promptSha };
-}
-
-async function writeManifest(dir, name, over = {}) {
-  await writeArmManifest(dir, buildManifest({
-    arm: name,
-    scenarios: [SCENARIO],
-    reps: REPS,
-    at: '2026-08-06T00:00:00Z',
-    files: await collectFiles(dir),
-    ...over,
-  }), path.dirname(dir));
-}
-
-const promote = (arm, extra = []) => run([
-  '--study', '2026-08-06-demo', '--arm', arm.name, '--from', arm.from, '--out', arm.out,
-  '--license-check', 'no source text is reproduced in these samples or this prompt',
-  ...extra,
-]);
 
 test('a clean arm is promoted whole, scored where it stands, and passes its own check', async (t) => {
   const arm = await tempArm(t);
@@ -112,6 +39,7 @@ test('a clean arm is promoted whole, scored where it stands, and passes its own 
   const manifest = JSON.parse(await fs.readFile(path.join(studyDir, 'study.json'), 'utf8'));
   assert.match(manifest.license_check.checked, /no source text/);
   assert.ok(manifest.provenance_gaps.some((g) => /environment class/.test(g)));
+  assert.equal(manifest.arms[0].abort, null);
 });
 
 test('two arms are read together, and each keeps its own figures', async (t) => {
@@ -122,7 +50,7 @@ test('two arms are read together, and each keeps its own figures', async (t) => 
   const second = path.join(arm.from, 'with-skill');
   await fs.mkdir(second);
   for (const file of await fs.readdir(arm.dir)) {
-    if (file.endsWith('arm-manifest.json')) continue;
+    if (file.startsWith('arm-manifest.json')) continue;
     const text = await fs.readFile(path.join(arm.dir, file), 'utf8');
     await fs.writeFile(path.join(second, file), file.endsWith('.meta')
       ? text.replace('arm=control', 'arm=with-skill').replace('system_sha=none', 'system_sha=abc123')
@@ -130,10 +58,9 @@ test('two arms are read together, and each keeps its own figures', async (t) => 
   }
   await writeManifest(second, 'with-skill');
 
-  const result = await run([
-    '--study', '2026-08-06-pair', '--arm', 'control', '--arm', 'with-skill',
-    '--from', arm.from, '--out', arm.out, '--license-check', 'nothing reproduced',
-  ]);
+  const result = await promote(arm, {
+    study: '2026-08-06-pair', arms: ['control', 'with-skill'],
+  });
   assert.equal(result.code, 0, result.stderr);
   const { problems, results } = await checkStudy(
     path.join(arm.out, '2026-08-06-pair'), '2026-08-06-pair');
@@ -143,6 +70,15 @@ test('two arms are read together, and each keeps its own figures', async (t) => 
   // Never pooled. A median across two arms is the error `--compare` exists to
   // make impossible, so there is no `all` row when the scorer grouped.
   assert.equal(results[`${SCENARIO}.all.median.words`], undefined);
+});
+
+test('an aborted arm is promoted, and the study repeats what stopped it', async (t) => {
+  const arm = await tempArm(t);
+  await writeManifest(arm.dir, arm.name, { abort: 'killed after report-5' });
+  assert.equal((await promote(arm)).code, 0);
+  const manifest = JSON.parse(
+    await fs.readFile(path.join(arm.out, '2026-08-06-demo', 'study.json'), 'utf8'));
+  assert.equal(manifest.arms[0].abort, 'killed after report-5');
 });
 
 test('a study is never promoted twice, because a correction is a new study', async (t) => {
@@ -233,20 +169,20 @@ test('a prompt that changed since collection is refused', async (t) => {
 });
 
 test('nothing is promoted without a recorded license check', async () => {
-  const result = await run(['--study', '2026-08-06-demo', '--arm', 'control']);
+  const result = await run(retain, ['--study', '2026-08-06-demo', '--arm', 'control']);
   assert.equal(result.code, 2);
   assert.match(result.stderr, /--license-check states what you checked/);
 });
 
 test('the command line refuses a bad study name, an unknown flag, and a repeated arm', async () => {
-  const licensed = ['--license-check', 'x'];
-  assert.match((await run(['--study', 'demo', '--arm', 'a', ...licensed])).stderr, /is <date>-<slug>/);
-  assert.match((await run(['--study', '2026-08-06-d', '--nope', 'x'])).stderr, /unknown flag/);
-  assert.match(
-    (await run(['--study', '2026-08-06-d', '--arm', 'a', '--arm', 'a', ...licensed])).stderr,
+  const licensed = ['--license-check', LICENSE];
+  const say = async (args) => (await run(retain, args)).stderr;
+  assert.match(await say(['--study', 'demo', '--arm', 'a', ...licensed]), /is <date>-<slug>/);
+  assert.match(await say(['--study', '2026-08-06-d', '--nope', 'x']), /unknown flag/);
+  assert.match(await say(['--study', '2026-08-06-d', '--arm', 'a', '--arm', 'a', ...licensed]),
     /an arm is promoted once/);
-  assert.match((await run(['--study', '2026-08-06-d', '--arm'])).stderr, /needs a value/);
-  assert.match((await run(['--arm', 'a', ...licensed])).stderr, /--study names the study/);
+  assert.match(await say(['--study', '2026-08-06-d', '--arm']), /needs a value/);
+  assert.match(await say(['--arm', 'a', ...licensed]), /--study names the study/);
 });
 
 test('a field no record carries is named as a gap, never filled', () => {
