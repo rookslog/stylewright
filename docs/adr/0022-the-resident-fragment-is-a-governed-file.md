@@ -146,6 +146,17 @@ file is above the bound sees a `resident-not-imported` warning that their file
 contradicts, and nothing in the finding says why. That direction only ever adds
 a warning, which is why it is the one to fail towards.
 
+That list is a list of file properties, and it reads as closed. It is not, and
+the review that caught this put the missing case in words worth keeping:
+
+> So does an import the user spelled another way — an absolute path, a `~`
+> path, or a `./` prefix — because the comparison is against the exact line
+> this tool printed, and not against every path that resolves to the same file.
+
+A user with a working absolute import therefore reads a warning that says the
+rule is not active, while it is. README carries the same warning in the words a
+user meets first.
+
 One of those refusals is not a bound but a hang. Reading a FIFO blocks until
 somebody writes, so a named pipe at an instruction path would stop `doctor`
 with nothing to report. `readsAsInstruction` is a named predicate rather than a

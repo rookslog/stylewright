@@ -143,11 +143,19 @@ export function renderResident(skillText) {
   return `${HEADER}\n\n${title(skillText)}\n\n${parts.join('\n\n')}\n`;
 }
 
+/**
+ * The text at `abs`, or `null` when nothing readable is there.
+ *
+ * ENOENT and EISDIR both mean "no text here", and only the first was caught.
+ * A directory at the fragment path therefore threw an EISDIR stack out of the
+ * check, before `writeResident` below could classify the path and refuse it in
+ * words. Reading them alike is what lets that refusal be reached.
+ */
 async function readOrNull(abs) {
   try {
     return await fs.readFile(abs, 'utf8');
   } catch (err) {
-    if (err.code === 'ENOENT') return null;
+    if (err.code === 'ENOENT' || err.code === 'EISDIR') return null;
     throw err;
   }
 }

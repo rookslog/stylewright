@@ -81,8 +81,11 @@ only claim the rule is active. The check looks.
 It looks for a line of text, and it reads no Markdown. So a copy of the line
 inside a code fence, or in a sentence saying you took it out, still counts as
 an import. A file it cannot read counts as no import, and so does one above a
-megabyte. Read the warning as a prompt to look, and not as a verdict.
-ADR-0022 states both directions and why they are the ones to accept.
+megabyte. So does an import you spelled another way, such as an absolute path,
+a `~` path, or a `./` prefix. The check compares the exact line it printed, and
+not every path that resolves to the same file. Read the warning as a prompt to
+look, and not as a verdict. ADR-0022 states both directions and why they are
+the ones to accept.
 
 The fragment is generated from the skill, so the two cannot drift. A check in
 the pipeline fails when they do.

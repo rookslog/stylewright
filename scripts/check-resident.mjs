@@ -39,7 +39,14 @@ const { expected, problems } = result;
 
 if (write) {
   if (expected === null) fail(problems.join('\n'));
-  await writeResident(repoRoot, expected);
+  // The same discipline, one function along. `writeResident` refuses a link or
+  // a directory at the destination in words, and that refusal reached the
+  // developer as a stack trace because only the read above was wrapped.
+  try {
+    await writeResident(repoRoot, expected);
+  } catch (err) {
+    fail(err.message);
+  }
   process.stdout.write('Resident fragment written from the skill.\n');
 } else if (problems.length) {
   fail(problems.join('\n'));

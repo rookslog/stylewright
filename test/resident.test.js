@@ -502,6 +502,48 @@ test('the generator replaces a file whole', async () => {
   assert.deepEqual(left, [RESIDENT_FILE]);
 });
 
+test('a directory at the fragment path reaches the refusal instead of a stack', async () => {
+  // `readOrNull` caught ENOENT alone, so the read threw EISDIR out of the
+  // check before `writeResident` could classify the path and say so in words.
+  const root = await tmp();
+  const skillDir = path.join(root, 'skills', 'craft', 'navigable-references');
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.copyFile(skillPath(ROOT), path.join(skillDir, 'SKILL.md'));
+  await fs.mkdir(residentPath(root), { recursive: true });
+
+  // The read answers "nothing here" rather than throwing.
+  const { problems } = await checkResident(root);
+  assert.equal(problems.length, 1);
+  // And the write refuses it by type, in a sentence.
+  await assert.rejects(writeResident(root, 'generated\n'), /not a regular file/);
+});
+
+test('the check script prints the write refusal without a stack', async () => {
+  // The refusal `writeResident` raises is a message about this repository, and
+  // it reached the developer as a stack trace because only the read was
+  // wrapped.
+  const root = await tmp();
+  const skillDir = path.join(root, 'skills', 'craft', 'navigable-references');
+  await fs.mkdir(skillDir, { recursive: true });
+  await fs.mkdir(path.join(root, 'resident'), { recursive: true });
+  await fs.copyFile(skillPath(ROOT), path.join(skillDir, 'SKILL.md'));
+  const outside = path.join(await tmp(), 'victim.md');
+  await fs.writeFile(outside, 'not ours\n');
+  await fs.symlink(outside, residentPath(root));
+
+  const r = await new Promise((resolve) => {
+    execFile(
+      process.execPath,
+      [path.join(ROOT, 'scripts', 'check-resident.mjs'), '--write'],
+      { cwd: root },
+      (err, stdout, stderr) => resolve({ code: err ? err.code ?? 1 : 0, stdout, stderr }));
+  });
+  assert.equal(r.code, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /not a regular file/);
+  assert.doesNotMatch(r.stderr, /at .*resident\.js/);
+  assert.equal(await fs.readFile(outside, 'utf8'), 'not ours\n');
+});
+
 test('the check script prints a renamed section rather than a stack', async () => {
   // `bin/stylewright.mjs` already ruled on this: a stack trace says where we
   // were and not what to do.
