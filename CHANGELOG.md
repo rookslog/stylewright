@@ -5,6 +5,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- A grounding matrix names the reading its audits answer to, above its table,
+  as `**Source version:**` and a pin. The pin joins the row digest, so moving
+  the source on voids every audit in the file at once. A `G` row cites a rule
+  by number, and a rule number survives a new edition, so the row-only digest
+  let a source bump leave every audit reading as current over an edition
+  nobody had opened. A matrix with a `G` row carries the line, and a matrix
+  without one is refused for carrying it. The pin is the whole paragraph, so a
+  wrapped line binds every word a reader sees. `latest` and `HEAD` are refused,
+  because a reader has to date those for themselves. Placement follows the
+  quotation declaration: above the header row, outside raw HTML, once, and a
+  second line refused rather than overruling the first. A declaration the check
+  cannot read leaves the matrix naming no reading, and every audit in it reads
+  stale. `rowDigest` takes the pin and refuses a caller that omits it, for the
+  reason `checkSkill` refuses a caller that omits the day. ADR-0025 records the
+  decision and amends ADR-0018's digest. Issue #73.
+
 ### Changed
 
 - `proportionate-execution` says how it differs from `de-slop`. Three of the

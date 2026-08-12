@@ -69,7 +69,8 @@ each time it says it.
 No check here opens a source, so no check can say whether a `G` row reads its
 rule correctly. Each `G` row therefore records its own audit, in the last cell.
 The cell says `unaudited`, or it carries the date a person read that row
-against the source and a digest of the five cells they read. Every other kind
+against the source, and a digest of the five cells they read and the reading
+they read them against. Every other kind
 of row leaves the cell empty, for the same reason its rule cell is empty. The
 cell itself is never absent. A row without it is refused whatever kind it is,
 because coalescing an absent cell with an empty one let a matrix of `E` and
@@ -153,6 +154,30 @@ The moment is written in UTC: a bare day, or a day and a bounded time ending in
 another in UTC, and the check read the written one. A zero offset is UTC and is
 admitted. The time is bounded because `24:00:00Z` is a legal spelling of
 midnight ENDING that day, so its written day put the bound a day early.
+
+A matrix names the reading its audits answer to, at column 0, as `**Source
+version:** <pin>`. A rule identifier is stable across editions, so the row
+digest bound nothing about which edition a person read: moving ASD-STE100 from
+Issue 9 to a later issue changed no cell in any row, and every audit stayed
+current over an edition nobody had opened. Issue 73 reports it. The pin joins
+the digest, so moving it voids every audit in the file at once.
+
+The pin names one reading. A versioned source names its version, a living one
+names a commit or the day somebody read it, and a model target names the build
+and the evidence cutoff. `latest` and `HEAD` are refused, because a reader has
+to date those for themselves. The pin is the whole paragraph rather than the
+first line, because house style wraps at eighty columns and reading the line
+alone bound `Issue 9, January` while the file said `Issue 9, January 2025`.
+
+A matrix with a `G` row carries the line, and a matrix without one is refused
+for carrying it. The placement doctrine is ADR-0020's, inherited whole: above
+the header row, outside raw HTML, stated once, and a second declaration refused
+rather than overruling the first. Doubt reads as the strict case here too. A
+declaration the check cannot read leaves the matrix naming no reading, so the
+digest binds the empty pin and every recorded audit reads stale. The pin
+duplicates what `SOURCE.md` says in prose, and that is deliberate: the matrix
+copy is the one the digest binds, and no check here opens a second file.
+ADR-0025 records the decision, and it amends ADR-0018's digest.
 
 **The matrix table is checked, not just its rows.** The header and the
 delimiter each carry seven columns, and every heading is checked by name.

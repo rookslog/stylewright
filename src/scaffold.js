@@ -136,7 +136,12 @@ check, and stop well short of a quoted set that could stand in for the source.
 **Quotation:** forbidden. No licence has been checked for this source yet, so
 this file starts where every file starts. Read the licence, record the check in
 \`SOURCE.md\`, and then edit this line.
-
+${counts.G ? `
+**Source version:** FILL IN the reading these rows are audited against. Name a
+version, a commit, or the day somebody read the source. A word that stands for
+whichever reading a reader happens to fetch names none of them, and the check
+refuses one.
+` : ''}
 A row that tells the reader to do something is never an \`N\` row. The kinds
 below are a starting guess. Revise them as you write the skill.
 

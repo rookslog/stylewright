@@ -325,25 +325,30 @@ const HTML_SELF_CLOSES = /\/>\s*$/;
 const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
 
 /**
- * Every declaration in the file, each with what makes it unreadable. The
- * caller decides, because an unreadable declaration is two facts at once: a
- * finding to report, and a line that governs nothing.
+ * Every line in the file that `marker` matches, with the paragraph under it and
+ * where the reader would find it.
+ *
+ * Two declarations use this now, and the placement doctrine is the same for
+ * both: above the table, outside raw HTML, and read as a whole paragraph rather
+ * than a first line. A second copy of this scan would be a second thing to
+ * drift, and the two would then disagree about which lines a reader sees. What
+ * each declaration MEANS stays with the function that reads it.
  */
-export function readDeclaration(text, headerLine = null) {
+function readMarked(text, headerLine, marker, { untilBlank = false } = {}) {
   const found = [];
   const lines = text.split('\n');
   let fence = null;
   let html = 0;
   for (const [i, line] of lines.entries()) {
-    const marker = MATRIX_FENCE.exec(line);
+    const fenced = MATRIX_FENCE.exec(line);
     if (fence) {
-      if (marker && marker[2][0] === fence[0] && marker[2].length >= fence.length) fence = null;
+      if (fenced && fenced[2][0] === fence[0] && fenced[2].length >= fence.length) fence = null;
       continue;
     }
-    if (marker) { fence = marker[2]; continue; }
+    if (fenced) { fence = fenced[2]; continue; }
     if (HTML_CLOSES.test(line)) html = Math.max(0, html - 1);
     else if (HTML_OPENS.test(line) && !HTML_SELF_CLOSES.test(line)) html += 1;
-    const stated = DECLARATION.exec(line);
+    const stated = marker.exec(line);
     if (!stated) continue;
     // The reason runs to the next heading or to the table, whichever comes
     // first. Reading one line let the qualification move to the second, and
@@ -356,6 +361,11 @@ export function readDeclaration(text, headerLine = null) {
     // stopped at. Reading it made a matrix that SHOWS what a declaration looks
     // like equivocate about its own state, and stopping at it would hand the
     // qualification the same escape one fence lower down.
+    //
+    // `untilBlank` stops at the paragraph instead, and the source version asks
+    // for it. That declaration's rest is the pin itself rather than an argument
+    // about it, so its extent is what a reader sees as one paragraph, and it
+    // may not run on to swallow the next.
     const reason = [line.slice(stated[0].length)];
     let shown = null;
     for (let j = i + 1; j < lines.length; j += 1) {
@@ -367,17 +377,83 @@ export function readDeclaration(text, headerLine = null) {
       }
       if (inner) { shown = inner[2]; continue; }
       if (HEADING.test(lines[j])) break;
+      if (untilBlank && !lines[j].trim()) break;
       reason.push(lines[j]);
     }
     found.push({
       line: i + 1,
-      state: stated[1],
+      stated,
+      reason: reason.join(' '),
       inHtml: html > 0,
       belowTable: headerLine !== null && i + 1 > headerLine,
-      equivocates: EITHER_STATE.test(reason.join(' ')),
     });
   }
   return found;
+}
+
+/**
+ * Every declaration in the file, each with what makes it unreadable. The
+ * caller decides, because an unreadable declaration is two facts at once: a
+ * finding to report, and a line that governs nothing.
+ */
+export function readDeclaration(text, headerLine = null) {
+  return readMarked(text, headerLine, DECLARATION).map((d) => ({
+    line: d.line,
+    state: d.stated[1],
+    inHtml: d.inHtml,
+    belowTable: d.belowTable,
+    equivocates: EITHER_STATE.test(d.reason),
+  }));
+}
+
+/**
+ * Which reading of the source this matrix was audited against.
+ *
+ * An `Audited` cell says a person read the row against the source. It said
+ * nothing about WHICH source, and the digest bound the row's own cells alone. A
+ * rule identifier is stable across editions, so moving ASD-STE100 from Issue 9
+ * to a later issue changed no cell in any row: every recorded audit stayed
+ * current and counted, over an edition nobody had opened. Issue 73 reports it.
+ *
+ * So the matrix names the reading, once, above its table, and the pin joins the
+ * row digest. Bumping the pin voids every audit in the file at once, which is
+ * what a new edition means for a reading of the old one.
+ *
+ * The pin is the whole paragraph, collapsed. It is not the first line, because
+ * house style wraps a line at eighty columns and the reader sees the wrapped
+ * text as one statement: taking the line alone bound `Issue 9, January` while
+ * the file said `Issue 9, January 2025`, which is the checker and the reader
+ * disagreeing about the record, and every other rule in this file exists to
+ * stop that. It ends at the blank line, because the paragraph after it is a
+ * different statement and a pin that swallows one binds words nobody meant as
+ * a pin.
+ *
+ * A pin names one reading. A versioned source names its version, a living one
+ * names a commit or the day somebody read it, and a model target names the
+ * build and the evidence cutoff. `latest` and `HEAD` name whichever reading the
+ * reader happens to fetch, which is the thing this check exists to refuse, so
+ * the words are refused wherever they fall in the paragraph.
+ *
+ * What the pin SAYS is all this reads. Whether the reading it names is the
+ * reading a person did is what the `Audited` cell speaks to, and no program
+ * here can check that, exactly as no program can check a quotation's accuracy.
+ */
+const SOURCE_VERSION = /^\*\*Source version:\*\*(?:\s(.*))?$/;
+// Loose on purpose, and every shape it catches is refused, so a wider match
+// fails closed. A pin the reader has to date for themselves is not a pin.
+const UNPINNED = /\b(?:latest|newest|current|head|most recent)\b/i;
+
+export function readSourceVersion(text, headerLine = null) {
+  return readMarked(text, headerLine, SOURCE_VERSION, { untilBlank: true }).map((v) => {
+    const pin = `${v.stated[1] ?? ''} ${v.reason}`.replace(/\s+/g, ' ').trim();
+    return {
+      line: v.line,
+      pin,
+      inHtml: v.inHtml,
+      belowTable: v.belowTable,
+      unpinned: !pin || UNPINNED.test(pin),
+    };
+  });
 }
 
 const LEAP = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
@@ -407,9 +483,26 @@ function isRealDate(year, month, day) {
  * the rule they read it against. Leaving it out would let the quoted words be
  * rewritten under a recorded audit, which is the stale-digest defect one
  * column over.
+ *
+ * The matrix's source version is in for the same reason one column further
+ * out. It is not a cell, and it is the other half of what the person read: our
+ * sentence against that rule, in THAT edition. Bind the row alone and a source
+ * bump leaves every audit current over an edition nobody opened, which is
+ * issue 73.
+ *
+ * The pin is required rather than defaulted, by the rule `now` obeys two
+ * functions down. A default here would compute the digest this function
+ * computed before issue 73, so the caller who forgot the argument would get the
+ * defect back and no error. The empty string is a value and not an omission: it
+ * is what `checkSkill` passes when the matrix declares no reading this check
+ * can read, and no readable pin is empty, so the two cannot collide.
  */
-export function rowDigest(row) {
-  return digest([row.guidance, row.anchor, row.rule, row.quote, row.location].join('\n'));
+export function rowDigest(row, pin) {
+  if (typeof pin !== 'string') {
+    throw new TypeError('`pin` must be the matrix\'s source version, as a string. '
+      + `Got ${JSON.stringify(pin)}.`);
+  }
+  return digest([row.guidance, row.anchor, row.rule, row.quote, row.location, pin].join('\n'));
 }
 
 /**
@@ -493,7 +586,7 @@ function dayOf(now) {
  *
  * `recorded` is the only state that counts as a person having read the row.
  */
-function auditState(row, today) {
+function auditState(row, today, pin) {
   const audit = row.audit;
   if (audit === undefined) return { state: 'missing' };
   if (!audit) return { state: 'absent' };
@@ -505,7 +598,7 @@ function auditState(row, today) {
   const day = `${stamp[1]}-${stamp[2]}-${stamp[3]}`;
   // Zero-padded ISO days sort as text, so this needs no date arithmetic.
   if (day > today) return { state: 'ahead', day };
-  if (stamp[4] !== rowDigest(row)) return { state: 'stale', day };
+  if (stamp[4] !== rowDigest(row, pin)) return { state: 'stale', day };
   return { state: 'recorded', day };
 }
 
@@ -799,12 +892,42 @@ export function unmodelled(skillText) {
   return extract(skillText).refusals;
 }
 
+/**
+ * The findings that say the reader cannot see the table. Two questions read
+ * this: whether to print the coverage ratios, and whether the G rows are a
+ * count anything may be required of.
+ *
+ * The list is written out, one code at a time, and it is not a prefix match.
+ * A prefix was the first version, and it read `matrix-` as "about the table".
+ * It is not: `matrix-` names the FILE, and the declaration lives in that file
+ * above the table. So the five declaration findings withheld both counts and
+ * said the table was broken over a table nobody had touched. A code added
+ * later would inherit that by spelling, which is the defect renewing itself,
+ * and a name is the wrong thing to carry this. Each code here describes the
+ * container the reader sees: the header, the delimiter, the rows' place in
+ * the block, and the lines that look like rows and are not read.
+ */
+const BROKEN = new Set([
+  'matrix-no-table',
+  'matrix-no-header',
+  'matrix-header-columns',
+  'matrix-delimiter-columns',
+  'matrix-header-column-name',
+  'matrix-second-delimiter',
+  'matrix-row-unclosed',
+  'unread-matrix-row',
+  'row-outside-the-table',
+]);
+
 export function checkSkill({ skillText, matrixText, now }) {
   const today = dayOf(now);
   if (matrixText === null || matrixText === undefined) {
     return [{ level: 'error', code: 'no-matrix', message: 'Skill has no grounding matrix.' }];
   }
   const rows = parseMatrix(matrixText);
+  // The rows that claim a source. The coverage note counts them at the end, and
+  // the source version above the table is required of exactly this set.
+  const sourced = rows.filter((r) => /^G-/i.test(r.id));
   const { units: stmts, refusals } = extract(skillText);
   const findings = [];
 
@@ -816,7 +939,8 @@ export function checkSkill({ skillText, matrixText, now }) {
   // Whether this matrix may quote at all, before any row is read. An absent
   // declaration reads as `forbidden`, a second one lifts nothing, and one the
   // reader cannot find governs nothing either.
-  const declared = readDeclaration(matrixText, table.header?.line ?? table.delimiter?.line ?? null);
+  const headerLine = table.header?.line ?? table.delimiter?.line ?? null;
+  const declared = readDeclaration(matrixText, headerLine);
   const unreadable = [
     ['belowTable', 'matrix-declaration-below-the-table',
       'sits under the table it governs. A reader looking for the state of this file reads '
@@ -867,6 +991,49 @@ export function checkSkill({ skillText, matrixText, now }) {
       message: `the matrix declares its quotation state ${declared.length} times, on line `
         + `${declared.map((d) => d.line).join(', ')}. Lift a prohibition by editing it and its `
         + 'reason, never by adding a line under it.',
+    });
+  }
+  // Which reading of the source the audits in this file answer to. It is
+  // required of a matrix with a G row and refused on one without, because a
+  // matrix that cites no source has no reading of one to pin, and a pin nobody
+  // uses is a line that goes stale unread.
+  const versions = readSourceVersion(matrixText, headerLine);
+  const unfindable = [
+    ['belowTable', 'matrix-source-version-below-the-table',
+      'sits under the table it governs. A reader looking for the reading these audits '
+      + 'answer to reads the opening prose. Write it above the header row.'],
+    ['inHtml', 'matrix-source-version-inside-html',
+      'sits inside raw HTML, where a reader on GitHub may not see it at all. Write it as '
+      + 'ordinary prose at column 0.'],
+    ['unpinned', 'matrix-source-version-unpinned',
+      'names no particular reading. A version, a commit, or the day the source was read '
+      + 'pins one. A word that means "whichever is newest" pins nothing, and it is a pin '
+      + 'the reader has to date for themselves.'],
+  ];
+  for (const v of versions) {
+    for (const [flag, code, why] of unfindable) {
+      if (!v[flag]) continue;
+      findings.push({
+        level: 'error',
+        code,
+        message: `matrix line ${v.line}: the source version ${why} Until then this matrix `
+          + 'names no reading, and no audit in it can be current.',
+      });
+    }
+  }
+  // What governs. One declaration, readable, or nothing. Doubt reads as the
+  // strict case here as it does one check up: a matrix that cannot say what its
+  // rows were read against has no audit that means anything, so the digest
+  // binds the empty pin and every recorded audit goes stale.
+  const legible = versions.filter((v) => !v.belowTable && !v.inHtml && !v.unpinned);
+  const pin = versions.length === 1 && legible.length === 1 ? legible[0].pin : '';
+  if (versions.length > 1) {
+    findings.push({
+      level: 'error',
+      code: 'matrix-two-source-versions',
+      message: `the matrix names its source version ${versions.length} times, on line `
+        + `${versions.map((v) => v.line).join(', ')}. Move a reading forward by editing the `
+        + 'line, never by adding one under it.',
     });
   }
   for (const r of table.refusals) {
@@ -957,6 +1124,33 @@ export function checkSkill({ skillText, matrixText, now }) {
   }
   for (const row of table.rows) unclosed('row', row);
 
+  // Whether a matrix must name its source version turns on whether it carries a
+  // G row, and a broken table carries no row this check can read. Asking the
+  // question there would refuse an honest declaration for citing nothing, over
+  // a table nobody can see. That is the wrong-number defect the coverage note
+  // answers the same way, one question over.
+  const brokenTable = findings.some((f) => BROKEN.has(f.code));
+  if (!brokenTable) {
+    if (sourced.length && !versions.length) {
+      findings.push({
+        level: 'error',
+        code: 'matrix-no-source-version',
+        message: 'the matrix does not name the reading of the source its audits answer to. '
+          + 'Write `**Source version:** <the version, the commit, or the day it was read>` at '
+          + 'column 0, above the header row. A rule identifier is stable across editions, so '
+          + 'without it a new edition leaves every audit here reading as current.',
+      });
+    } else if (!sourced.length && versions.length) {
+      findings.push({
+        level: 'error',
+        code: 'matrix-source-version-without-g-rows',
+        message: `matrix line ${versions[0].line}: the matrix names a source version and cites `
+          + 'no source. Only a G row claims one, and a pin no row answers to is a line nobody '
+          + 'maintains. Delete it.',
+      });
+    }
+  }
+
   // Refusals lead, because every finding under them rests on a reading the
   // extractor has just said it cannot make.
   for (const r of refusals) {
@@ -1032,7 +1226,7 @@ export function checkSkill({ skillText, matrixText, now }) {
     // are true findings. Folding them into one chain reported whichever came
     // first and hid the rest until it was fixed.
     if (!kind) return;
-    const { state, day } = auditState(row, today);
+    const { state, day } = auditState(row, today, pin);
     // The column is the format, not a courtesy a G row extends. A row that
     // does not carry the cell is refused whatever kind it is, because the
     // alternative is a matrix that quietly drops the column the moment it
@@ -1110,7 +1304,7 @@ export function checkSkill({ skillText, matrixText, now }) {
       }
       return;
     }
-    const remedy = `Write \`${UNAUDITED}\`, or a date and \`${rowDigest(row)}\`.`;
+    const remedy = `Write \`${UNAUDITED}\`, or a date and \`${rowDigest(row, pin)}\`.`;
     if (state === 'absent') {
       findings.push({
         level: 'error',
@@ -1134,8 +1328,9 @@ export function checkSkill({ skillText, matrixText, now }) {
       findings.push({
         level: 'error',
         code: 'audit-stale',
-        message: `${row.id}: the row changed since ${day}, so its audit describes other `
-          + `words. Read it against the source again and write \`${rowDigest(row)}\`, `
+        message: `${row.id}: the row, or the reading this matrix names, has changed since `
+          + `${day}, so its audit describes other words. Read it against the source again `
+          + `and write \`${rowDigest(row, pin)}\`, `
           + `or write \`${UNAUDITED}\`.`,
       });
     }
@@ -1171,30 +1366,7 @@ export function checkSkill({ skillText, matrixText, now }) {
   // container is broken the count is withheld rather than printed, because a
   // wrong number here is worse than no number. It also covers the fenced row,
   // which silently rebased the denominator to `1 of 1`.
-  //
-  // The list is written out, one code at a time, and it is not a prefix match.
-  // A prefix was the first version, and it read `matrix-` as "about the table".
-  // It is not: `matrix-` names the FILE, and the declaration lives in that file
-  // above the table. So the five declaration findings withheld both counts and
-  // said the table was broken over a table nobody had touched. A code added
-  // later would inherit that by spelling, which is the defect renewing itself,
-  // and a name is the wrong thing to carry this. Each code here describes the
-  // container the reader sees: the header, the delimiter, the rows' place in
-  // the block, and the lines that look like rows and are not read.
-  const BROKEN = new Set([
-    'matrix-no-table',
-    'matrix-no-header',
-    'matrix-header-columns',
-    'matrix-delimiter-columns',
-    'matrix-header-column-name',
-    'matrix-second-delimiter',
-    'matrix-row-unclosed',
-    'unread-matrix-row',
-    'row-outside-the-table',
-  ]);
-  const broken = findings.some((f) => BROKEN.has(f.code));
-  const sourced = rows.filter((r) => /^G-/i.test(r.id));
-  if (broken) {
+  if (brokenTable) {
     findings.push({
       level: 'note',
       code: 'audit-coverage',
@@ -1209,7 +1381,7 @@ export function checkSkill({ skillText, matrixText, now }) {
     findings.push({
       level: 'note',
       code: 'audit-coverage',
-      message: `${sourced.filter((r) => auditState(r, today).state === 'recorded').length} `
+      message: `${sourced.filter((r) => auditState(r, today, pin).state === 'recorded').length} `
         + `of ${sourced.length} G rows record a person reading them against the source.`,
     });
     // The second number the verdict cannot carry. A reader holds the

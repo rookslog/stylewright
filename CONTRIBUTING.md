@@ -153,6 +153,39 @@ Editing any other cell in the row changes the digest. The check then reports
 the audit as stale, because the words you read are no longer the words in the
 row. Read the row against the source again, or write `unaudited`.
 
+## The matrix names the reading its audits answer to
+
+Write the source version above the header row, at column 0:
+
+```
+**Source version:** ASD-STE100 Simplified Technical English, Issue 9,
+January 2025, read from the official PDF on 2026-07-26.
+```
+
+A `G` row cites a rule by number, and a rule number survives a new edition of
+the standard. So the digest bound nothing about which edition you read, and
+bumping the source left every audit in the file reading as current. The pin
+joins the digest and closes that. Move the pin and every audit in the file goes
+stale, which is what a new edition means for a reading of the old one.
+
+Pin one reading. A versioned source names its version. A living source names a
+commit, or the day you read it. A model target names the build and the evidence
+cutoff. The check refuses a pin that means whichever reading a reader happens
+to fetch, so do not write `latest` or `HEAD`.
+
+The pin is the whole paragraph, so wrap the line where you like. It ends at the
+blank line under it, and the paragraph after that is not part of it.
+
+A matrix with a `G` row carries the line. A matrix without one is refused for
+carrying it, because no row there answers to a source. The placement rules are
+the ones the quotation declaration obeys, and the section below states them:
+above the table, outside raw HTML, and once. A second line is refused rather
+than overruling the first. A source version the check cannot read leaves the
+matrix naming no reading at all, and every audit in it reads stale.
+
+`SOURCE.md` states the same thing in prose, for a reader. The matrix carries
+the copy that binds, because no check here opens a second file.
+
 ## Quote the rule in the `Source text` cell
 
 Write `unquoted` in the `Source text` cell of every `G` row, and leave the cell

@@ -12,7 +12,8 @@ The `Audited` cell of a `G` row says whether a person has read that row against
 the source. Every row starts at `unaudited`, and no run of the checker raises
 it. A person who checks a row writes the date and the row's digest in place of
 the word. Editing any other cell changes that digest, so the audit goes stale
-and the check says so.
+and the check says so. So does moving the source version this file declares,
+because an audit answers to one reading of the source.
 
 The `Source text` cell of a `G` row carries the words of the rule it cites, in
 quotation marks. Every row below reads `unquoted`, and that is not a backlog.
@@ -100,6 +101,11 @@ this record than they left.
 Five runs per cell, medians with no dispersion statistic, four prompts written
 by the person who wrote the rules, one seeded bug in one scenario. Nothing here
 is a controlled trial, and no `E` row should be read as one.
+
+**Source version:** Anthropic's documentation of Claude Opus 5, model id
+`claude-opus-5`, released 2026-07-24, as read up to the evidence cutoff of
+2026-07-27. The target is a model build rather than a standard, so the build
+and the cutoff are what a reading of these pages is a reading of.
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|
