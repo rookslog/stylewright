@@ -271,6 +271,12 @@ as complete as its last review, which is the inversion ADR-0016 records for the
 extractor. Answer a new file the way that ADR answers a new Markdown shape. Ask
 what governs it, and add it to the allowlist only when something does.
 
+The allowlist reads a name, and a name is not a file. So the check asks the
+filesystem what stands at each one, with `lstat`, and refuses anything but a
+plain file. `copyFile` resolves a link, so a link called `LICENSE` ships the
+bytes on the other end of it and the allowlist would have passed it. This is
+the disposition a study already gives a link inside it.
+
 `references/` is the one entry whose governance is owed. `SKILL.md` routes a
 writer into it, so it is context and not an audit record, and the answer to
 ungraded context is to grade it rather than to evict it. Until issue #99 lands,

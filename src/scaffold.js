@@ -170,6 +170,40 @@ This file stays in the repository. It does not install with the skill.
 `;
 }
 
+/**
+ * A craft skill has no source, and that is the thing its record states. The
+ * question a reader asks of a craft rule is what stands behind it, and the
+ * answer has to be written down rather than left to be discovered.
+ */
+function craftSourceMd({ name }) {
+  return `# Source record for ${name}
+
+This file stays in the repository. It does not install with the skill.
+
+- Source: none. No standard, no vendor documentation, and no published guidance
+  says any of this.
+- Rights holder: not applicable. Nothing is reproduced.
+- Transformation: not applicable. Every rule is written from scratch, and the
+  grounding matrix carries no \`G\` row.
+- Reproduction check: not required, because no source wording is carried into
+  the skill. Anyone who later adds a quotation records the check here first.
+- Recorded: FILL IN the date you wrote this.
+
+## What evidence stands behind the rules
+
+FILL IN. A craft rule has no standard behind it, so measurement is the only
+evidence it can ever have, and \`bench/README.md\` holds that protocol. Say what
+has been run for this skill. Where nothing has been run, say that plainly, and
+say that a reader must take every rule as discipline we assert.
+
+## When this record expires
+
+FILL IN the conditions. A measurement that lands replaces the section above it,
+whichever way the result goes. A source that turns up for one of these rules
+needs a \`G\` row, and its licence check goes here first.
+`;
+}
+
 function agentsYaml({ name, description }) {
   const short = description.length > 60 ? `${description.slice(0, 59)}…` : description;
   return `interface:
@@ -225,10 +259,9 @@ export async function scaffoldSkill({
     [`${dir}/LICENSE`, tier === 'standards'
       ? `Source license: ${license || 'FILL IN'}\n\nThe original digest in this directory is licensed MIT.\nThe source record for this skill is in the stylewright repository, at\nsource/${tier}/${name}.md. It is not installed with this skill.\n`
       : 'MIT\n'],
-    ...(tier === 'standards'
-      ? [[`source/${tier}/${name}.md`,
-        sourceMd({ name, source, url, license: license || 'FILL IN' })]]
-      : []),
+    [`source/${tier}/${name}.md`, tier === 'standards'
+      ? sourceMd({ name, source, url, license: license || 'FILL IN' })
+      : craftSourceMd({ name })],
     [`grounding/${tier}/${name}.md`,
       groundingMd({ name, tier, skillText, source })],
   ];

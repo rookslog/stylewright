@@ -34,6 +34,16 @@ Location is the mechanism, not a filter. Four pathways run none of our code, so
 an exclusion list inside the engine would not reach them. This is the mechanism
 ADR-0007 chose for the matrix, and the source record now inherits it.
 
+A name is not a file, so the check asks the filesystem what stands at each name
+and refuses anything but a plain file. The install copy resolves a link and
+ships the bytes on the other end of it, and nothing on the source side refuses
+one: `installSkills` checks that each name can be recorded portably and then
+calls `copyFile`. A study already answers this shape the same way.
+
+The scaffold writes a record for both tiers. A craft skill has no standard
+behind it, and that is precisely the thing its record states, so the tier that
+looks like it needs no record is the tier whose record does the most work.
+
 ## Two files, two dispositions, and the test that separates them
 
 The design document states the test in section 2.2: a matrix is an audit

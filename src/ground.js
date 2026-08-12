@@ -1282,12 +1282,25 @@ export const SHIPPED_DIRS = {
  * not remove it to quiet the output. A green run over files nothing grades is
  * the thing this number exists to report.
  */
-export function checkShippedFiles({ files, tier, name }) {
+export function checkShippedFiles({ files, irregular = [], tier, name }) {
   const allowed = Object.entries(SHIPPED_FILES)
     .map(([f, why]) => `${f} (${why})`)
     .concat(Object.entries(SHIPPED_DIRS).map(([d, why]) => `${d}/ (${why})`))
     .join(', ');
-  const findings = files
+  // The allowlist reads a name, and a name is not a file. `copyFile` resolves
+  // a link, so a link called `LICENSE` ships whatever it points at, and the
+  // allowlist would have passed it. A study already answers this shape: a
+  // symbolic link inside one is refused by name, rather than skipped by a
+  // walker that filters on file type. A skill directory holds plain files.
+  const findings = irregular.map((rel) => ({
+    level: 'error',
+    code: 'shipped-file-not-regular',
+    message: `${rel} is not a plain file. A skill directory holds plain files only, `
+      + 'because the copy resolves a link and ships the bytes on the other end of it, '
+      + 'wherever they live. The allowlist reads the name, so it cannot see that. '
+      + 'Replace it with the file itself.',
+  }));
+  findings.push(...files
     .filter((rel) => !Object.hasOwn(SHIPPED_FILES, rel))
     .filter((rel) => !Object.keys(SHIPPED_DIRS).some((d) => rel.startsWith(`${d}/`)))
     .map((rel) => ({
@@ -1298,7 +1311,7 @@ export function checkShippedFiles({ files, tier, name }) {
         + `${allowed}. An audit record goes in source/${tier}/${name}.md, beside the `
         + 'matrix and outside every copy. Anything else needs a decision about what '
         + 'governs it before it ships.',
-    }));
+    })));
   const referenced = files.filter((rel) => rel.startsWith('references/'));
   if (referenced.length) {
     findings.push({
@@ -1321,11 +1334,18 @@ export async function checkAll(repoRoot, { now } = {}) {
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
+    // `walk` returns names, and a name says nothing about what stands at it.
+    // The type is asked for here, with `lstat`, so the link itself answers
+    // rather than whatever it points at.
+    const files = await walk(skill.dir);
+    const irregular = [];
+    for (const rel of files) {
+      const st = await fs.lstat(path.join(skill.dir, rel));
+      if (!st.isFile()) irregular.push(rel);
+    }
     out[skill.name] = [
       ...checkShippedFiles({
-        files: await walk(skill.dir),
-        tier: skill.tier,
-        name: skill.name,
+        files, irregular, tier: skill.tier, name: skill.name,
       }),
       ...checkSkill({ skillText, matrixText, now }),
     ];

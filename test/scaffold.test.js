@@ -107,6 +107,21 @@ test('a craft skill needs no source and gets an E row', async () => {
   assert.deepEqual((await checkAll(repo, { now: NOW }))['demo-craft'], []);
 });
 
+test('a craft skill gets a source record too, because it has a status to state', async () => {
+  // A craft skill has no standard behind it, and that is the thing the record
+  // says. All four shipped craft skills carry one, and the scaffold wrote none.
+  const repo = await tmp();
+  await scaffoldSkill({
+    repoRoot: repo, name: 'demo-craft', tier: 'craft', description: 'Craft demo.',
+  });
+  const record = await fs.readFile(
+    path.join(repo, 'source', 'craft', 'demo-craft.md'), 'utf8');
+  assert.match(record, /# Source record for demo-craft/);
+  assert.match(record, /no source/i);
+  await assert.rejects(
+    () => fs.access(path.join(repo, 'skills', 'craft', 'demo-craft', 'SOURCE.md')));
+});
+
 test('a standards skill without a source is refused', async () => {
   const repo = await tmp();
   await assert.rejects(

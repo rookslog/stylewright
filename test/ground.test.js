@@ -1334,6 +1334,29 @@ test('a file the skill directory ships and nothing governs is refused by name', 
   assert.match(refusal.message, /source\/standards\/demo-standard\.md/);
 });
 
+test('a link at an allowed name is refused, because the name is not the file', async (t) => {
+  // The allowlist reads names, and `copyFile` follows a link out of the tree,
+  // so a link called `LICENSE` ships whatever it points at. This is the
+  // disposition a study already gives a link inside it: refused by name.
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-link-'));
+  await fsp.cp(REPO, repo, { recursive: true });
+  const dir = path.join(repo, 'skills', 'standards', 'demo-standard');
+  const outside = path.join(repo, 'outside.txt');
+  await fsp.writeFile(outside, 'bytes from outside the skill\n');
+  await fsp.rm(path.join(dir, 'LICENSE'));
+  try {
+    await fsp.symlink(outside, path.join(dir, 'LICENSE'));
+  } catch {
+    return t.skip('this platform does not let the test create a symbolic link');
+  }
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'shipped-file-not-regular');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.match(refusal.message, /^LICENSE/);
+  return undefined;
+});
+
 test('what a skill directory may ship passes, and the shipped catalogue does', async () => {
   const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-ship-'));
   await fsp.cp(REPO, repo, { recursive: true });
