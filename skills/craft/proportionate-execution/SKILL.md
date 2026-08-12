@@ -74,6 +74,12 @@ than it saves.
 treats a session, so it governs the work you take on as well as what you say
 while working. Follow both. They do not disagree.
 
+## How this differs from de-slop
+
+`de-slop` treats one passage of prose, whatever produced it. This skill governs
+a session, so it holds what an agent does as well as what it says. Follow both.
+They do not disagree.
+
 ## Boundary
 
 Only the section named "What this corrects" traces to a published source, and it

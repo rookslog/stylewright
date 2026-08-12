@@ -126,6 +126,7 @@ says so, because the trace is where an ungrounded premise has to be visible.
 | E-25 | Do not withhold a finding to keep a report short. | What this skill does not ask for |  |  | Our own guidance |  |
 | E-26 | Do not soften a condition that is genuinely severe. | What this skill does not ask for |  |  | Our own guidance |  |
 | E-27 | `compressed-deliberation` treats the shape of one written reply. This skill treats a session, so it governs the work you take on as well as what you say while working. Follow both. They do not disagree. | How this differs from compressed-deliberation |  |  | Relates two skills, and instructs the reader to follow both |  |
+| E-28 | `de-slop` treats one passage of prose, whatever produced it. This skill governs a session, so it holds what an agent does as well as what it says. Follow both. They do not disagree. | How this differs from de-slop |  |  | Relates two skills, and instructs the reader to follow both |  |
 | N-01 | proportionate-execution | proportionate-execution |  |  | Section title, asserts no rule |  |
 | N-02 | Purpose | Purpose |  |  | Section title, asserts no rule |  |
 | N-03 | An agent in a session decides two things over and over. What to do next, and what to say about what it did. Both decisions default to more than the task needs, and this skill holds each one to the size of the thing it serves. | Purpose |  |  | Purpose framing, asserts no rule. The generalization past the documented model to any agent is ours, and no source grounds it |  |
@@ -134,5 +135,6 @@ says so, because the trace is where an ungrounded premise has to be visible.
 | N-06 | Narration a reader uses to intervene | Narration a reader uses to intervene |  |  | Section title, asserts no rule |  |
 | N-07 | What this skill does not ask for | What this skill does not ask for |  |  | Section title, asserts no rule |  |
 | N-08 | How this differs from compressed-deliberation | How this differs from compressed-deliberation |  |  | Section title, asserts no rule |  |
-| N-09 | Boundary | Boundary |  |  | Section title, asserts no rule |  |
-| N-10 | Only the section named "What this corrects" traces to a published source, and it traces for description alone. Every rule in this skill is our own editorial guidance. The trace lives in the stylewright repository at `grounding/craft/proportionate-execution.md`. It is not installed with this skill. | Boundary |  |  | Describes the trace, asserts no rule |  |
+| N-09 | How this differs from de-slop | How this differs from de-slop |  |  | Section title, asserts no rule |  |
+| N-10 | Boundary | Boundary |  |  | Section title, asserts no rule |  |
+| N-11 | Only the section named "What this corrects" traces to a published source, and it traces for description alone. Every rule in this skill is our own editorial guidance. The trace lives in the stylewright repository at `grounding/craft/proportionate-execution.md`. It is not installed with this skill. | Boundary |  |  | Describes the trace, asserts no rule |  |
