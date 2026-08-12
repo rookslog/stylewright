@@ -5,7 +5,7 @@ decided: 2026-08-12
 issues: [73]
 ---
 
-# ADR-0025 — A matrix pins the reading its audits answer to
+# ADR-0026 — A matrix pins the reading its audits answer to
 
 ADR-0018 gave each `G` row an `Audited` cell. The cell holds the day a
 person read that row against the source, and a digest of the row they

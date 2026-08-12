@@ -127,10 +127,10 @@ Issue 19 proposes a quoted rule beside each identifier, which would make
 an audit cheaper by putting the two texts side by side. It stays open.
 This decision does not depend on it, and neither blocks the other.
 
-**Amended by ADR-0020 and ADR-0025.** The digest above names four cells,
+**Amended by ADR-0020 and ADR-0026.** The digest above names four cells,
 and it now reads six inputs. ADR-0020 added the `Source text` cell, on
 the same warrant every other cell is in: it is part of what the auditor
-read. ADR-0025 added the matrix's `Source version`, because a rule number
+read. ADR-0026 added the matrix's `Source version`, because a rule number
 survives a new edition of the standard, so the row-only digest let a
 source bump leave every audit reading as current. Read those two for the
 current definition.

@@ -177,7 +177,7 @@ declaration the check cannot read leaves the matrix naming no reading, so the
 digest binds the empty pin and every recorded audit reads stale. The pin
 duplicates what `SOURCE.md` says in prose, and that is deliberate: the matrix
 copy is the one the digest binds, and no check here opens a second file.
-ADR-0025 records the decision, and it amends ADR-0018's digest.
+ADR-0026 records the decision, and it amends ADR-0018's digest.
 
 **The matrix table is checked, not just its rows.** The header and the
 delimiter each carry seven columns, and every heading is checked by name.

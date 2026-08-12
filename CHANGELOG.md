@@ -20,7 +20,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   second line refused rather than overruling the first. A declaration the check
   cannot read leaves the matrix naming no reading, and every audit in it reads
   stale. `rowDigest` takes the pin and refuses a caller that omits it, for the
-  reason `checkSkill` refuses a caller that omits the day. ADR-0025 records the
+  reason `checkSkill` refuses a caller that omits the day. ADR-0026 records the
   decision and amends ADR-0018's digest. Issue #73.
 
 ### Changed
