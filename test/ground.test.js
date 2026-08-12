@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import {
   parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO, rowDigest, InvalidMoment, readMatrix,
 } from '../src/ground.js';
@@ -1313,4 +1315,36 @@ test('checkAll covers every skill in the repository', async () => {
   assert.ok('demo-standard' in all);
   assert.deepEqual(errors(all['demo-standard']), []);
   assert.ok(all['demo-craft'].some((f) => f.code === 'no-matrix'));
+});
+
+test('a file the skill directory ships and nothing governs is refused by name', async () => {
+  // The matrix reads `SKILL.md` and no other file, so every other file in the
+  // directory installs ungraded. This plants the file the repository actually
+  // shipped that way, and the refusal has to name it rather than throw.
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-ship-'));
+  await fsp.cp(REPO, repo, { recursive: true });
+  await fsp.writeFile(
+    path.join(repo, 'skills', 'standards', 'demo-standard', 'SOURCE.md'),
+    '# Source record\n\nDownload the PDF from the URL above.\n');
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'ungoverned-shipped-file');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.match(refusal.message, /^SOURCE\.md/);
+  assert.match(refusal.message, /source\/standards\/demo-standard\.md/);
+});
+
+test('what a skill directory may ship passes, and the shipped catalogue does', async () => {
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-ship-'));
+  await fsp.cp(REPO, repo, { recursive: true });
+  const dir = path.join(repo, 'skills', 'standards', 'demo-standard');
+  await fsp.mkdir(path.join(dir, 'agents'), { recursive: true });
+  await fsp.writeFile(path.join(dir, 'agents', 'openai.yaml'), 'interface:\n');
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.deepEqual(found.filter((f) => f.code === 'ungoverned-shipped-file'), []);
+
+  const all = await checkAll(path.join(import.meta.dirname, '..'), { now: NOW });
+  assert.deepEqual(Object.entries(all)
+    .flatMap(([name, fs]) => fs.filter((f) => f.code === 'ungoverned-shipped-file')
+      .map((f) => `${name}: ${f.message}`)), []);
 });

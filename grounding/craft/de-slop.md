@@ -13,9 +13,9 @@ There is no `G` row here, so every cell in both columns is empty, and both are
 waiting for the first row that cites anything.
 
 **Quotation:** forbidden. There is no source, so there is nothing to quote.
-`SOURCE.md` beside the skill records the same status. Anyone who finds a source
-for a rule here records it and its licence there first, and edits this line in
-the same pass.
+The source record at `source/craft/de-slop.md` states the same status. Anyone
+who finds a source for a rule here records it and its licence there first, and
+edits this line in the same pass.
 
 This file stays in the repository. It does not install with the skill.
 
@@ -40,8 +40,8 @@ brevity revert, and the report reached this branch through the owner's comment
 on issue #1 rather than through anyone here opening the page. A `G` row would
 name a source location for a document nobody on this branch has read, which is
 the defect the `Audited` column exists to catch, one column over. So the row is
-`E`, the unit states the report as a report, and `SOURCE.md` records where it
-came from and what it would take to promote the row.
+`E`, the unit states the report as a report, and the source record states where
+it came from and what it would take to promote the row.
 
 ## The body was rewritten, so the IDs start again
 
@@ -79,7 +79,8 @@ The shape this skill carries is what the current scorer cannot see. The
 structural metrics there are specific and insensitive, and `words` is the only
 metric that has separated every pair measured. ADR-0021 accepts that this skill
 ships unmeasured, and it records why the block issue #1 carried is lifted on
-that basis. `SOURCE.md` beside the skill records the same status.
+that basis. The source record at `source/craft/de-slop.md` states the same
+status.
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|

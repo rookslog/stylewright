@@ -1,4 +1,6 @@
-# Source record
+# Source record for compressed-deliberation
+
+This file stays in the repository. It does not install with the skill.
 
 This skill is pinned to one model build. It is expected to date, and the record
 below is what makes the dating visible.

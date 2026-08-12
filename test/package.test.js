@@ -84,10 +84,14 @@ test('the packed artifact serves every advertised command', async (t) => {
     assert.equal(r.code, 0, r.stdout + r.stderr);
     const installed = path.join(project, '.claude', 'skills', 'plain-language', 'SKILL.md');
     await fs.access(installed);
-    // The package ships `grounding/` at its root. Install copies skill
-    // directories only, so no matrix may reach the installed tree.
+    // The package ships `grounding/` and `source/` at its root. Install copies
+    // skill directories only, so neither a matrix nor a source record may
+    // reach the installed tree.
     const names = await fs.readdir(path.join(project, '.claude', 'skills'));
     assert.ok(!names.includes('grounding'), `installed tree holds: ${names.join(', ')}`);
+    assert.ok(!names.includes('source'), `installed tree holds: ${names.join(', ')}`);
+    const inside = await fs.readdir(path.join(project, '.claude', 'skills', 'plain-language'));
+    assert.ok(!inside.includes('SOURCE.md'), `plain-language holds: ${inside.join(', ')}`);
   });
 
   await t.test('doctor finds nothing wrong with that tree', async () => {

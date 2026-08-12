@@ -76,7 +76,8 @@ Then do this:
 
 1. Replace the placeholder rule in `SKILL.md`. Write one instruction in each line.
 2. Add a matching row to the grounding matrix for every rule that you write.
-3. Fill in the `FILL IN` fields in `SOURCE.md`.
+3. Fill in the `FILL IN` fields in `source/<tier>/<name>.md`. The scaffold
+   writes that record beside the matrix, and not inside the skill.
 4. Run the three checks above.
 
 ### Choose a source, for a standards skill
@@ -87,7 +88,7 @@ A source qualifies when both of these are true:
 2. Its reuse terms permit a digest in our own words.
 
 The first condition alone is not enough. Check the second before you write
-anything. Record the license and the date that you checked it in `SOURCE.md`.
+anything. Record the license and the date that you checked it in the source record.
 
 We rejected the Chicago Manual of Style, the AP Stylebook, ISO/IEC 26514, and
 IEEE 1063. None of them is readable without payment, so a reader cannot check
@@ -114,7 +115,7 @@ Two specific limits:
   method, and a lint dictionary may carry them.
 - Check the license first. Some sources forbid derivative work, and a source may
   restrict reproduction beyond what quotation practice allows. Record what you
-  found in `SOURCE.md`.
+  found in the source record.
 
 This limit is what lets the repository be public.
 
@@ -220,10 +221,10 @@ permitting line under it.
 
 Do three things before you write a quotation, in this order:
 
-1. Read `SOURCE.md` for that skill. It records what licence was checked and
-   when. Some sources restrict reproduction beyond ordinary quotation, and one
-   of ours does.
-2. Record the check you made, in the same `SOURCE.md`, with the date. Then edit
+1. Read `source/<tier>/<skill>.md` for that skill. It records what licence was
+   checked and when. Some sources restrict reproduction beyond ordinary
+   quotation, and one of ours does.
+2. Record the check you made, in the same record, with the date. Then edit
    the declaration, and say there what changed.
 3. Ask whether the matrix has started to replace the source. A quoted operative
    sentence per row is citation. Every rule quoted in full is republishing, and
