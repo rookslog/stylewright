@@ -3,6 +3,18 @@
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- `proportionate-execution` says how it differs from `de-slop`. Three of the
+  four craft skills already related themselves to a neighbour, and `de-slop`
+  has named this one since 0.3.0, so the closest pair was cross-referenced
+  from one side. A reader who loads `proportionate-execution` now learns that
+  the prose-shape lane exists. `de-slop` treats one passage of prose, and this
+  skill governs a session, so it holds what an agent does as well as what it
+  says. The matrix disposes of both new units, as `E-28` and `N-09`.
+
 ## 0.3.0 — 2026-08-07
 
 ### Added
