@@ -34,8 +34,8 @@ npm ci
 npm test
 ```
 
-Six checks gate every pull request. `npm run check` runs all six, and you can
-run any one of them on its own.
+Seven checks gate every pull request. `npm run check` runs all seven, and you
+can run any one of them on its own.
 
 ```
 npm test                # unit and conformance tests
@@ -44,6 +44,7 @@ npm run check:ground    # every grounding matrix still matches its skill
 npm run check:docs      # every document's front matter fits the schema
 npm run check:probes    # every probe record carries what a reader derives from
 npm run check:resident  # the resident fragment still matches its skill
+npm run check:studies   # every promoted study still matches its own digests
 ```
 
 ## Add a skill
