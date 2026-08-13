@@ -49,6 +49,68 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   attack came from that same reading. `micromark` and its GFM table extension
   join the development dependencies, and a test asserts that no module under
   `src/` or `bin/` imports either. ADR-0028.
+- `npm run check:probes` reads the harness trace a record retains, and prints
+  `trace_agrees` and `managed_seen` beside every other derived flag. The
+  reading parses `Loaded 1 unique skills` from the retained lines, and it
+  agrees when the installed arm loaded at least one skill and the control
+  loaded zero. It reads every such line rather than the first, because the
+  harness repeats the line per session. It takes the count for the scope the
+  probe installed into and never the total, because the total counts managed
+  skills and a redirected home does not move the machine-global managed skills
+  path. A disagreement blocks the pass, because a trace naming the loaded file
+  is better evidence than either answer and better evidence that contradicts
+  them cannot be a note. A reading the check cannot make is withheld instead,
+  and `trace_withheld` names the cause as `absent`, `truncated`, or
+  `unscoped`, because a `null` whose cause a reader cannot see is the wrong
+  number one step removed. `managed_seen` is the largest managed count either
+  trace states, and it blocks nothing: whether a skill that reached an arm from
+  the machine spoils the arm is a judgment a record cannot answer. The
+  derivation read the answers and the flags alone until now, so a control
+  whose trace said it loaded a skill derived a pass on the strength of an
+  answer that said nothing. ADR-0024 records the decisions and what would
+  reopen each one. Issue #94.
+- `TRACE_LINE_LIMIT` moved into `bench/probe.mjs`, beside the derivation that
+  depends on it. The collector cuts the kept set at that bound, so a trace
+  standing at it may be the prefix of a longer run. Reading the prefix as the
+  whole trace let twenty sessions loading one skill certify a pass over a
+  twenty-first that loaded zero. The bound decides a reading and never a
+  record's validity, because refusing a record for its length made a probe a
+  malformed file and would have retired committed evidence whenever somebody
+  lowered the constant.
+- `npm run check:probes` names a record it cannot read and counts it as
+  `unread`. It counted an outcome only for a record that checked clean, so a
+  record that became malformed left the census and the count described fewer
+  records than the directory carried. A test pins each committed record's whole
+  derived tuple, so an edit to the reading or its constants fails the suite
+  rather than silently re-grading append-only evidence.
+- `checkRecord` asks of a record what the collector could have produced.
+  `identity.pathway` is validated as a combination rather than as two halves,
+  so `cowork:project`, `agents:project` and `codex:user` are refused — the
+  first two carry no project directory and the third has no runner, so no run
+  of this collector could have written such a record. `targetProblems` in
+  `src/targets.js` is the one table, and `resolveTarget`, `parsePathway` and
+  the record check all read it. A record carrying a trace whose flag set never
+  asked for one withholds as `unrequested`, and `managed_seen` withholds on the
+  same condition, because a count published from those lines states something
+  about a machine from bytes no recorded run could have produced. The `.claude`
+  refusal on the trace path anchors at a segment boundary and ignores case, so
+  a relative `.claude/trace.log` and a shouted `.CLAUDE/trace.log` are both
+  refused. The filesystems this tool runs on fold case, so those two spellings
+  name one directory.
+- `npm run check:probes` prints its census before it sets a failing exit
+  status. Every branch that counts a record `unread` also files a problem, so
+  the total naming the unread denominator never printed on the one run it was
+  built for.
+- The probe's arm sequence moved out of `main`, into `runArms`, and three
+  invariants ADR-0024 states as prose now have a test each. The debug path is
+  derived under the throwaway root and a path outside it is refused. The trace
+  file is read and removed on every arm rather than on the first alone, so no
+  arm inherits the arm before it. One flag set is built above the loop, because
+  a record carries one `flags` array and two sets would be true of neither arm.
+  Each invariant had a surviving mutation that produced a well-formed record
+  deriving PASS with its evidence misattributed, and each mutation now fails
+  the suite. The extraction is what made them reachable, because `main` spawns
+  a live harness. Issue #95.
 
 ### Changed
 
@@ -84,6 +146,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is what a reader's renderer does. A one-character lookbehind read `x\\|` as
   an escaped pipe, so the checker saw one cell where a reader sees two, and a
   row ending that way read as unclosed. The new render test found it.
+- The test that holds `bench/probes/README.md` to the probe's flag constants
+  asks how many arm invocations the file spells, and the answer is one. It
+  asked whether the right spelling appeared somewhere, so a second copy that
+  had gone stale sat beside a correct one and the check stayed green. A second
+  test holds the block to what it deliberately omits, because the absence of
+  `--debug-file` there is the claim that the flag is allowed and never
+  required. Issue #95.
 
 ## 0.3.0 — 2026-08-07
 

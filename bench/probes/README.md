@@ -37,9 +37,10 @@ nothing else.
 
 One thing a redirected home does not control. The harness also consults a
 machine-global managed skills path, which `HOME` does not move, so the
-environment class names the home and never the machine. The `d80e11b7` trace
-shows `managed: 0` on both arms, which is a reading of that one run rather than
-a property of the design.
+environment class names the home and never the machine. The check reads that
+count off each trace and prints it as `managed_seen`. The `d80e11b7` trace shows
+`managed: 0` on both arms, which is a reading of that one run rather than a
+property of the design.
 
 `bench/run.sh` keeps `''`, and the difference is the home. Its control runs in
 the operator's real home, where `user` would load their CLAUDE.md and their
@@ -106,10 +107,16 @@ and prints what it derived. The check refuses a record that states an outcome
 of its own, because a record that grades itself is the author's summary, and a
 reader is owed the evidence instead.
 
-A probe derives a pass when both arms answered and three things then hold. The
+A probe derives a pass when both arms answered and four things then hold. The
 installed arm repeated the nonce. The empty-home control answered and did not
-repeat it, which catches a probe passing for the wrong reason. And the flags
-were a probe arm's.
+repeat it, which catches a probe passing for the wrong reason. The flags were a
+probe arm's. And the harness trace did not contradict what the answers claim.
+
+Read that fourth condition as it is written. The gate is that the trace did not
+disagree, and it is not that the trace agreed. A record whose trace the check
+could not read passes on the strength of its answers, uncorroborated, and the
+next section names every state that happens in. Stating the gate as agreement
+would claim a corroboration the code does not require.
 
 `armAnswered` in `bench/probe.mjs` defines what answering means, and every
 check reads it from there. Saying only that the control did not repeat the nonce
@@ -138,9 +145,60 @@ collector, and an empty list says a log was written and named no skill loading.
 Every record collected before 2026-08-07 carries `null`, and so would a record
 from a harness that offers no trace at all.
 
-The derivation reads the answers and not the trace, so the better evidence is
-retained and not consulted. That gap is named here rather than closed, and
-issue #94 carries the work that closes it.
+## The derivation reads the trace, and a disagreement blocks
+
+The check parses `Loaded 1 unique skills` from the retained lines and prints
+what it read as `trace_agrees`. The reading agrees when the installed arm loaded
+at least one skill and the control loaded zero. It reads every such line rather
+than the first, because the harness repeats the line per session and a run that
+loaded one skill once and none the next time corroborates nothing.
+
+It reads the count for the scope the probe installed into, and never the total.
+The total counts managed skills, and a redirected home does not move the
+machine-global managed path. So on a machine carrying one managed skill the
+control's total is 1 rather than 0, and a reading off the total would block a
+valid probe through the very path this file calls uncontrollable. The record
+names its pathway, and the pathway names the column.
+
+A disagreement blocks the pass. Section 4.1 calls a trace naming the loaded file
+better evidence than either answer, and better evidence that contradicts the
+answers cannot sit beside a pass as a note. The case that motivated this: a
+control whose trace says it loaded a skill while its answer stays silent derived
+a pass, and the contradiction sat in the same file.
+
+## What the check withholds, and why it says so
+
+A reading this check cannot make is withheld rather than turned into a failure.
+`trace_agrees` reads `null` and `trace_withheld` names the cause, because a
+reader cannot act on a `null` without knowing which state produced it.
+
+- `absent`. The arm kept no trace. Every record collected before 2026-08-07
+  carries this, and grading those would judge an old instrument by a new one.
+- `truncated`. The arm's trace stands at the retained-line bound, so a
+  disagreeing line past the cut is gone. The prefix would otherwise certify a
+  pass over lines nobody has.
+- `unscoped`. A retained line does not name the scope's own count, so the only
+  number left is the total.
+- `unrequested`. The record carries a trace and its own flag set never asked
+  for one, so nothing in that run could have written the lines it holds.
+
+`false` means one thing only. The harness's own numbers contradict what the
+answers claim. A withheld reading passes, so a probe in any of the four states
+above is corroborated by its answers alone.
+
+Two residues follow, and this file states them rather than hiding them. A
+harness that stops printing the per-scope counts makes every probe unreadable
+instead of failing. A record whose trace is an empty list falls back to its
+answers, which is the state before this reading existed. The answer to both is
+to move the patterns in `bench/collect-probe.mjs` and `bench/probe.mjs` onto the
+harness's new wording.
+
+The check also prints `managed_seen`, which is the largest managed count either
+trace states. It blocks nothing. A managed skill that reached an arm came from
+the machine and not from the redirected home, and whether that spoils the arm
+depends on what stood in that path, which a record carries no way to ask. The
+number is what a reader needs to ask the question at all. ADR-0024 records both
+decisions.
 
 ## The records here, and what each one is
 
@@ -164,6 +222,14 @@ home is respected and that the two arms differ by the installed skill alone. It
 says nothing about the empty spelling. The measurement that `''` loads zero
 skills over an installed tree came from a scratchpad diagnostic, and no
 committed record carries it.
+
+One thing a committer checks by hand. A retained `Loading skills from:` line
+carries absolute paths, and the throwaway home sits under the temporary
+directory, so the committed line names whatever `TMPDIR` resolved to. On macOS
+that is an opaque per-user token. On Windows the temporary directory sits under
+the user profile, so the line would carry the account name. The check scans a
+record for credential shapes and asks nothing about operator identifiers, and
+issue #114 carries that decision.
 
 One residue, stated. The record is the author's own file, like every other
 record in this protocol. The check derives the outcome from the bytes, and it

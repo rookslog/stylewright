@@ -448,6 +448,85 @@ number published in `bench/README.md`.
   the harness's own skill-loading lines verbatim. `trace` is `null` or a
   list of strings, and a summary there is the defect: a summary of a
   trace is the author's word about the evidence. ADR-0024.
+- **The derivation reads that trace, and a disagreement blocks the
+  pass.** A trace naming the loaded file is better evidence than either
+  answer, so `trace_agrees` cannot be a note beside a pass. It blocks on
+  `false` alone, and `false` means the harness's own numbers contradict
+  the answers. `managed_seen` is read off the same line and blocks
+  nothing, for the reason `audit-coverage` blocks nothing. ADR-0024.
+- **The reading takes the scope's count and never the total.** The total
+  counts managed skills, and a redirected home does not move the
+  machine-global managed path, so a total-based reading blocked a valid
+  probe through the one path `managed_seen` declares uncontrollable. The
+  record names its pathway and the pathway names the column. Reading
+  `user:` for every pathway is the same defect one column over, because
+  a project-scope probe loads into `project:`. Exclude managed by
+  construction, never by subtracting it from the total.
+- **A reading this check cannot make is withheld, and it names the
+  cause.** `trace_agrees` reads `null` and `trace_withheld` says
+  `absent`, `truncated`, `unscoped`, or `unrequested`, because a `null`
+  whose cause a reader cannot see is the wrong number one step removed.
+  `truncated` is the one that has to exist: `skillTraceLines` cuts at
+  `TRACE_LINE_LIMIT`, and treating the retained prefix as the whole
+  trace let twenty sessions loading one skill certify a pass over a
+  twenty-first that loaded zero. Do not turn a withheld reading into a
+  failure. An unreadable artifact is answered here by withholding the
+  number and naming why, the way a broken matrix table is. A withheld
+  reading PASSES, so a document that states the gate as "the trace
+  agrees" claims a corroboration the code does not require.
+- **`TRACE_LINE_LIMIT` lives in `bench/probe.mjs`, with the reader, and
+  it decides a reading and never a record's validity.** The collector
+  imports it and cuts at it, and a trace at or past the bound is
+  withheld. Refusing a record for carrying more lines was this rule's
+  own inversion: it made a probe a malformed FILE, and lowering the
+  constant would have retired committed evidence. Moving the constant
+  back beside the selector hides the coupling, and refusing a record on
+  length reopens the inversion.
+- **The census names a record it cannot read.** `checkDirectory` counts
+  it as `unread` and gives it a line, because counting an outcome only
+  for records that check clean let a newly-malformed record leave the
+  denominator. That is `unread-matrix-row` in the probe corpus, and the
+  count described fewer records than the directory carried.
+- **A committed record is pinned to the reading it was committed under.**
+  `test/probe.test.js` holds each record under `bench/probes/` to its
+  whole derived tuple, so an edit to the reading or its constants fails
+  CI instead of silently re-grading append-only evidence. A record added
+  to the corpus fails this test once, and a person adds its row after
+  reading what the check derived.
+- **`checkRecord` asks of a record what the collector could have
+  produced.** `identity.pathway` is validated as a COMBINATION, through
+  `targetProblems` and `HARNESS_FOR`, because the halves read separately
+  admitted `cowork:project`, `agents:project` and `codex:user` — three
+  pathways no run of this collector could have written. That is not the
+  wrong-flags rule loosening: a wrong-flag record is a run that HAPPENED
+  and must stay readable, and a pathway no runner drives is a file this
+  tool could not have produced. A trace beside a flag set carrying no
+  `--debug-file` withholds as `unrequested`, and `managed_seen` withholds
+  on the same condition, because the question there is not whether the
+  count is a floor but whether the bytes are evidence at all. The
+  `.claude` refusal anchors at a segment boundary and ignores case.
+- **One table decides which pathways exist.** `targetProblems` in
+  `src/targets.js` holds the platform and scope rules, and
+  `resolveTarget`, `parsePathway` and `pathwayProblems` all read it. They
+  disagreed while each carried its own copy, so a record could be well
+  formed here and refused at install. A test asserts the checker and the
+  collector agree over every combination.
+- **The census prints its total before the exit status is decided.**
+  Every branch that counts a record `unread` also files a problem, so
+  exiting first made the denominator unreachable from the command line —
+  the individual `derives NOTHING` line printed and the total naming the
+  unread count never did. That is the census defect one step out, on the
+  one run the census exists for.
+- **Three invariants make a trace attributable to the arm it came
+  from**, and `runArms` holds all three. The debug path is derived under
+  the throwaway root and a path outside it is refused. The file is read
+  and removed on every arm, not on the first alone. One flag set is
+  built above the loop, because a record carries one `flags` array and
+  two sets would be true of neither arm. Each was prose until issue #95,
+  and each had a mutation that produced a well-formed record deriving
+  PASS with its evidence misattributed. The sequence sits outside `main`
+  so a test can reach it without spawning a harness, which is the shape
+  the plant's `afterWrite` injection already uses. Do not fold it back.
 - The probe plants its nonce in the skill's frontmatter description, so it
   measures the attachment surface and not invocation. Skills reach the
   model as names and descriptions, and a body loads when the model invokes

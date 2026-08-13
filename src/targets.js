@@ -29,19 +29,36 @@ export const CONSUMERS = {
   codex: ['codex', 'agents'],
 };
 
-export function resolveTarget({ platform, scope, home, cwd }) {
+/**
+ * What is wrong with a platform and a scope taken TOGETHER, as a list.
+ *
+ * The combination is the unit, and reading the halves separately is a weaker
+ * question. `cowork` and `agents` carry a user directory and no project one, so
+ * `cowork:project` names a platform this tool knows, a scope this tool knows,
+ * and a target that does not exist. A checker asking `PLATFORMS.includes` and
+ * `SCOPES.includes` admitted exactly those.
+ *
+ * A named predicate rather than a try around `resolveTarget`, because a caller
+ * that wants the answer without a path should not have to invent a home and a
+ * working directory to get it. `resolveTarget` reads it, so the rules live once.
+ */
+export function targetProblems({ platform, scope }) {
   const entry = LAYOUT[platform];
-  if (!entry) {
-    throw new Error(`Unknown platform "${platform}". Known: ${PLATFORMS.join(', ')}`);
-  }
+  if (!entry) return [`Unknown platform "${platform}". Known: ${PLATFORMS.join(', ')}`];
   if (scope !== 'user' && scope !== 'project') {
-    throw new Error(`Unknown scope "${scope}". Known: user, project`);
+    return [`Unknown scope "${scope}". Known: user, project`];
   }
   if (!entry.scopes.includes(scope)) {
-    throw new Error(`Platform "${platform}" does not support the "${scope}" scope.`);
+    return [`Platform "${platform}" does not support the "${scope}" scope.`];
   }
+  return [];
+}
+
+export function resolveTarget({ platform, scope, home, cwd }) {
+  const [problem] = targetProblems({ platform, scope });
+  if (problem) throw new Error(problem);
   const root = scope === 'user' ? home : cwd;
-  return path.join(root, entry.dir, 'skills');
+  return path.join(root, LAYOUT[platform].dir, 'skills');
 }
 
 export function describeTarget({ platform, scope }) {
