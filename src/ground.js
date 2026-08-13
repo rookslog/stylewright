@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { sections, indentOf, isIndented } from './markdown.js';
+import { sections, indentOf, isIndented, columnOf } from './markdown.js';
 import { loadCatalog } from './catalog.js';
 import { walk } from './tree.js';
 
@@ -724,6 +724,59 @@ const LEAD = /^[ \t]+/;
 const OPENS_LIST = /^(?:[-*+]|\d{1,9}[.)])(?:\s|$)/;
 const EMPTY_LIST = /^(?:[-*+]|\d{1,9}[.)])\s*$/;
 const EMPTY_HEADING = /^#{1,6}\s*$/;
+// An ordered marker, with the number it counts from. A list that counts from
+// anything but one cannot interrupt a paragraph. The number is read rather
+// than matched against `1`, so `01.` counts as one here, and `opensListHere`
+// below states which reading that is and why this check takes it.
+const ORDERED = /^(\d{1,9})[.)](?:\s|$)/;
+
+/**
+ * Whether a marker on this line opens a list WHERE IT STANDS.
+ *
+ * A bullet opens one anywhere. An ordered marker opens one where no prose is
+ * open, and where prose is open it must interrupt that prose, which a Markdown
+ * reader lets it do only when it counts from one: a list that renumbered the
+ * author's words is never what the author wrote.
+ *
+ * Reading every marker as an opener cost both halves at once. `Prose` over
+ * `2. item` split one paragraph into two units, and it left a list open across
+ * the blank line below, so the standalone code block after it was refused for
+ * sitting under a list a reader never saw. Issue 70 reports it.
+ *
+ * A list already open needs no interruption, so `listOpen` admits the marker
+ * whatever it counts from. That covers `2.` under `1. First.` and it also
+ * covers the marker INDENTED under an item, where a reader resolves a sibling
+ * from lazy continuation by the width of the open marker — container state
+ * this check holds none of. Doubt reads as the strict case, which here is the
+ * reading that opens a container and refuses it, rather than the one that
+ * merges two blocks into a row that names one.
+ *
+ * A leading zero is the other doubt. The parser the tests hold this against
+ * keeps `01. item` in the paragraph, and whether every reader does is
+ * unchecked, so this takes the reading that splits. A unit somebody grounds
+ * twice costs less than a unit no row disposes of. ADR-0029 records it.
+ *
+ * The walk and the grammar ask this one question, because they answered it
+ * differently: the grammar refused the marker the walk had just read as prose.
+ */
+function opensListHere(t, { textOpen, listOpen }) {
+  if (!OPENS_LIST.test(t)) return false;
+  const ordered = ORDERED.exec(t);
+  return !(ordered && Number(ordered[1]) !== 1 && textOpen && !listOpen);
+}
+
+/**
+ * A list item whose marker is followed by prose, with the padding between them.
+ *
+ * The padding is captured because its WIDTH decides what the item holds. One
+ * to four columns give an item of prose. Five or more put the content four
+ * columns past the marker's own indent, where a Markdown reader sees an
+ * indented code block inside the item, and this read `-     Always preserve
+ * safety.` as the item's own words. A matrix could then ground code as
+ * guidance. Issue 70 reports it.
+ */
+const ITEM = /^(\s*(?:[-*+]|\d{1,9}[.)]))(\s+)(.*\S)\s*$/;
+const CODE_PADDING = 5;
 
 // The indent in columns lives in `markdown.js`, because the section scan needs
 // the same rule. Two copies of it gave one file two readings.
@@ -738,6 +791,47 @@ export const AT_COLUMN_ZERO = {
   heading: 'a heading with no text',
   item: 'a list item with no content',
 };
+
+/**
+ * The characters a continuation line may BEGIN with.
+ *
+ * Every container a Markdown reader opens begins with one of a few characters.
+ * A letter, a digit and ordinary sentence punctuation open none of them, so a
+ * line that begins with one of these carries the prose of the line above it.
+ *
+ * This states what a continuation line MAY be, and not which containers it may
+ * not open, because the two fail in opposite directions. A rejection list
+ * admits the construct nobody named, which is how an HTML block reached the
+ * extractor as a list item's own words while `ground --check` reported clean.
+ * An admission list refuses it. The cost is a false refusal for a character
+ * nobody thought of, which an author writes around, and never a container
+ * disposed of by a row that names something else. ADR-0016 records that
+ * inversion for the line that BEGINS a block, and ADR-0029 for this one.
+ *
+ * `<` is absent, and it is the one character this rule loses something real
+ * on. `<script>` opens an HTML block and interrupts the paragraph. `<span>`
+ * opens nothing, because a reader does not let that kind interrupt one. A lead
+ * character cannot tell them apart, and doubt reads as the strict case
+ * everywhere else in this check, so both are refused.
+ *
+ * `-`, `*`, `_`, `` ` ``, `~`, `=`, `+`, `#` and `|` are absent for the same
+ * reason one step down: each opens a container under one reading of the rest
+ * of the line and emphasis, a code span or plain prose under another.
+ */
+const CONTINUES_PROSE = /^[\p{L}\p{N}.,;:!?'"()[\]{}/\\@$%^&‘’“”–—…]/u;
+
+/**
+ * What a refused continuation line is called.
+ *
+ * `shapeOf` names the constructs it recognises and calls everything else a
+ * paragraph. A paragraph is what this refusal is NOT, so the unrecognised case
+ * names itself rather than borrowing that word and telling an author their
+ * prose is not prose. The check cannot say WHICH container the line opens, and
+ * the name says so rather than guessing.
+ */
+const CONTINUATION_OPENS = (shape) => (shape === 'a paragraph'
+  ? 'a continuation line that may open a container'
+  : `${shape} that does not begin at column 0`);
 
 /** What the line looks like. This names the refusal and nothing else. */
 function shapeOf(line) {
@@ -762,14 +856,23 @@ function shapeOf(line) {
  * - a blank line,
  * - any construct written at column 0, except a blockquote, an empty heading
  *   and a marker with no content, none of which the extractor reads,
- * - a line that continues the paragraph or list item above it, carrying prose
- *   rather than opening a container,
+ * - a line that continues the paragraph or list item above it, beginning with
+ *   a character that opens no container,
  * - an indented code block that stands on its own, with no list above it.
  *
  * Everything else is refused, including a shape nobody has thought of. That is
  * the point of stating it this way round.
+ *
+ * The third form used to be stated the other way round, as a paragraph or a
+ * table row, where `shapeOf` called every line it did not recognise a
+ * paragraph. So the continuation path was a rejection list under a positive
+ * heading, and an HTML block, a thematic break and an HTML comment each
+ * reached a list item as its own words. `CONTINUES_PROSE` states the form.
+ * ADR-0029 records the inversion and what it does not reach.
  */
-function outsideGrammar(line, { startsBlock, openText, listOpen, opensFence, opensTable }) {
+function outsideGrammar(line, {
+  startsBlock, openText, openItem, listOpen, opensFence, opensTable,
+}) {
   if (!line.trim()) return null;
   // A blockquote is the one construct at column 0 whose contents the extractor
   // reads as its own prose, so the quote and its container merge.
@@ -778,22 +881,37 @@ function outsideGrammar(line, { startsBlock, openText, listOpen, opensFence, ope
   // interrupt a paragraph for a Markdown reader, and neither the section scan
   // nor the walk reads one. `Prose` over `#` over a directive was one unit.
   if (EMPTY_HEADING.test(line.trimStart())) return AT_COLUMN_ZERO.heading;
-  // An empty marker is refused where it begins a block, at any indent. On a
-  // continuation line it is the prose of the line above, and a Markdown reader
+  // An empty marker is refused where it begins a block, at any indent. Under
+  // an open PARAGRAPH it is the prose of the line above, and a Markdown reader
   // agrees: an empty item interrupts no paragraph. Indented, both were refused
   // for the indent alone, and the remedy told the author to write at column 0
   // the very line the check refuses there.
-  if (!openText || startsBlock) {
-    if (EMPTY_LIST.test(line.trimStart())) return AT_COLUMN_ZERO.item;
-  }
+  //
+  // Under an open ITEM at column 0 it is refused, because a reader sees a
+  // SIBLING item there rather than the item's own words. One flag stood for
+  // both states, so `- First.` over `-` over an indented directive rendered as
+  // two items and reached one matrix row as `First. - Always preserve
+  // safety.` Indented, the refusal below names the nearer cause.
+  const emptyOpens = startsBlock || !openText || (openItem && indentOf(line) === 0);
+  if (emptyOpens && EMPTY_LIST.test(line.trimStart())) return AT_COLUMN_ZERO.item;
   if (indentOf(line) === 0) return null;
   const shape = shapeOf(line);
-  // A continuation line carries prose. A container opened on one belongs to
-  // the block above it, which the extractor does not model.
+  // A continuation line carries the prose of the line above it, and the lead
+  // character is what says so. `shapeOf` is asked to NAME the refusal here and
+  // never to license the line: it called a wrapped line carrying a pipe a table
+  // row and everything it did not recognise a paragraph, so an unknown
+  // container was admitted by the second reading and a table opened out of
+  // reach of the first.
   if (openText && !startsBlock) {
-    return shape === 'a paragraph' || shape === 'a table row'
-      ? null
-      : `${shape} that does not begin at column 0`;
+    const t = line.trimStart();
+    if (opensTable) return 'a table row that does not begin at column 0';
+    if (!CONTINUES_PROSE.test(t)) return CONTINUATION_OPENS(shape);
+    // A digit opens no container, and a digit with a marker's punctuation
+    // after it opens a list wherever a reader would let one interrupt.
+    if (opensListHere(t, { textOpen: openText, listOpen })) {
+      return CONTINUATION_OPENS('a list item');
+    }
+    return null;
   }
   // An indented code block with no list above it is read here as a reader
   // reads it, so it stands. A fence marker and a table row are not: the
@@ -857,6 +975,10 @@ function unitsIn(body, anchor, refuse = () => {}) {
     const outside = outsideGrammar(line, {
       startsBlock,
       openText: Boolean(item) || para.length > 0,
+      // Two states, not one. An empty marker continues a paragraph and opens a
+      // sibling under an item, and one flag for both merged the sibling into
+      // the item above it.
+      openItem: Boolean(item),
       listOpen,
       opensFence: Boolean(fence),
       opensTable: opensTable || (inTable && PIPE.test(line)),
@@ -895,11 +1017,25 @@ function unitsIn(body, anchor, refuse = () => {}) {
     // Nine digits at most here too. A ten-digit reference number opened a list
     // that a Markdown reader does not, and the standalone code block below it
     // was then refused for sitting under that list.
-    const m = /^\s*(?:[-*+]|\d{1,9}[.)])\s+(.*\S)\s*$/.exec(line);
+    //
+    // A marker only opens an item where a reader lets it. `opensListHere` asks
+    // that one question for the grammar as well, so the walk cannot read as an
+    // item a line the grammar has just read as prose.
+    const opensItem = opensListHere(line.trimStart(), {
+      textOpen: para.length > 0 || Boolean(item), listOpen,
+    });
+    const m = opensItem ? ITEM.exec(line) : null;
     if (m) {
+      // The padding decides what the item holds, and five columns of it put
+      // the content where a reader sees an indented code block. The item is
+      // still read, because refusing is not narrowing: the refusal is one more
+      // finding beside the unit, rather than a unit nobody has to ground.
+      if (columnOf(line, m[1].length + m[2].length) - columnOf(line, m[1].length) >= CODE_PADDING) {
+        refuse(i, 'a code block inside a list item');
+      }
       flush();
       if (!LEAD.test(line)) listOpen = true;
-      item = { text: m[1], anchor, block: false };
+      item = { text: m[3], anchor, block: false };
       out.push(item);
       continue;
     }
@@ -983,6 +1119,12 @@ function remedyFor(shape) {
   if (shape === 'a heading with no text') return 'Give the heading its text, or delete the line.';
   if (shape === 'a list item with no content') return 'Give the item its words, or delete the marker.';
   if (shape === 'a table inside a list item') return 'Move the table out of the list.';
+  if (shape === 'a code block inside a list item') {
+    return 'Leave four columns at most after the marker, or fence the code below the list.';
+  }
+  if (shape === 'a continuation line that may open a container') {
+    return 'Begin the line with a word, or write the construct at column 0.';
+  }
   if (shape === 'a paragraph indented under a list item') {
     return 'Write it at column 0, or fold it into the item above it.';
   }

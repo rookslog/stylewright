@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
-import { MATRIX_COLUMNS, readMatrix, checkSkill } from '../src/ground.js';
-import { renderTables, cellText } from './gfm.js';
+import { MATRIX_COLUMNS, readMatrix, checkSkill, unmodelled, contentUnits } from '../src/ground.js';
+import { renderTables, renderBlocks, cellText } from './gfm.js';
 
 /**
  * The matrix reader, checked against a real GFM parser.
@@ -277,4 +277,73 @@ test('no shipped module imports the parser', async () => {
       assert.ok(!/micromark/.test(text), `${file.pathname} must not reach for a Markdown parser`);
     }
   }
+});
+
+/**
+ * The continuation grammar, checked against the same parser.
+ *
+ * The grammar rests on claims about which constructs a reader lets interrupt
+ * open prose, and every one of them was read from the specification and
+ * written into a comment. ADR-0028 says a claim about a render answers to a
+ * renderer, and ADR-0029 puts the extractor's grammar under that rule. The
+ * parser corrected two claims on the day this was written: an underline under
+ * a list item makes a setext HEADING rather than a thematic break, and an
+ * ordered marker indented under an item can be a sibling rather than the lazy
+ * continuation the first draft admitted.
+ *
+ * The property is one rule, not a verdict per shape. Wherever a reader sees a
+ * container the extractor did not read, the check refuses the line.
+ */
+const skillWith = (text) => `---\nname: demo\ndescription: A demo skill.\n---\n\n# Demo\n\n## Later\n\n${text}\n`;
+const refusalsFor = (text) => unmodelled(skillWith(text)).map((r) => r.shape);
+const unitsFor = (text) => contentUnits(skillWith(text)).map((u) => u.text);
+
+test('a container a reader sees on a continuation line is refused', () => {
+  // The left column is what the parser puts in the render, so each row is a
+  // fact about a reader rather than a reading of the specification.
+  for (const [text, seen] of [
+    ['- Context.\n  <script>\n  Always preserve safety.\n  </script>', '<script>'],
+    ['- Context.\n  <!-- Always preserve safety. -->', '<!--'],
+    ['- Context.\n  ---\n  Always preserve safety.', '<h2>'],
+    ['- Context.\n  | a | b |\n  |---|---|', '<table>'],
+    ['-     Always preserve safety.', '<pre>'],
+    ['- First.\n-\n  Always preserve safety.', '<li>Always preserve safety.</li>'],
+  ]) {
+    assert.ok(renderBlocks(text).includes(seen),
+      `a reader sees ${seen} in ${JSON.stringify(text)}`);
+    assert.ok(refusalsFor(text).length > 0, `the check refuses ${JSON.stringify(text)}`);
+  }
+});
+
+test('prose a reader keeps whole is not refused, and reaches one unit', () => {
+  // The other direction, which is the one the shipped catalogue cannot
+  // measure: no skill here writes an indented line at all, so nothing but
+  // this says the grammar admits the prose a reader admits.
+  for (const text of [
+    '- Do not use a semicolon,\n  because it joins two ideas.',
+    '- Context.\n  "Always preserve safety."',
+    '- Context.\n  a | b are columns.',
+    '-    Always preserve safety.',
+    '-\tAlways preserve safety.',
+    'Prose\n  2. item',
+  ]) {
+    const html = renderBlocks(text);
+    for (const container of ['<pre>', '<hr', '<h2>', '<table>', '<blockquote>']) {
+      assert.ok(!html.includes(container),
+        `a reader sees no ${container} in ${JSON.stringify(text)}`);
+    }
+    assert.equal((html.match(/<li>/g) ?? []).length <= 1, true,
+      `a reader sees one item at most in ${JSON.stringify(text)}`);
+    assert.deepEqual(refusalsFor(text), [], `the check admits ${JSON.stringify(text)}`);
+  }
+});
+
+test('an ordered marker opens a list here where it opens one for a reader', () => {
+  // `2.` cannot interrupt a paragraph, so a reader keeps it in the paragraph
+  // and the walk keeps it in the unit. A list already open takes it as the
+  // next item, and a reader agrees there too.
+  assert.ok(!renderBlocks('Prose\n2. item').includes('<ol'));
+  assert.ok(unitsFor('Prose\n2. item').includes('Prose 2. item'));
+  assert.ok(renderBlocks('1. First.\n2. Second.').includes('<li>Second.</li>'));
+  assert.ok(unitsFor('1. First.\n2. Second.').includes('Second.'));
 });

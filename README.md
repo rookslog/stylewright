@@ -378,6 +378,11 @@ continues the paragraph above it, and an indented code block that stands on its
 own. It refuses every other line and names it, rather than reading a blockquote
 or a nested construct as the wrong unit.
 
+A continuation line states what it may begin with. It carries a letter, a
+digit, or ordinary sentence punctuation. Any other lead is refused, because a
+lead character alone cannot say whether the line opens a container. Write such
+a line so it begins with a word, or write the construct at column 0.
+
 Three constructs are refused at column 0 as well, because the check reads none
 of them:
 
@@ -385,7 +390,7 @@ of them:
 - A heading with no text, such as `#`, which opens no section.
 - A list item with no content, such as `-`, which opens no item.
 
-ADR-0016 records that decision.
+ADR-0016 records that decision, and ADR-0029 records the continuation form.
 
 ## Licensing
 

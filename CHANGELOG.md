@@ -80,6 +80,36 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A continuation line in a skill states what it may begin with, and the
+  grounding check refuses every other lead. The path admitted a line whenever
+  prose was open and then asked what the line looked like, and anything the
+  check did not recognise came back a paragraph, so an HTML block, an HTML
+  comment and a setext underline each reached a list item as the item's own
+  words with no refusal at all. One pipe was the widest hole: any line carrying
+  one read as a table row, and every table row was admitted. A line now carries
+  a letter, a digit or ordinary sentence punctuation, and the refusal names
+  what the check cannot say, which is which container the line opens. The cost
+  is a false refusal an author writes around. ADR-0029 records the inversion,
+  and it records what it does not reach: a line at column 0 is still admitted
+  whatever it is, which issue #111 carries. Issue #69.
+- A list marker padded five columns or more holds an indented code block, and
+  the check refuses the item rather than reading the code as the item's prose.
+  The padding is measured in columns, so a tab after the marker is worth what
+  it is worth to a reader. Issue #70.
+- An ordered marker that counts from anything but one opens no list where a
+  paragraph is open and no list is, because a reader will not let that list
+  interrupt the paragraph. `Prose` over `2. item` split one paragraph into two
+  units and left a list open across the blank line below, so a standalone code
+  block after it was refused for sitting under a list nobody wrote. Issue #70.
+- A setext underline is validated with the shared column rule, so an underline
+  indented four columns is no underline. `Rules` over a tab and three dashes
+  made a heading here while a reader keeps both lines as one paragraph, and
+  every anchor below it moved. Issue #70.
+- An empty list marker under an open ITEM is refused, because a reader sees the
+  next item of the list there. One flag stood for that state and for an empty
+  marker under an open paragraph, which is that paragraph's own words, so
+  `- First.` over `-` over an indented directive rendered as two items and
+  reached one matrix row as the first item's words.
 - A matrix row splits on a pipe that an ODD run of backslashes precedes, which
   is what a reader's renderer does. A one-character lookbehind read `x\\|` as
   an escaped pipe, so the checker saw one cell where a reader sees two, and a

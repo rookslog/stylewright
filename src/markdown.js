@@ -49,24 +49,42 @@ function maskFrontMatter(lines) {
   return lines.map((l, i) => (i <= close ? '' : l));
 }
 
-const SETEXT = /^\s{0,3}(=+|-+)\s*$/;
+/**
+ * A setext underline, as far as its own characters go. Where it may stand is
+ * the column rule's question, and the caller asks that separately, because a
+ * pattern that counted whitespace CHARACTERS read a tab as one column: `Rules`
+ * over a tab and three dashes became a heading here while a Markdown reader
+ * kept both lines as one paragraph, and every anchor below it moved.
+ */
+const SETEXT = /^[ \t]*(=+|-+)[ \t]*$/;
 
 /**
- * The indent in columns, where a tab advances to the next stop of four. It
- * lives here because both readings of a file need it and they must agree: the
- * section scan closed a fence on a marker indented four columns while the
+ * The column an offset in the line sits at, where a tab advances to the next
+ * stop of four.
+ *
+ * It lives here because every reading of a file needs it and they must agree:
+ * the section scan closed a fence on a marker indented four columns while the
  * grounding walk read that marker as the block's own contents, so one file had
  * two readings and a heading inside a code block became a section.
+ *
+ * `indentOf` is this measured to the first character that is neither a space
+ * nor a tab. The padding after a list marker is this measured across two
+ * offsets, and it is a column count for the same reason an indent is: a tab
+ * after a marker widens the gap by up to four, and counting it as one
+ * character read a nested code block as the item's own prose.
  */
 export const TAB = 4;
-export function indentOf(line) {
+export function columnOf(line, index) {
   let n = 0;
-  for (const ch of line) {
-    if (ch === ' ') n += 1;
-    else if (ch === '\t') n += TAB - (n % TAB);
-    else break;
+  for (let i = 0; i < index && i < line.length; i += 1) {
+    n += line[i] === '\t' ? TAB - (n % TAB) : 1;
   }
   return n;
+}
+export function indentOf(line) {
+  let i = 0;
+  while (line[i] === ' ' || line[i] === '\t') i += 1;
+  return columnOf(line, i);
 }
 export const isIndented = (line) => indentOf(line) >= TAB;
 
@@ -101,7 +119,13 @@ export function sections(text) {
     // A setext heading. `Rules` over `=====` is a heading, and reading it as
     // prose put every rule below it under the PREVIOUS section's anchor, so a
     // matrix naming the wrong anchors still passed.
-    const under = SETEXT.exec(line);
+    //
+    // An underline indented four columns is not one. A Markdown reader keeps
+    // that line as the paragraph's own words, because indented code cannot
+    // interrupt a paragraph and an underline may carry three columns at most.
+    // The indent is measured in columns here, by the rule the fence above
+    // obeys, so a tab counts for what it is worth to a reader.
+    const under = isIndented(line) ? null : SETEXT.exec(line);
     const above = i > 0 ? lines[i - 1] : '';
     if (under && above.trim() && !SETEXT.test(above) && !/^\s*[-*+|>]|^\s*\d+[.)]/.test(above)
       && !/^(#{1,6})\s/.test(above)) {

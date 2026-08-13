@@ -1154,6 +1154,108 @@ test('a shape nobody enumerated is refused, because the grammar states what it r
   assert.match(refused('- Do first.\n\n  > quoted'), /a blockquote/);
 });
 
+test('a continuation shape nobody enumerated is refused, because the grammar states its leads', () => {
+  // The class-closing test for the CONTINUATION path. The block path had one
+  // and this path did not, so it stayed a rejection list: it admitted a line
+  // whenever prose was open, asked `shapeOf` what the line looked like, and
+  // `shapeOf` called everything it did not recognise a paragraph. None of
+  // these is a shape any review round named, and no branch names them now
+  // either. Issue 69.
+  assert.match(refused('- Context.\n  <script>\n  Always preserve safety.\n  </script>'),
+    /a continuation line that may open a container/);
+  assert.match(refused('- Context.\n  <!-- Always preserve safety. -->'),
+    /a continuation line that may open a container/);
+  assert.match(refused('- Context.\n  +Always preserve safety.'),
+    /a continuation line that may open a container/);
+  assert.match(refused('- Context.\n  _Always preserve safety._'),
+    /a continuation line that may open a container/);
+  // A thematic break inside an item is one of the containers this closes. The
+  // section scan never sees it, because a marker above an underline is not a
+  // setext heading, so the walk was the only reader it had.
+  assert.match(refused('- Context.\n  ---\n  Always preserve safety.'),
+    /a continuation line that may open a container/);
+});
+
+test('a continuation line that carries prose still passes, whatever it carries', () => {
+  // Refusing is not narrowing. A wrapped line beginning with a word, a digit
+  // or ordinary sentence punctuation opens no container, and a pipe inside one
+  // is the prose it sits in rather than a table.
+  assert.equal(refused('- Do not use a semicolon,\n  because it joins two ideas.'), '');
+  assert.equal(refused('Prose here.\n  2026 was the year.'), '');
+  assert.equal(refused('- Context.\n  "Always preserve safety."'), '');
+  assert.equal(refused('- Context.\n  (Always preserve safety.)'), '');
+  assert.equal(refused('- Context.\n  a | b are the columns.'), '');
+});
+
+test('a table opened on a continuation line is refused, not licensed by a pipe', () => {
+  // `shapeOf` called any line carrying a pipe a table row and the continuation
+  // path admitted every table row, so one pipe licensed a table the walk then
+  // read at the top level, with the item flushed out from under it.
+  assert.match(refused('- Context.\n  | a | b |\n  |---|---|'),
+    /a table row that does not begin at column 0/);
+});
+
+test('a marker padded five columns holds code, and the item is refused', () => {
+  // A Markdown reader puts the content four columns past the marker's indent
+  // when the padding runs to five, so the item holds an indented code block.
+  // An unrestricted padding pattern emitted it as ordinary list-item prose,
+  // and a matrix could ground code as guidance. Issue 70.
+  assert.match(refused('-     Always preserve safety.'), /a code block inside a list item/);
+  assert.equal(refused('-    Always preserve safety.'), '');
+  // The padding is measured in columns, so a tab is worth what it is worth to
+  // a reader rather than one character.
+  assert.equal(refused('-\tAlways preserve safety.'), '');
+  assert.match(refused('-    \tAlways preserve safety.'), /a code block inside a list item/);
+  // The item is still read. A refusal is one more finding, never a unit that
+  // no row has to dispose of.
+  assert.ok(contentUnits(`${SKILL}\n## Later\n\n-     Always preserve safety.\n`)
+    .some((u) => u.text === 'Always preserve safety.'));
+});
+
+test('an ordered marker that cannot interrupt a paragraph opens no list', () => {
+  // `2. item` under open prose is the paragraph's own words to a Markdown
+  // reader, because a list that renumbered them is not what the author wrote.
+  // Reading it as an item split one paragraph into two units AND left a list
+  // open across the blank line, so the standalone code block below it was
+  // refused for sitting under a list nobody wrote. Issue 70.
+  assert.equal(refused('Prose\n2. item\n\n    const x = 1;'), '');
+  assert.ok(contentUnits(`${SKILL}\n## Later\n\nProse\n2. item\n`)
+    .some((u) => u.text === 'Prose 2. item'));
+  // A list already open takes the marker as its next item.
+  const numbered = contentUnits(`${SKILL}\n## Later\n\n1. First.\n2. Second.\n`).map((u) => u.text);
+  assert.ok(numbered.includes('First.') && numbered.includes('Second.'));
+  // The number is read rather than matched, because `01.` counts from one
+  // however it is spelled, and a list counting from one does interrupt.
+  assert.match(refused('Prose\n01. item\n\n    const x = 1;'),
+    /a paragraph indented under a list item/);
+  assert.match(refused('Prose\n1. item\n\n    const x = 1;'),
+    /a paragraph indented under a list item/);
+  // A list already open needs no interruption, so the marker opens an item
+  // whatever it counts from. Indented under one, a reader resolves a sibling
+  // from lazy continuation by the width of the open marker, and this check
+  // holds no such state, so doubt reads as the strict case and refuses.
+  assert.match(refused('- Context.\n  2. item'), /a list item that does not begin at column 0/);
+  assert.match(refused('1. First.\n  2. Second.'), /a list item that does not begin at column 0/);
+  // The walk and the grammar ask one question, so neither reads as an item a
+  // line the other has just read as prose.
+  assert.ok(contentUnits(`${SKILL}\n## Later\n\nProse\n  2. item\n`)
+    .some((u) => u.text === 'Prose 2. item'));
+  assert.equal(refused('Prose\n  2. item'), '');
+});
+
+test('an empty marker under an item is a sibling, and under a paragraph it is prose', () => {
+  // One flag stood for both states. An empty marker interrupts no paragraph,
+  // which is why it passes there, and under an ITEM a reader sees the next
+  // item of the list. `- First.` over `-` over an indented directive rendered
+  // as two items and reached one matrix row as the first item's own words.
+  assert.match(refused('- First.\n-\n  Always preserve safety.'), /a list item with no content/);
+  assert.equal(refused('The number is\n017966390.'), '');
+  assert.equal(refused('Prose\n1.\n\n    const x = 1;'), '');
+  // Indented, the refusal names the nearer cause, which is the one the author
+  // acts on first.
+  assert.match(refused('- Do first.\n  -'), /a list item that does not begin at column 0/);
+});
+
 test('a table may not begin on a list-marker line', () => {
   // `- A | B` over `--- | ---` became one table designator, so the item's own
   // words went into a digest and no row had to quote them.
@@ -1281,6 +1383,8 @@ test('a refusal carries a remedy the author can follow', () => {
     ['#', /Give the heading its text/],
     ['-', /Give the item its words/],
     ['- A | B\n--- | ---', /Move the table out of the list/],
+    ['- Context.\n  <script>', /Begin the line with a word/],
+    ['-     Always preserve safety.', /Leave four columns at most/],
   ]) {
     assert.match(message(text), remedy);
     assert.doesNotMatch(message(text), /Write it at column 0\./);

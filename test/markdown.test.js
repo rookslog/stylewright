@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripNonProse, sentences, sections } from '../src/markdown.js';
+import {
+  stripNonProse, sentences, sections, indentOf, isIndented, columnOf,
+} from '../src/markdown.js';
 
 test('blanks fenced code but keeps line count', () => {
   const input = 'Alpha text.\n```js\nconst a = 1;\n```\nBravo text.';
@@ -29,6 +31,31 @@ test('splits sentences and reports 1-indexed lines', () => {
   assert.deepEqual(got.map((s) => s.text.trim()),
     ['One here.', 'Two here.', 'Three here.']);
   assert.deepEqual(got.map((s) => s.line), [1, 1, 3]);
+});
+
+test('a column counts a tab to the next stop of four', () => {
+  // One rule, asked at two offsets. The indent asks it at the first character
+  // that is neither a space nor a tab, and the padding after a list marker
+  // asks it across the marker and the gap after it.
+  assert.equal(indentOf('\tx'), 4);
+  assert.equal(indentOf('  \tx'), 4);
+  assert.equal(indentOf('    x'), 4);
+  assert.ok(isIndented('\tx'));
+  assert.equal(columnOf('a\tb', 2), 4);
+  assert.equal(columnOf('abc', 2), 2);
+  assert.equal(columnOf('abc', 99), 3);
+});
+
+test('a setext underline indented four columns is not one', () => {
+  // A pattern over whitespace CHARACTERS read a tab as one, so `Rules` over a
+  // tab and three dashes became a heading here while a Markdown reader keeps
+  // both lines as one paragraph. Every anchor below it moved, and the check
+  // that guards an indented heading reads the heading TEXT alone, so nothing
+  // reported it. Issue 70.
+  assert.deepEqual(sections('Rules\n\t---\n\nAlways preserve safety.').map((s) => s.heading), []);
+  assert.deepEqual(sections('Rules\n    ---\n\nAlways.').map((s) => s.heading), []);
+  assert.deepEqual(sections('Rules\n   ---\n\nAlways.').map((s) => s.heading), ['Rules']);
+  assert.deepEqual(sections('Rules\n---\n\nAlways.').map((s) => s.heading), ['Rules']);
 });
 
 test('parses ATX sections with bounds', () => {
