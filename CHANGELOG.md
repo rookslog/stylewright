@@ -54,18 +54,27 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reading parses `Loaded 1 unique skills` from the retained lines, and it
   agrees when the installed arm loaded at least one skill and the control
   loaded zero. It reads every such line rather than the first, because the
-  harness repeats the line per session. A disagreement blocks the pass,
-  because a trace naming the loaded file is better evidence than either answer
-  and better evidence that contradicts them cannot be a note. A record that
-  kept no trace reads `null` and blocks nothing, which is every record written
-  before 2026-08-07. `managed_seen` is the largest managed count either trace
-  states, and it blocks nothing: a redirected home does not move the
-  machine-global managed skills path, and whether a skill that reached an arm
-  from there spoils the arm is a judgment a record cannot answer. The
+  harness repeats the line per session. It takes the count for the scope the
+  probe installed into and never the total, because the total counts managed
+  skills and a redirected home does not move the machine-global managed skills
+  path. A disagreement blocks the pass, because a trace naming the loaded file
+  is better evidence than either answer and better evidence that contradicts
+  them cannot be a note. A reading the check cannot make is withheld instead,
+  and `trace_withheld` names the cause as `absent`, `truncated`, or
+  `unscoped`, because a `null` whose cause a reader cannot see is the wrong
+  number one step removed. `managed_seen` is the largest managed count either
+  trace states, and it blocks nothing: whether a skill that reached an arm from
+  the machine spoils the arm is a judgment a record cannot answer. The
   derivation read the answers and the flags alone until now, so a control
-  whose trace said `Loaded 1 unique skills` derived a pass on the strength of
-  an answer that said nothing. ADR-0024 records the decision and what would
-  reopen it. Issue #94.
+  whose trace said it loaded a skill derived a pass on the strength of an
+  answer that said nothing. ADR-0024 records the decisions and what would
+  reopen each one. Issue #94.
+- `TRACE_LINE_LIMIT` moved into `bench/probe.mjs`, beside the derivation that
+  depends on it, and `traceProblems` refuses a record carrying more lines than
+  the collector would write. The collector cuts the kept set at that bound, so
+  a trace standing at it may be the prefix of a longer run. Reading the prefix
+  as the whole trace let twenty sessions loading one skill certify a pass over
+  a twenty-first that loaded zero.
 - The probe's arm sequence moved out of `main`, into `runArms`, and three
   invariants ADR-0024 states as prose now have a test each. The debug path is
   derived under the throwaway root and a path outside it is refused. The trace

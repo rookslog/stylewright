@@ -15,13 +15,14 @@ import path from 'node:path';
 
 import {
   TUPLE, ENV_CLASSES, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory,
-  describe, redact, summarise, traceProblems, loadCounts, traceAgrees, managedSeen,
+  describe, redact, summarise, traceProblems, loadCounts, traceAgrees, traceReading,
+  managedSeen, sourceCount, TRACE_LINE_LIMIT,
   REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG, flagShapeProblems,
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
   parsePathway, plantFlags, plantInDescription, plantNonce, plantedSentence, readRun, recordName,
-  servingBuild, skillTraceLines, readTrace, TRACE_LINE_LIMIT, debugPath, runArms,
+  servingBuild, skillTraceLines, readTrace, debugPath, runArms,
   treeDigest, tupleModel, writeRecord, ASK, AUTH_ROUTES,
 } from '../bench/collect-probe.mjs';
 
@@ -148,8 +149,10 @@ test('a well-formed record passes and derives a pass', () => {
     control_clean: true,
     isolated: true,
     // No trace, so no reading. Absence is a state, and it is the state every
-    // record written before 2026-08-07 carries.
+    // record written before 2026-08-07 carries. `trace_withheld` names it, so a
+    // reader tells it from a reading this check refused to certify.
     trace_agrees: null,
+    trace_withheld: 'absent',
     managed_seen: null,
     passes: true,
   });
@@ -1130,20 +1133,30 @@ const LOADED_ONE = '2026-08-07T07:21:09Z [DEBUG] Loaded 1 unique skills '
 const LOADED_NONE = '2026-08-07T07:21:13Z [DEBUG] Loaded 0 unique skills '
   + '(0 unconditional, 0 conditional, managed: 0, user: 0, project: 0, additional: 0)';
 
-test('the counts come off the harness line, and both come off it in one pass', () => {
-  assert.deepEqual(loadCounts([LOADED_ONE]), { loaded: [1], managed: [0] });
+test('every count comes off the one harness line that states them', () => {
+  assert.deepEqual(loadCounts([LOADED_ONE]), {
+    truncated: false,
+    lines: [{ total: 1, managed: 0, scopes: { user: 1, project: 0 } }],
+  });
   // The `Loading skills from:` line names the managed PATH and no count, so
   // nothing is read off it.
   assert.deepEqual(loadCounts(['Loading skills from: managed=/Library/x, user=/tmp/y']),
-    { loaded: [], managed: [] });
-  // A trace that is present and names no loading is an empty reading, and a
-  // trace that is absent is no reading at all.
-  assert.deepEqual(loadCounts([]), { loaded: [], managed: [] });
+    { truncated: false, lines: [] });
+  // A trace that is present and names no loading holds no lines, and a trace
+  // that is absent is no reading at all.
+  assert.deepEqual(loadCounts([]), { truncated: false, lines: [] });
   assert.equal(loadCounts(null), null);
   assert.equal(loadCounts(undefined), null);
   // A malformed trace is a broken record, and `checkRecord` says so. Reading it
   // here as a failed probe would answer the wrong question.
   assert.equal(loadCounts('Loaded 1 unique skills'), null);
+});
+
+test('a named source count is read, and an unnamed one is null', () => {
+  assert.equal(sourceCount(LOADED_ONE, 'user'), 1);
+  assert.equal(sourceCount(LOADED_ONE, 'project'), 0);
+  assert.equal(sourceCount(LOADED_ONE, 'managed'), 0);
+  assert.equal(sourceCount('Loaded 1 unique skills', 'user'), null);
 });
 
 test('a trace agrees when the installed arm loaded a skill and the control loaded none', () => {
@@ -1158,9 +1171,9 @@ test('a trace agrees when the installed arm loaded a skill and the control loade
 // 2026-08-07 carries no trace, and grading those by an instrument they predate
 // would fail them for what nobody could have retained.
 test('a null trace reads as null, on either arm, and never as false', () => {
-  assert.equal(traceAgrees(record()), null);
-  assert.equal(traceAgrees(traced([LOADED_ONE], null)), null);
-  assert.equal(traceAgrees(traced(null, [LOADED_NONE])), null);
+  assert.deepEqual(traceReading(record()), { agrees: null, withheld: 'absent' });
+  assert.deepEqual(traceReading(traced([LOADED_ONE], null)), { agrees: null, withheld: 'absent' });
+  assert.deepEqual(traceReading(traced(null, [LOADED_NONE])), { agrees: null, withheld: 'absent' });
   assert.equal(deriveOutcome(record()).trace_agrees, null);
   assert.equal(deriveOutcome(record()).passes, true);
 });
@@ -1173,12 +1186,15 @@ test('every loaded line is read, not the first', () => {
   assert.equal(traceAgrees(traced([LOADED_ONE, LOADED_ONE], [LOADED_NONE, LOADED_NONE])), true);
 });
 
-// A present trace naming no loading reads as a disagreement, deliberately. It
-// is what a renamed harness line produces, and the exit is to move the pattern
-// rather than to widen the reading until an empty trace passes.
-test('a trace that names no loading corroborates nothing', () => {
-  assert.equal(traceAgrees(traced([], [])), false);
-  assert.equal(traceAgrees(traced(['connecting to the transport'], [LOADED_NONE])), false);
+// A present trace naming no loading is withheld, not blocked. Corrected on the
+// codex review of PR #110: blocking there said the harness disagreed, when the
+// truth is that the evidence cannot answer. `false` is reserved for a real
+// contradiction, and every unreadable state names itself instead.
+test('a trace that names no loading is withheld, and never a disagreement', () => {
+  assert.deepEqual(traceReading(traced([], [])), { agrees: null, withheld: 'unscoped' });
+  assert.deepEqual(traceReading(traced(['connecting to the transport'], [LOADED_NONE])),
+    { agrees: null, withheld: 'unscoped' });
+  assert.equal(deriveOutcome(traced([], [])).passes, true);
 });
 
 // The decision this pass makes. Better evidence that contradicts the answers
@@ -1210,9 +1226,10 @@ test('the managed count is read, reported, and blocks nothing', () => {
   assert.match(describe('probe.json', seen), /managed_seen=2/);
 });
 
-test('the derived line carries both trace readings, including their absence', () => {
+test('the derived line carries every trace reading, including their absence', () => {
   const line = describe('probe.json', record());
   assert.match(line, /trace_agrees=null/);
+  assert.match(line, /trace_withheld=absent/);
   assert.match(line, /managed_seen=null/);
 });
 
@@ -1316,4 +1333,85 @@ test('the arms produce a record whose trace agrees with the run', async () => {
   assert.equal(outcome.trace_agrees, true);
   assert.equal(outcome.managed_seen, 0);
   assert.equal(outcome.passes, true);
+});
+
+// Codex, PR #110, P1. `skillTraceLines` cuts the kept set at
+// `TRACE_LINE_LIMIT`, and the first version of this reading treated the
+// retained prefix as the whole trace. Twenty sessions loading one skill
+// followed by a twenty-first loading zero produced a full prefix that read as
+// agreement, so a cut certified a pass over lines nobody has.
+test('a trace standing at the limit is withheld, because its tail may be gone', () => {
+  const full = Array.from({ length: TRACE_LINE_LIMIT }, () => LOADED_ONE);
+  const cut = traced(full, [LOADED_NONE]);
+  assert.deepEqual(traceReading(cut), { agrees: null, withheld: 'truncated' });
+  // Withheld, so it neither certifies nor blocks. The answers decide.
+  assert.equal(deriveOutcome(cut).passes, true);
+  assert.match(describe('probe.json', cut), /trace_withheld=truncated/);
+  // The control side is read the same way, and one line short of the bound is
+  // a complete trace that reads normally.
+  assert.equal(traceReading(traced([LOADED_ONE], full.map(() => LOADED_NONE))).withheld,
+    'truncated');
+  assert.deepEqual(traceReading(traced(full.slice(1), [LOADED_NONE])),
+    { agrees: true, withheld: null });
+});
+
+// The bound is the reader's constant, so a record may never carry more lines
+// than the collector would write. Without this the cut is not the only place a
+// reading is lost, and the boundary test above stops meaning anything.
+test('a record carrying more lines than the bound is refused', () => {
+  const over = Array.from({ length: TRACE_LINE_LIMIT + 1 }, () => LOADED_ONE);
+  assert.match(traceProblems(over).join(' '), /at most 40 lines/);
+  const record = traced(over, [LOADED_NONE]);
+  assert.match(checkRecord(record).join(' '), /installed.trace keeps at most/);
+  assert.deepEqual(traceProblems(over.slice(1)), []);
+});
+
+// Codex, PR #110, P1. The total counts managed skills, and a redirected home
+// does not move the machine-global managed path. Reading the total blocked a
+// valid probe on a machine carrying one managed skill, through exactly the path
+// `managed_seen` declares non-blocking.
+test('a managed skill on the machine does not block the probe', () => {
+  const managed = (total, user) => `[DEBUG] Loaded ${total} unique skills `
+    + `(${total} unconditional, 0 conditional, managed: 1, user: ${user}, project: 0)`;
+  // Installed loads the managed skill and its own. The control loads the
+  // managed skill alone, so its TOTAL is 1 and its user count is 0.
+  const seen = traced([managed(2, 1)], [managed(1, 0)]);
+  assert.deepEqual(traceReading(seen), { agrees: true, withheld: null });
+  assert.equal(deriveOutcome(seen).passes, true);
+  // The count is still reported, because it is the one thing that says
+  // something reached an arm from outside the redirected home.
+  assert.equal(deriveOutcome(seen).managed_seen, 1);
+  // And a control that loaded a skill in the probe's own scope still blocks.
+  assert.equal(traceAgrees(traced([managed(2, 1)], [managed(2, 1)])), false);
+});
+
+// The scope comes from the pathway the record names, so a project-scope probe
+// is read on its own count. Reading `user:` for every pathway would be the
+// managed defect one column over.
+test('the reading follows the scope the probe installed into', () => {
+  const line = (user, project) => `[DEBUG] Loaded 1 unique skills `
+    + `(managed: 0, user: ${user}, project: ${project})`;
+  const project = (installed, control) => {
+    const r = traced(installed, control);
+    r.identity.pathway = 'claude:project';
+    return r;
+  };
+  assert.equal(traceAgrees(project([line(0, 1)], [line(0, 0)])), true);
+  assert.equal(traceAgrees(project([line(0, 1)], [line(0, 1)])), false);
+  // The same traces under a user-scope pathway read the user column, and there
+  // the installed arm loaded nothing.
+  assert.equal(traceAgrees(traced([line(0, 1)], [line(0, 0)])), false);
+});
+
+// A line that names no per-scope count leaves only the total, and the total
+// counts managed skills. Withheld rather than read, and the residue is stated:
+// a harness that stops printing the column makes every probe unreadable.
+test('a line without the scope count is withheld, never read off the total', () => {
+  const bare = '[DEBUG] Loaded 1 unique skills';
+  assert.deepEqual(traceReading(traced([bare], ['[DEBUG] Loaded 0 unique skills'])),
+    { agrees: null, withheld: 'unscoped' });
+  // A pathway the record does not name leaves no column to read either.
+  const noPathway = traced([LOADED_ONE], [LOADED_NONE]);
+  noPathway.identity.pathway = '';
+  assert.deepEqual(traceReading(noPathway), { agrees: null, withheld: 'unscoped' });
 });

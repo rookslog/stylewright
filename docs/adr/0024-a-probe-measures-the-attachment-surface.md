@@ -175,6 +175,17 @@ zero. Every such line is read rather than the first, because the harness repeats
 the line per session and a run that loaded one skill once and none the next time
 has corroborated nothing.
 
+**It reads the count for the scope the probe installed into, never the total.**
+The total counts managed skills. A probe redirects `HOME`, and the harness
+consults a machine-global managed skills path that `HOME` does not move, so on a
+machine carrying one managed skill the control's total is 1 rather than 0. A
+total-based reading blocked a valid probe through the very path `managed_seen`
+declares non-blocking, which made this decision contradict itself. The record
+names its pathway, the pathway names its scope, and `SCOPES` and the harness's
+own source names coincide, so the reading takes that column. Excluding managed
+by construction beats subtracting it, and reading `user:` for every pathway
+would repeat the defect one column over on a project-scope probe.
+
 **A disagreement blocks `passes`, and this is the decision the issue left
 open.** The alternative was to report it beside the verdict as a note. Section
 4.1 calls a trace naming the loaded file better evidence than either answer, and
@@ -183,11 +194,29 @@ making the word meaningless. The concrete case is the one that motivated the
 issue: a control whose trace says `Loaded 1 unique skills` while its answer says
 nothing derived PASS, and the contradiction sat in the same file.
 
-**Absence never blocks.** `trace_agrees` is `null` where either arm carries no
-trace, and only `false` blocks. Every record written before 2026-08-07 carries
-no trace, and so would a record from a harness that offers none. Blocking on
-absence would grade an old instrument by a new one and would refuse a probe for
-what nobody could have retained.
+**An unreadable trace is withheld, and it names why.** `trace_agrees` is `null`
+wherever the evidence cannot answer, and `trace_withheld` carries the cause,
+because a reader cannot act on a `null` without knowing which state produced it.
+There are three causes. `absent` is an arm that kept no trace, which is every
+record written before 2026-08-07 and would be a record from a harness that
+offers none. `truncated` is an arm whose trace stands at `TRACE_LINE_LIMIT`, so
+a disagreeing line past the cut is gone and the retained prefix would certify a
+pass over evidence nobody has. `unscoped` is a retained line that does not name
+the scope's own count, which leaves only the total.
+
+`false` is reserved for the harness's own numbers contradicting the answers.
+This corrects a reading in the first draft of this amendment, which blocked on a
+trace that named no loading. That said the harness disagreed when the truth was
+that the evidence was unreadable, and this repository already answers an
+unreadable artifact by withholding the number and naming the cause rather than
+by publishing a wrong one. The correction came out of the codex review of the
+pull request carrying this section.
+
+The cost is stated rather than hidden. A harness that stops printing per-scope
+counts makes every probe unreadable instead of failing, and a record whose trace
+is an empty list falls back to its answers, which is the state before this
+reading existed. The exit is to move `TRACE_PATTERNS`, `LOADED_LINE` and
+`sourceCount` onto the new wording.
 
 **Measured effect on the committed records: none.** Two carry no trace and
 derive `null`, so their verdicts stand. The third carries a trace that agrees.
@@ -204,13 +233,21 @@ reader the number and not a verdict. `check:probes` prints it on every line, for
 the reason `ground --check` prints its own counts: a note nothing reads is a
 comment.
 
-**What would reopen the blocking half.** A harness that renames its
-skill-loading line. The collector's selector would retain nothing, the reading
-would come out `false` rather than `null`, and every probe would fail for a
-wording change. The exit is to move `TRACE_PATTERNS` and `LOADED_LINE` onto the
-new wording. It is not to widen the reading until a trace naming no loading
-passes, because that is the state a broken selector and a harness loading
-nothing both produce.
+**The bound lives with the reader.** `TRACE_LINE_LIMIT` moved from
+`bench/collect-probe.mjs` into `bench/probe.mjs`, because the derivation is what
+has to know that a list of exactly that length may be a prefix. The collector
+imports it and cuts at it, and `traceProblems` refuses a record carrying more
+lines than the collector would write. So the cut is the only place a reading is
+lost, and the boundary is the only place it is ambiguous. At the boundary a
+complete run and a cut one are indistinguishable, so the boundary itself is
+withheld.
+
+**What would reopen the withholding.** A harness whose skill-loading line drops
+the per-scope counts, or one that emits more than forty of those lines in an
+ordinary run. The first makes every probe read `unscoped` and the second makes
+every probe read `truncated`, and in both cases the probe stops answering rather
+than starting to fail. Raising the bound is a decision about what a committed
+record may carry, and it belongs here rather than in a patch.
 
 **The arm sequence is extracted.** `runArms` in `bench/collect-probe.mjs` holds
 the three invariants above, and `main` calls it. It builds one flag set above

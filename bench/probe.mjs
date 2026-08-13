@@ -33,6 +33,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// The scopes a pathway can install into, which are also the names the harness
+// gives its own skill sources. One list, so the reading below cannot name a
+// scope this tool cannot install into.
+import { SCOPES } from '../src/targets.js';
+
 /** The identity tuple, from the measurement design, section 4.1. */
 export const TUPLE = [
   'harness_build', 'model', 'platform', 'pathway', 'environment_class', 'stack_digest',
@@ -387,37 +392,64 @@ function flagProblems(flags, values) {
  * before 2026-08-07 carries that, and a harness offering no trace would too.
  * Section 4.1 asks for the trace "where one exists", so absence is a state and
  * not a defect.
+ *
+ * The bound lives HERE rather than beside the selector that applies it. The
+ * collector cuts the kept set at `TRACE_LINE_LIMIT`, and the derivation below
+ * has to know that a list of exactly that many lines may be a prefix of a
+ * longer run. Two modules reading one constant is the coupling made visible,
+ * and this check is what pins it: a record carrying more lines than the
+ * collector would write is refused, so the limit is the only place a reading
+ * can be cut.
  */
+export const TRACE_LINE_LIMIT = 40;
+
 export function traceProblems(trace) {
   if (trace === null || trace === undefined) return [];
   if (!Array.isArray(trace) || trace.some((line) => typeof line !== 'string')) {
     return ['trace is null, or the harness\'s own lines as a list of strings.'];
   }
+  if (trace.length > TRACE_LINE_LIMIT) {
+    return [`trace keeps at most ${TRACE_LINE_LIMIT} lines, and this one keeps `
+      + `${trace.length}.`];
+  }
   return [];
 }
 
 /**
- * The two numbers a harness states about skill loading, and where they come
- * from.
+ * The numbers a harness states about skill loading, and where they come from.
  *
- * ONE line carries both. The harness writes `Loaded 1 unique skills (1
+ * ONE line carries all of them. The harness writes `Loaded 1 unique skills (1
  * unconditional, 0 conditional, managed: 0, user: 1, project: 0, …)`, so the
- * total and the managed share a line and are read in one pass. The `Loading
- * skills from:` line names the managed PATH and no count, so nothing is read
- * off it.
+ * total, the managed count and the per-scope counts are read in one pass. The
+ * `Loading skills from:` line names the managed PATH and no count, so nothing
+ * is read off it.
  *
- * Why the managed count is read at all. A probe redirects `HOME`, and the
- * harness consults a machine-global managed skills path that `HOME` does not
- * move — which is why `environment_class` names the home and never the machine.
- * A non-zero managed count is the one thing in a record that would say
- * something reached an arm from outside the redirected home, and until now
- * nothing looked.
+ * The TOTAL is read and never used to decide agreement. It counts managed
+ * skills, and a probe redirects `HOME` while the harness consults a
+ * machine-global managed skills path that `HOME` does not move. So on a machine
+ * carrying one managed skill the control's total is 1 rather than 0, and a
+ * total-based reading would block a valid probe through exactly the path
+ * `managed_seen` declares non-blocking. Codex reported that on pull request
+ * #110 and it is real.
+ *
+ * Agreement therefore reads the count for the SCOPE the probe installed into,
+ * which the record already names in `identity.pathway`. That excludes managed
+ * by construction rather than by subtraction, and it stays right for a
+ * project-scope pathway, where reading `user:` would be the same defect one
+ * column over. `SCOPES` and the harness's own source names coincide, which is
+ * what makes the lookup possible.
  */
 export const LOADED_LINE = /Loaded\s+(\d+)\s+unique skills/i;
 export const MANAGED_COUNT = /\bmanaged:\s*(\d+)/i;
 
+/** The count one harness line states for one named source, or `null`. */
+export function sourceCount(line, name) {
+  const found = new RegExp(`\\b${name}:\\s*(\\d+)`, 'i').exec(String(line));
+  return found ? Number(found[1]) : null;
+}
+
 /**
- * The counts one arm's trace states, or `null` where there is no trace to read.
+ * What one arm's trace states, or `null` where there is no trace to read.
  *
  * `null` in, `null` out. Absence is a state: every record written before
  * 2026-08-07 carries no trace, and so would a record from a harness that offers
@@ -425,52 +457,87 @@ export const MANAGED_COUNT = /\bmanaged:\s*(\d+)/i;
  * already refuses that record and a second refusal from this side would say the
  * probe failed rather than that the file is broken.
  *
- * A trace that IS present and names no loading returns empty lists rather than
- * `null`. The two are different readings, and the caller decides what each one
- * is worth.
+ * `truncated` is the other half of the honesty. The collector cuts the kept set
+ * at `TRACE_LINE_LIMIT`, so a list of exactly that length may be the prefix of
+ * a longer run and the lines past the cut are gone. At the boundary a complete
+ * run and a cut one are indistinguishable, so the boundary itself is reported
+ * and the caller withholds.
  */
 export function loadCounts(trace) {
   if (trace === null || trace === undefined) return null;
   if (traceProblems(trace).length) return null;
-  const loaded = [];
-  const managed = [];
+  const lines = [];
   for (const line of trace) {
     const found = LOADED_LINE.exec(line);
     if (!found) continue;
-    loaded.push(Number(found[1]));
-    const from = MANAGED_COUNT.exec(line);
-    if (from) managed.push(Number(from[1]));
+    const managed = MANAGED_COUNT.exec(line);
+    lines.push({
+      total: Number(found[1]),
+      managed: managed ? Number(managed[1]) : null,
+      scopes: Object.fromEntries(SCOPES.map((s) => [s, sourceCount(line, s)])),
+    });
   }
-  return { loaded, managed };
+  return { truncated: trace.length >= TRACE_LINE_LIMIT, lines };
 }
 
 /**
- * Does the trace agree with what the answers claim?
+ * The reading the trace supports, and the reason there is none where there is
+ * none.
  *
- * The reading is the one section 4.1 asks for: the installed arm loaded a
- * skill and the control loaded none. It is `null` where either arm carries no
- * trace, because a reading needs both sides and absence is not disagreement.
+ * `agrees` is `true`, `false`, or `null`. `withheld` names why a `null` came
+ * about, because a reader cannot otherwise tell an old record from a record
+ * whose evidence this check refused to certify. Three reasons, and each was a
+ * finding rather than a shape somebody imagined:
+ *
+ * - `absent`. An arm kept no trace. This is every record before 2026-08-07.
+ * - `truncated`. An arm's trace stands at `TRACE_LINE_LIMIT`, so a disagreeing
+ *   line past the cut would have been dropped and the retained prefix would
+ *   certify a pass on evidence nobody has. Codex's case on pull request #110:
+ *   twenty sessions loading one skill, then a twenty-first loading zero.
+ * - `unscoped`. A retained line does not name the count for the scope this
+ *   probe installed into, so the only number available is the total, and the
+ *   total counts managed skills the redirected home does not control.
+ *
+ * `false` is reserved for the one thing it should mean: the harness's own
+ * numbers contradict what the answers claim. Withholding covers every case
+ * where the record cannot answer, which corrects the earlier reading that
+ * blocked on a trace naming no loading. Blocking there said the harness
+ * disagreed when the truth was that the evidence was unreadable, and this
+ * repository already answers an unreadable artifact by withholding the number
+ * and naming the cause rather than by publishing a wrong one.
+ *
+ * The cost is stated rather than hidden. A harness that stops printing
+ * per-scope counts makes every probe unreadable instead of failing, and a
+ * `trace: []` record falls back to the answers, which is the state before this
+ * reading existed. The exit for both is to move `TRACE_PATTERNS`, `LOADED_LINE`
+ * and `sourceCount` onto the new wording.
  *
  * Every `Loaded` line is read, not the first. The harness repeats the line per
  * session, and a run whose installed arm loaded one skill once and none the
- * next time has not corroborated anything, so the installed side asks that
- * every line load at least one and the control side asks that every line load
- * zero.
- *
- * A present trace naming no loading at all reads as a disagreement, and that is
- * the deliberate direction. It happens when the harness renames the line, and
- * then the collector's own selector kept nothing either, so the record's
- * evidence is unaccountable rather than merely thin. The exit is to move
- * `TRACE_PATTERNS` and `LOADED_LINE` onto the new wording, never to widen this
- * reading until an empty trace passes.
+ * next time has corroborated nothing.
  */
-export function traceAgrees(record) {
+export function traceReading(record) {
+  const scope = String(record?.identity?.pathway ?? '').split(':')[1];
   const installed = loadCounts(record?.installed?.trace);
   const control = loadCounts(record?.control?.trace);
-  if (!installed || !control) return null;
-  const loadedSome = installed.loaded.length > 0 && installed.loaded.every((n) => n >= 1);
-  const loadedNone = control.loaded.length > 0 && control.loaded.every((n) => n === 0);
-  return loadedSome && loadedNone;
+  if (!installed || !control) return { agrees: null, withheld: 'absent' };
+  if (installed.truncated || control.truncated) return { agrees: null, withheld: 'truncated' };
+  if (!SCOPES.includes(scope)) return { agrees: null, withheld: 'unscoped' };
+  const counted = (arm) => arm.lines.map((line) => line.scopes[scope]);
+  const here = counted(installed);
+  const there = counted(control);
+  if (!here.length || !there.length || [...here, ...there].some((n) => n === null)) {
+    return { agrees: null, withheld: 'unscoped' };
+  }
+  return {
+    agrees: here.every((n) => n >= 1) && there.every((n) => n === 0),
+    withheld: null,
+  };
+}
+
+/** The reading's verdict alone, for a caller that wants the one field. */
+export function traceAgrees(record) {
+  return traceReading(record).agrees;
 }
 
 /**
@@ -482,9 +549,16 @@ export function traceAgrees(record) {
  * spoils that arm is a judgment about what stood in that path, and a record
  * carries no way to ask. What the derivation owes a reader is the number, on
  * the line, so the question can be asked at all. `describe` prints it.
+ *
+ * It is read from a truncated trace too. A count that appeared is a count that
+ * appeared, and the bound can only hide a larger one, so this number is a floor
+ * and never an overstatement.
  */
 export function managedSeen(record) {
-  const counts = ARMS.flatMap((arm) => loadCounts(record?.[arm]?.trace)?.managed ?? []);
+  const counts = ARMS
+    .flatMap((arm) => loadCounts(record?.[arm]?.trace)?.lines ?? [])
+    .map((line) => line.managed)
+    .filter((n) => n !== null);
   return counts.length ? Math.max(...counts) : null;
 }
 
@@ -654,12 +728,18 @@ export function checkRecord(record, name = 'record') {
  *
  * `trace_agrees` BLOCKS. Section 4.1 calls a trace naming the loaded file
  * better evidence than either answer, and evidence that is better and
- * contradicted cannot be a note beside a pass. It blocks on `false` alone: a
- * `null` reading is a record with no trace to read, which is every record
- * written before 2026-08-07, and refusing those would grade an old instrument
- * by a new one. ADR-0024 records the decision and what would reopen it.
+ * contradicted cannot be a note beside a pass. It blocks on `false` alone,
+ * which is the harness's own numbers contradicting the answers.
+ *
+ * `trace_withheld` names why a `null` came about, and it exists because two
+ * different states used to spell themselves the same way. A record with no
+ * trace and a record whose trace this check refused to certify both read
+ * `null`, and a reader cannot act on the second without knowing which it has.
+ * It is `absent`, `truncated`, `unscoped`, or `null` when a reading was made.
  *
  * `managed_seen` is the number and not a verdict, so it blocks nothing.
+ *
+ * ADR-0024 records the decisions and what would reopen each one.
  */
 export function deriveOutcome(record) {
   const nonce = record?.nonce ?? '';
@@ -674,16 +754,17 @@ export function deriveOutcome(record) {
   const controlClean = controlServed && Boolean(nonce)
     && !(record?.control?.answer ?? '').includes(nonce);
   const isolated = isolationProblems(record?.flags).length === 0;
-  const agrees = traceAgrees(record);
+  const reading = traceReading(record);
   return {
     installed_served: installedServed,
     control_served: controlServed,
     discovered,
     control_clean: controlClean,
     isolated,
-    trace_agrees: agrees,
+    trace_agrees: reading.agrees,
+    trace_withheld: reading.withheld,
     managed_seen: managedSeen(record),
-    passes: discovered && controlClean && isolated && agrees !== false,
+    passes: discovered && controlClean && isolated && reading.agrees !== false,
   };
 }
 
@@ -703,15 +784,16 @@ export function describe(name, record) {
   // empty answer, and a line that showed only the second would hide the first.
   // The name and the derived flags are this module's own words, so they carry
   // nothing to redact and stay outside the question.
-  // `trace_agrees` and `managed_seen` print their `null` verbatim, because
-  // `null` is a reading here and not a missing value: it says the record kept
-  // no trace to read. Printing a dash would spell it the way an absent tuple
-  // element is spelled, and those are different states.
+  // These three print their `null` verbatim, because `null` is a reading here
+  // and not a missing value. Printing a dash would spell it the way an absent
+  // tuple element is spelled, and those are different states. `trace_withheld`
+  // rides beside `trace_agrees` rather than under it, because a withheld
+  // reading printed without its cause is the wrong number one step removed.
   return `${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
     + `(installed_served=${o.installed_served} discovered=${o.discovered} `
     + `control_served=${o.control_served} control_clean=${o.control_clean} `
     + `isolated=${o.isolated} trace_agrees=${o.trace_agrees} `
-    + `managed_seen=${o.managed_seen}) ${tuple}`;
+    + `trace_withheld=${o.trace_withheld} managed_seen=${o.managed_seen}) ${tuple}`;
 }
 
 /** Reads every record under `dir`. A missing directory holds no records. */

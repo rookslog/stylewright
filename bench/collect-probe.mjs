@@ -73,7 +73,13 @@ import { fileURLToPath } from 'node:url';
 import { installSkills } from '../src/install.js';
 import { resolveTarget, PLATFORMS, SCOPES } from '../src/targets.js';
 import { destinationState, ensureDir, isBelow, walk } from '../src/tree.js';
-import { armAnswered, isolationProblems, TRACE_FLAG } from './probe.mjs';
+// `TRACE_LINE_LIMIT` is the reader's constant, not the writer's, so it lives in
+// `probe.mjs` beside the derivation that has to know a list of exactly that
+// length may be a prefix. This file cuts at it, and `traceProblems` refuses a
+// record carrying more, so the cut here is the only place a reading is lost.
+import { armAnswered, isolationProblems, TRACE_FLAG, TRACE_LINE_LIMIT } from './probe.mjs';
+
+export { TRACE_LINE_LIMIT };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -620,7 +626,6 @@ export function armEnv(parent, home) {
  * thing this protocol refuses everywhere else.
  */
 export const TRACE_PATTERNS = [/Loading skills from/i, /Loaded \d+ unique skills/i];
-export const TRACE_LINE_LIMIT = 40;
 
 export function skillTraceLines(text) {
   return String(text).split('\n')

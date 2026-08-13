@@ -451,15 +451,33 @@ number published in `bench/README.md`.
 - **The derivation reads that trace, and a disagreement blocks the
   pass.** A trace naming the loaded file is better evidence than either
   answer, so `trace_agrees` cannot be a note beside a pass. It blocks on
-  `false` alone. A record that kept no trace reads `null`, which is
-  every record written before 2026-08-07, and blocking on absence would
-  grade an old instrument by a new one. A trace that names no loading
-  reads as a disagreement, because a renamed harness line and a harness
-  that loaded nothing produce the same empty trace. Move
-  `TRACE_PATTERNS` and `LOADED_LINE` onto the new wording rather than
-  widening the reading until an empty trace passes. `managed_seen` is
-  read off the same line and blocks nothing, for the reason
-  `audit-coverage` blocks nothing. ADR-0024.
+  `false` alone, and `false` means the harness's own numbers contradict
+  the answers. `managed_seen` is read off the same line and blocks
+  nothing, for the reason `audit-coverage` blocks nothing. ADR-0024.
+- **The reading takes the scope's count and never the total.** The total
+  counts managed skills, and a redirected home does not move the
+  machine-global managed path, so a total-based reading blocked a valid
+  probe through the one path `managed_seen` declares uncontrollable. The
+  record names its pathway and the pathway names the column. Reading
+  `user:` for every pathway is the same defect one column over, because
+  a project-scope probe loads into `project:`. Exclude managed by
+  construction, never by subtracting it from the total.
+- **A reading this check cannot make is withheld, and it names the
+  cause.** `trace_agrees` reads `null` and `trace_withheld` says
+  `absent`, `truncated`, or `unscoped`, because a `null` whose cause a
+  reader cannot see is the wrong number one step removed. `truncated`
+  is the one that has to exist: `skillTraceLines` cuts at
+  `TRACE_LINE_LIMIT`, and treating the retained prefix as the whole
+  trace let twenty sessions loading one skill certify a pass over a
+  twenty-first that loaded zero. Do not turn a withheld reading into a
+  failure. An unreadable artifact is answered here by withholding the
+  number and naming why, the way a broken matrix table is.
+- **`TRACE_LINE_LIMIT` lives in `bench/probe.mjs`, with the reader.**
+  The collector imports it and cuts at it, and `traceProblems` refuses a
+  record carrying more lines than the collector would write. That makes
+  the cut the only place a reading is lost and the boundary the only
+  place it is ambiguous. Moving the constant back beside the selector
+  hides the coupling the derivation depends on.
 - **Three invariants make a trace attributable to the arm it came
   from**, and `runArms` holds all three. The debug path is derived under
   the throwaway root and a path outside it is refused. The file is read

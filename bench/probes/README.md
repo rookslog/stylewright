@@ -148,21 +148,42 @@ at least one skill and the control loaded zero. It reads every such line rather
 than the first, because the harness repeats the line per session and a run that
 loaded one skill once and none the next time corroborates nothing.
 
+It reads the count for the scope the probe installed into, and never the total.
+The total counts managed skills, and a redirected home does not move the
+machine-global managed path. So on a machine carrying one managed skill the
+control's total is 1 rather than 0, and a reading off the total would block a
+valid probe through the very path this file calls uncontrollable. The record
+names its pathway, and the pathway names the column.
+
 A disagreement blocks the pass. Section 4.1 calls a trace naming the loaded file
 better evidence than either answer, and better evidence that contradicts the
 answers cannot sit beside a pass as a note. The case that motivated this: a
-control whose trace says `Loaded 1 unique skills` while its answer stays silent
-derived a pass, and the contradiction sat in the same file.
+control whose trace says it loaded a skill while its answer stays silent derived
+a pass, and the contradiction sat in the same file.
 
-Absence never blocks. A record that kept no trace reads `null`, and only `false`
-blocks. Every record collected before 2026-08-07 carries no trace, and refusing
-those would grade an old instrument by a new one.
+## What the check withholds, and why it says so
 
-A trace that a record kept and that names no loading reads as a disagreement.
-That is the state a renamed harness line produces, and the answer is to move the
-patterns in `bench/collect-probe.mjs` and `bench/probe.mjs` onto the new
-wording. Widening the reading until an empty trace passes would let a broken
-selector read as a clean run.
+A reading this check cannot make is withheld rather than turned into a failure.
+`trace_agrees` reads `null` and `trace_withheld` names the cause, because a
+reader cannot act on a `null` without knowing which state produced it.
+
+- `absent`. The arm kept no trace. Every record collected before 2026-08-07
+  carries this, and grading those would judge an old instrument by a new one.
+- `truncated`. The arm's trace stands at the retained-line bound, so a
+  disagreeing line past the cut is gone. The prefix would otherwise certify a
+  pass over lines nobody has.
+- `unscoped`. A retained line does not name the scope's own count, so the only
+  number left is the total.
+
+`false` means one thing only. The harness's own numbers contradict what the
+answers claim.
+
+Two residues follow, and this file states them rather than hiding them. A
+harness that stops printing the per-scope counts makes every probe unreadable
+instead of failing. A record whose trace is an empty list falls back to its
+answers, which is the state before this reading existed. The answer to both is
+to move the patterns in `bench/collect-probe.mjs` and `bench/probe.mjs` onto the
+harness's new wording.
 
 The check also prints `managed_seen`, which is the largest managed count either
 trace states. It blocks nothing. A managed skill that reached an arm came from
