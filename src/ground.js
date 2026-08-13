@@ -36,11 +36,16 @@ const IS_DELIMITER = (cells) => cells.length > 0
  *
  * The header and the delimiter were skipped rather than checked, so deleting
  * either one, or cutting either short, or renaming a heading to `Notes`, left
- * every row parsing and the coverage note printing full marks. In GFM each of
- * those either drops the rendered column or stops the block being a table at
- * all, so the person reading the matrix loses the record while the check
- * reports it intact. The record exists for the person, so the column they see
- * is the column that counts.
+ * every row parsing and the coverage note printing full marks. Deleting either
+ * line or cutting it short stops the block being a table at all. Renaming a
+ * heading renders the column under its new name, so the record is gone because
+ * `Notes` is not the column an audit lives in. Each way the person reading the
+ * matrix loses the record while the check reports it intact. The record exists
+ * for the person, so the column they see is the column that counts.
+ *
+ * `test/gfm-render.test.js` puts each of those through a real GFM parser, so
+ * the sentences above answer to a render rather than to a reading of the
+ * specification. It corrected this one. ADR-0028.
  *
  * A row inside a fenced block or indented four spaces is an EXAMPLE to a
  * reader and was a row to the checker, which is the same disagreement pointing

@@ -5,6 +5,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- A test renders a grounding matrix through a real GFM parser and compares what
+  a reader sees against what the checker read. Every claim this repository made
+  about how a matrix renders came from a reading of the specification, and the
+  contiguity hole on pull request #71 survived three review rounds because every
+  attack came from that same reading. `micromark` and its GFM table extension
+  join the development dependencies, and a test asserts that no module under
+  `src/` or `bin/` imports either. ADR-0028.
+
 ### Changed
 
 - `proportionate-execution` says how it differs from `de-slop`. Three of the
@@ -14,6 +24,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the prose-shape lane exists. `de-slop` treats one passage of prose, and this
   skill governs a session, so it holds what an agent does as well as what it
   says. The matrix disposes of both new units, as `E-28` and `N-09`.
+- Two claims about GFM that the new render test corrected. A line of prose
+  under a table does not end the table, so the check is stricter there than a
+  reader is. Renaming a matrix heading renders the column under the new name
+  rather than dropping it, and the record is lost either way.
 
 ## 0.3.0 — 2026-08-07
 
