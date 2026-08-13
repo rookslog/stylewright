@@ -7,7 +7,7 @@ This repository ships writing skills. Its own documents are written under one of
 those skills, and continuous integration checks them with its own tool. Hold a
 change here to the standard the repository sells.
 
-## Run these seven before you claim a change is done
+## Run these eight before you claim a change is done
 
 ```bash
 npm test                # unit and conformance tests
@@ -17,9 +17,10 @@ npm run check:docs      # every document's front matter fits the schema
 npm run check:probes    # every probe record carries what a reader derives from
 npm run check:resident  # the resident fragment still matches its skill
 npm run check:studies   # every promoted study still matches its own digests
+npm run check:editorial # the editorial audit record, and what it counts
 ```
 
-`npm run check` runs all seven.
+`npm run check` runs all eight.
 
 ## What counts as a defect here
 
@@ -512,6 +513,37 @@ issue #19 is that case.
 Which gate applies turns on where the list came from, and never on what it
 looks like.
 
+### Prose that no person read
+
+A pull request that changes a governed document gets one reading with `de-slop`
+and `compressed-deliberation` open. `stylewright lint` reads that prose clean
+whatever shape it is in, and `skills/craft/de-slop/SKILL.md` says so in its own
+words. So the reading is the only thing between an author and a merge, and
+`editorial/AUDITS.md` is where it gets recorded.
+
+`npm run check:editorial` checks that record and never the prose. It refuses a
+malformed row, a document the list does not govern, a document stamped twice,
+and a day the calendar does not carry or that lies ahead of the run. It refuses
+raw HTML anywhere in the record, because a table inside an HTML comment is a
+table no reader sees. It names a row that sits outside the table rather than
+dropping one, for the reason `unread-matrix-row` exists. The governed list
+lives in `scripts/check-editorial.mjs`, because a list the record carries is a
+denominator the record can shrink.
+
+It prints `editorial-coverage` and `editorial-staleness`. Both are notes, so
+they fail nothing. Do not promote either to an error, and do not remove either
+to quiet the output, for the reason the grounding notes carry: a green run over
+prose nobody has read is the gap, and the count is the answer to it. A stale
+stamp is a note as well, so no document blocks a merge for having changed.
+ADR-0021 holds that this discipline lives in a writer or a reviewer, and a gate
+on our own prose would diverge from it.
+
+A stamp records a person. An agent never writes one. A date written for a
+reading nobody did is this record's worst defect, and it is the `G` row defect
+one file over: the row borrows an authority the reading never granted, and no
+check here can catch it. ADR-0027 records the decision and what would reopen
+it.
+
 ## Known blind spots in the test suite
 
 Do not read a green pipeline as coverage of this one.
@@ -523,6 +555,11 @@ Do not read a green pipeline as coverage of this one.
   rename or a removal fails CI. It does **not** catch a signature change that
   keeps those names, because that needs a terminal. Treat a green run as
   evidence about our logic, not about the library's behaviour.
+- **An editorial stamp is a claim, and the suite checks its form alone.**
+  `test/editorial.test.js` covers the record's table, the day, the digest and
+  both notes. Nothing can tell a row a person wrote after reading from a row an
+  agent wrote to make the count move. The `G` row audit cell carries the same
+  hole, and the same answer: the commit names who wrote it.
 
 ## The Node floor is enforced, and how
 

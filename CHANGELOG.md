@@ -25,6 +25,23 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stale. `rowDigest` takes the pin and refuses a caller that omits it, for the
   reason `checkSkill` refuses a caller that omits the day. ADR-0026 records the
   decision and amends ADR-0018's digest. Issue #73.
+- The repository records who read its own prose, in `editorial/AUDITS.md`, and
+  `npm run check:editorial` checks that record. A row names a document, the UTC
+  day a person read it with `de-slop` and `compressed-deliberation` open, and a
+  digest of the bytes they read. The check refuses a malformed row, a document
+  the list does not govern, a document stamped twice, and a day the calendar
+  does not carry or that lies ahead of the run. It reads the record and never
+  the prose, because `de-slop` states in its own words that no check sees the
+  moves it names. What it counts, coverage and staleness, prints as a note and
+  fails nothing, so a document that changed since somebody read it blocks
+  nothing. A stamp records a person, and an agent never writes one. The record
+  ships with no rows, so the count reads zero of six until somebody reads a
+  document and says so. The governed list lives in the checker rather than in
+  the record, because a list the record carried would be a denominator the
+  record could shrink. ADR-0027 records the decision, the gate it declined, and
+  what would reopen it. Nothing installs from `editorial/`. Two published files
+  do change: `src/ground.js` exports the day reader this check dates a reading
+  with, and `package.json` names the new script. No behaviour in either moves.
 
 ### Changed
 
