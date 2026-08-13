@@ -13,7 +13,8 @@ The `Audited` cell of a `G` row says whether a person has read that row against
 the source. Every row starts at `unaudited`, and no run of the checker raises
 it. A person who checks a row writes the date and the row's digest in place of
 the word. Editing any other cell changes that digest, so the audit goes stale
-and the check says so.
+and the check says so. So does moving the source version this file declares,
+because an audit answers to one reading of the source.
 
 This file stays in the repository. It does not install with the skill.
 
@@ -40,6 +41,12 @@ The guidance in `SKILL.md` stays in our own words by doctrine rather than by
 licence. Filling the `Source text` column is a content change and it belongs to
 its own pass, because each quotation is a claim a reader must be able to check
 against the guideline it names.
+
+**Source version:** The Federal Plain Language Guidelines as the archived
+`GSA/plainlanguage.gov` repository held them on 2026-07-26, the day they were
+read. The source is a living repository and it publishes no edition number, so
+the day of the reading is the pin. A commit identifier would pin it tighter,
+and the reading did not record one.
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|

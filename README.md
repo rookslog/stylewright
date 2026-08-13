@@ -346,6 +346,14 @@ prints how many `G` rows in each matrix carry a valid current audit, beside its
 verdict. A date that is stale, malformed, or later than the day of the check
 does not count toward it.
 
+An audit answers to one reading of the source, so each matrix names that
+reading above its table, as `**Source version:**` and a pin. The pin is the
+edition, the commit, or the day somebody read the source, and it says `unread`
+while nobody has read it. It joins the digest,
+so moving the source on voids every audit in the file at once. A rule number
+does not change when a standard reaches its next issue, and without the pin
+every audit read as current over an issue nobody had opened.
+
 A clean check means the matrix matches the skill. It has never meant that a
 person confirmed a citation. Read the printed count rather than the verdict,
 because the count is the only line that reports the second thing.

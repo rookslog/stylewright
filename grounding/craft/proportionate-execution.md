@@ -12,7 +12,8 @@ The `Audited` cell of a `G` row says whether a person has read that row against
 the source. Every row starts at `unaudited`, and no run of the checker raises
 it. A person who checks a row writes the date and the row's digest in place of
 the word. Editing any other cell changes that digest, so the audit goes stale
-and the check says so.
+and the check says so. So does moving the source version this file declares,
+because an audit answers to one reading of the source.
 
 The `Source text` cell of a `G` row carries the words of the rule it cites, in
 quotation marks. Every row below reads `unquoted`, and that is the state the
@@ -91,6 +92,11 @@ reader how to read what follows, so both are graded the same way. Grading one
 a session default to more than the task needs, and that generalizes past the one
 model the sources document to any agent in a session. Its `Source location` cell
 says so, because the trace is where an ungrounded premise has to be visible.
+
+**Source version:** Anthropic's documentation of Claude Opus 5, model id
+`claude-opus-5`, as read up to the evidence cutoff of 2026-08-06. The target is
+a model build rather than a standard, so the build and the cutoff are what a
+reading of these pages is a reading of.
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|

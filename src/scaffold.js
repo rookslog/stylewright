@@ -136,7 +136,14 @@ check, and stop well short of a quoted set that could stand in for the source.
 **Quotation:** forbidden. No licence has been checked for this source yet, so
 this file starts where every file starts. Read the licence, record the check in
 \`source/${tier}/${name}.md\`, and then edit this line.
+${counts.G ? `
+Nobody has read this source, so the matrix names no reading of it. Replace the
+line below with the version, the commit, or the day you read it. While it
+stands, every \`G\` row here reads \`unaudited\`, and the check refuses an audit
+rather than binding one to a placeholder.
 
+**Source version:** unread
+` : ''}
 A row that tells the reader to do something is never an \`N\` row. The kinds
 below are a starting guess. Revise them as you write the skill.
 
