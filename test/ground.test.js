@@ -1435,7 +1435,7 @@ test('a source version the reader cannot find governs nothing', () => {
     const recorded = m.replace('| The Demo Standard, clause 4 | unaudited |',
       `| The Demo Standard, clause 4 | 2026-08-06 ${CURRENT} |`);
     assert.ok(check({ skillText: SKILL, matrixText: recorded })
-      .some((f) => f.code === 'audit-stale'),
+      .some((f) => f.code === 'audit-without-a-source-version'),
     `an audit counted under a source version that ${what}`);
   }
 });
@@ -1447,7 +1447,7 @@ test('a second source version is refused, and neither one governs', () => {
   const recorded = twice.replace('| The Demo Standard, clause 4 | unaudited |',
     `| The Demo Standard, clause 4 | 2026-08-06 ${CURRENT} |`);
   assert.ok(check({ skillText: SKILL, matrixText: recorded })
-    .some((f) => f.code === 'audit-stale'),
+    .some((f) => f.code === 'audit-without-a-source-version'),
   'a doubled declaration left one of them governing the digest');
 });
 
@@ -1498,4 +1498,64 @@ test('a broken table is not a matrix that cites no source', () => {
   assert.ok(!found.some((f) => f.code === 'matrix-source-version-without-g-rows'),
     'a declaration was refused for citing nothing, over a table nobody can read');
   assert.ok(!found.some((f) => f.code === 'matrix-no-source-version'));
+});
+
+// Codex autoreview on PR #101.
+
+test('a matrix that names no reading refuses an audit rather than binding one', () => {
+  // The scaffold shipped a placeholder pin, and a placeholder passes every
+  // word test there is. A person who audited a row under it bound the digest
+  // to the placeholder, and the check went green over the trap this whole
+  // change exists to close. `unread` is the honest state, and it is the one
+  // pin that refuses an audit outright.
+  const unread = MATRIX.replace(PINNED, '**Source version:** unread');
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: unread })), []);
+  const bound = unread.replace('| The Demo Standard, clause 4 | unaudited |',
+    `| The Demo Standard, clause 4 | 2026-08-06 ${rowDigest(parseMatrix(unread).find((r) => r.id === 'G-01'), '')} |`);
+  const found = check({ skillText: SKILL, matrixText: bound });
+  assert.ok(found.some((f) => f.code === 'audit-without-a-source-version'),
+    'an audit bound to a matrix that names no reading was counted');
+  // The remedy may not hand out a digest to paste, because pasting it is the
+  // defect. Every doubt case reads the same way, not only `unread`.
+  assert.ok(!found.some((f) => f.level === 'error' && /\b[0-9a-f]{8}\b/.test(f.message)));
+  assert.ok(found.some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 2')));
+});
+
+test('a declaration inside a comment, a CDATA block or an instruction is hidden', () => {
+  // The region model read a tag and nothing else, so CommonMark's other four
+  // raw HTML openers left a declaration reading as ordinary prose while the
+  // renderer hid it. Each runs to its own closer rather than to a blank line.
+  for (const [open, close] of [['<!--', '-->'], ['<?php', '?>'], ['<![CDATA[', ']]>'], ['<!DOCTYPE html', '>']]) {
+    const buried = MATRIX.replace(PINNED, `${open}\n\n${PINNED}\n\n${close}`);
+    assert.deepEqual(readSourceVersion(buried).map((v) => v.inHtml), [true],
+      `a declaration inside ${open} read as visible prose`);
+    assert.ok(check({ skillText: SKILL, matrixText: buried })
+      .some((f) => f.code === 'matrix-source-version-inside-html'));
+    const quoted = MATRIX.replace(DECLARED, `${open}\n\n${DECLARED}\n\n${close}`);
+    assert.ok(check({ skillText: SKILL, matrixText: quoted })
+      .some((f) => f.code === 'matrix-declaration-inside-html'),
+    `a quotation declaration inside ${open} read as visible prose`);
+  }
+});
+
+test('a file written with CRLF still declares what it declares', () => {
+  const crlf = MATRIX.replace(/\n/g, '\r\n');
+  assert.deepEqual(readSourceVersion(crlf).map((v) => v.pin), [PIN]);
+  assert.ok(!check({ skillText: SKILL, matrixText: crlf })
+    .some((f) => f.code === 'matrix-no-source-version'),
+  'a CRLF file was told it declares no source version');
+});
+
+test('the pin stops where the renderer starts another block', () => {
+  // It stopped at a blank line, a heading and the table. GFM ends a paragraph
+  // at more than those, and a blockquote under the declaration was read as
+  // part of the pin while the reader saw a separate block.
+  for (const next of ['> A note about it.', '---', '- An item.', '<!-- hidden -->']) {
+    const trailed = MATRIX.replace(PINNED, `${PINNED}\n${next}`);
+    assert.deepEqual(readSourceVersion(trailed).map((v) => v.pin), [PIN],
+      `the pin swallowed ${JSON.stringify(next)}, which the renderer shows as its own block`);
+  }
+  // A wrapped line still continues it, which is the case the stop must not eat.
+  const wrapped = MATRIX.replace(PINNED, '**Source version:** The Demo Standard, issue 1 of\n2026-08-06.');
+  assert.deepEqual(readSourceVersion(wrapped).map((v) => v.pin), [PIN]);
 });

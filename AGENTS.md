@@ -169,6 +169,13 @@ to date those for themselves. The pin is the whole paragraph rather than the
 first line, because house style wraps at eighty columns and reading the line
 alone bound `Issue 9, January` while the file said `Issue 9, January 2025`.
 
+A matrix whose source nobody has read declares `unread`, which is the state
+`unaudited` and `unquoted` already give their own cells. It names no reading,
+so it binds no digest, and the check refuses a recorded audit under it by name
+rather than printing a digest to paste. Every doubt case reads that way, and
+the scaffold ships `unread` because a placeholder pin passes every word test
+there is.
+
 A matrix with a `G` row carries the line, and a matrix without one is refused
 for carrying it. The placement doctrine is ADR-0020's, inherited whole: above
 the header row, outside raw HTML, stated once, and a second declaration refused

@@ -137,10 +137,12 @@ check, and stop well short of a quoted set that could stand in for the source.
 this file starts where every file starts. Read the licence, record the check in
 \`SOURCE.md\`, and then edit this line.
 ${counts.G ? `
-**Source version:** FILL IN the reading these rows are audited against. Name a
-version, a commit, or the day somebody read the source. A word that stands for
-whichever reading a reader happens to fetch names none of them, and the check
-refuses one.
+Nobody has read this source, so the matrix names no reading of it. Replace the
+line below with the version, the commit, or the day you read it. While it
+stands, every \`G\` row here reads \`unaudited\`, and the check refuses an audit
+rather than binding one to a placeholder.
+
+**Source version:** unread
 ` : ''}
 A row that tells the reader to do something is never an \`N\` row. The kinds
 below are a starting guess. Revise them as you write the skill.

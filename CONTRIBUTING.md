@@ -174,7 +174,13 @@ cutoff. The check refuses a pin that means whichever reading a reader happens
 to fetch, so do not write `latest` or `HEAD`.
 
 The pin is the whole paragraph, so wrap the line where you like. It ends at the
-blank line under it, and the paragraph after that is not part of it.
+blank line under it, at the next heading, at the table, and wherever the
+renderer starts another block.
+
+Write `unread` while nobody has read the source. It names no reading, so it
+records none: every `G` row stays `unaudited`, and the check refuses an audit
+under it rather than giving you a digest to paste. A scaffolded matrix starts
+there.
 
 A matrix with a `G` row carries the line. A matrix without one is refused for
 carrying it, because no row there answers to a source. The placement rules are

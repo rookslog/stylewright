@@ -15,7 +15,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nobody had opened. A matrix with a `G` row carries the line, and a matrix
   without one is refused for carrying it. The pin is the whole paragraph, so a
   wrapped line binds every word a reader sees. `latest` and `HEAD` are refused,
-  because a reader has to date those for themselves. Placement follows the
+  because a reader has to date those for themselves. A matrix whose source
+  nobody has read declares `unread`, which names no reading, binds no digest,
+  and refuses a recorded audit by name rather than printing one to paste. A
+  scaffolded matrix starts there. Placement follows the
   quotation declaration: above the header row, outside raw HTML, once, and a
   second line refused rather than overruling the first. A declaration the check
   cannot read leaves the matrix naming no reading, and every audit in it reads

@@ -67,6 +67,14 @@ the matrix's pin. ADR-0020 had already added the `Source text` cell to
 it, so the digest reads five cells and the pin, and ADR-0018's own text
 names four. Read this decision and ADR-0020 for the current definition.
 
+`unread` is the state of a matrix whose source nobody has opened, and it is
+the spelling `unaudited` and `unquoted` already give their own cells. It names
+no reading, so it binds no digest and it refuses a recorded audit by name.
+Every case where the check cannot read a pin takes that road, and the remedies
+print no digest there. Without it the scaffold wrote a placeholder, which
+passes every word test there is, and an audit recorded under one bound to the
+placeholder while the run stayed green.
+
 ## What it costs
 
 The version is stated twice, in `SOURCE.md` as prose for a reader and in

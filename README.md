@@ -348,7 +348,8 @@ does not count toward it.
 
 An audit answers to one reading of the source, so each matrix names that
 reading above its table, as `**Source version:**` and a pin. The pin is the
-edition, the commit, or the day somebody read the source. It joins the digest,
+edition, the commit, or the day somebody read the source, and it says `unread`
+while nobody has read it. It joins the digest,
 so moving the source on voids every audit in the file at once. A rule number
 does not change when a standard reaches its next issue, and without the pin
 every audit read as current over an issue nobody had opened.

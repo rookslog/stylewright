@@ -325,6 +325,42 @@ const HTML_SELF_CLOSES = /\/>\s*$/;
 const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
 
 /**
+ * The raw HTML a tag pattern does not open. CommonMark starts a block on four
+ * more shapes, and each runs to its own closer rather than to a blank line, so
+ * a declaration between `<!--` and `-->` was ordinary prose to this file and
+ * nothing at all to the reader. `<!` last, because `<![CDATA[` and `<!DOCTYPE`
+ * both begin with it and only one of them ends at `>`.
+ */
+const HTML_HIDES = [
+  [/^ {0,3}<!--/, '-->'],
+  [/^ {0,3}<\?/, '?>'],
+  [/^ {0,3}<!\[CDATA\[/, ']]>'],
+  [/^ {0,3}<!/, '>'],
+];
+
+/**
+ * Whether the renderer starts another block here. A paragraph ends at more
+ * than a blank line, a heading and a fence, and the pin ran on through every
+ * other one: a blockquote under the declaration was part of the pin to this
+ * file and a separate block to the reader.
+ *
+ * This is CommonMark's own list of what interrupts a paragraph, not a list of
+ * shapes somebody met and patched. ADR-0016 asks which form the checker reads
+ * a line as, and the answer for the pin is "the paragraph it continues", so
+ * the question is whether a renderer continues it too. A shape missing here
+ * costs a pin longer than the reader's paragraph, which shows up as an audit
+ * gone stale rather than as a pin nobody saw.
+ */
+const INTERRUPTS = [
+  /^ {0,3}>/,
+  /^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$/,
+  /^ {0,3}(?:[-*+]|1[.)])(?:[ \t]|$)/,
+  /^ {0,3}(?:=+|-+)[ \t]*$/,
+  /^ {0,3}<[!?/a-zA-Z]/,
+];
+const interrupts = (line) => INTERRUPTS.some((re) => re.test(line));
+
+/**
  * Every line in the file that `marker` matches, with the paragraph under it and
  * where the reader would find it.
  *
@@ -336,9 +372,14 @@ const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
  */
 function readMarked(text, headerLine, marker, { untilBlank = false } = {}) {
   const found = [];
-  const lines = text.split('\n');
+  // A trailing carriage return is not part of the line a reader sees. The
+  // split models `\n` alone, so on a CRLF checkout every line ended in a byte
+  // no rule here names, and the end-anchored source version matched nothing:
+  // a declared matrix was told it declares no reading.
+  const lines = text.split('\n').map((l) => l.replace(/\r$/, ''));
   let fence = null;
   let html = 0;
+  let hidden = null;
   for (const [i, line] of lines.entries()) {
     const fenced = MATRIX_FENCE.exec(line);
     if (fence) {
@@ -348,6 +389,19 @@ function readMarked(text, headerLine, marker, { untilBlank = false } = {}) {
     if (fenced) { fence = fenced[2]; continue; }
     if (HTML_CLOSES.test(line)) html = Math.max(0, html - 1);
     else if (HTML_OPENS.test(line) && !HTML_SELF_CLOSES.test(line)) html += 1;
+    // The opening and the closing lines are inside the region themselves, so
+    // the state is read before it is updated. A region that opens and closes
+    // on one line hides that line and nothing under it.
+    let hiddenHere = Boolean(hidden);
+    if (hidden) {
+      if (line.includes(hidden)) hidden = null;
+    } else {
+      const opener = HTML_HIDES.find(([open]) => open.test(line));
+      if (opener) {
+        hiddenHere = true;
+        if (!line.includes(opener[1])) [, hidden] = opener;
+      }
+    }
     const stated = marker.exec(line);
     if (!stated) continue;
     // The reason runs to the next heading or to the table, whichever comes
@@ -377,14 +431,14 @@ function readMarked(text, headerLine, marker, { untilBlank = false } = {}) {
       }
       if (inner) { shown = inner[2]; continue; }
       if (HEADING.test(lines[j])) break;
-      if (untilBlank && !lines[j].trim()) break;
+      if (untilBlank && (!lines[j].trim() || interrupts(lines[j]))) break;
       reason.push(lines[j]);
     }
     found.push({
       line: i + 1,
       stated,
       reason: reason.join(' '),
-      inHtml: html > 0,
+      inHtml: html > 0 || hiddenHere,
       belowTable: headerLine !== null && i + 1 > headerLine,
     });
   }
@@ -439,6 +493,17 @@ export function readDeclaration(text, headerLine = null) {
  * here can check that, exactly as no program can check a quotation's accuracy.
  */
 const SOURCE_VERSION = /^\*\*Source version:\*\*(?:\s(.*))?$/;
+/**
+ * The honest state of a matrix whose source nobody has opened, and the
+ * spelling `unaudited` and `unquoted` already give their own cells.
+ *
+ * The scaffold had no such state and wrote a placeholder, which every word
+ * test passes. A person who audited a row under it bound the digest to the
+ * placeholder, and the run went green over the trap this check exists to
+ * close. `unread` names no reading, so it binds no digest and refuses an
+ * audit outright.
+ */
+const UNREAD = 'unread';
 // Loose on purpose, and every shape it catches is refused, so a wider match
 // fails closed. A pin the reader has to date for themselves is not a pin.
 const UNPINNED = /\b(?:latest|newest|current|head|most recent)\b/i;
@@ -451,6 +516,7 @@ export function readSourceVersion(text, headerLine = null) {
       pin,
       inHtml: v.inHtml,
       belowTable: v.belowTable,
+      unread: pin === UNREAD,
       unpinned: !pin || UNPINNED.test(pin),
     };
   });
@@ -1026,7 +1092,12 @@ export function checkSkill({ skillText, matrixText, now }) {
   // rows were read against has no audit that means anything, so the digest
   // binds the empty pin and every recorded audit goes stale.
   const legible = versions.filter((v) => !v.belowTable && !v.inHtml && !v.unpinned);
-  const pin = versions.length === 1 && legible.length === 1 ? legible[0].pin : '';
+  // Whether this matrix names a reading at all. `unread` is a declaration and
+  // not a pin, so it takes the same road as a declaration nobody can read: no
+  // digest binds, and the audit findings below refuse a stamp rather than
+  // printing one to paste.
+  const names = versions.length === 1 && legible.length === 1 && !legible[0].unread;
+  const pin = names ? legible[0].pin : '';
   if (versions.length > 1) {
     findings.push({
       level: 'error',
@@ -1304,7 +1375,23 @@ export function checkSkill({ skillText, matrixText, now }) {
       }
       return;
     }
-    const remedy = `Write \`${UNAUDITED}\`, or a date and \`${rowDigest(row, pin)}\`.`;
+    // A matrix that names no reading refuses the stamp instead of grading it.
+    // `auditState` would call a digest taken over the empty pin `recorded`, and
+    // the remedies below would hand the contributor that digest to paste, which
+    // is the placeholder trap one door along.
+    if (!names && ['recorded', 'stale', 'ahead'].includes(state)) {
+      findings.push({
+        level: 'error',
+        code: 'audit-without-a-source-version',
+        message: `${row.id}: this matrix names no reading of its source, so nobody read this `
+          + `row against one. Write \`${UNAUDITED}\`, and record the audit when the matrix `
+          + 'names the reading it was done against.',
+      });
+      return;
+    }
+    const remedy = names
+      ? `Write \`${UNAUDITED}\`, or a date and \`${rowDigest(row, pin)}\`.`
+      : `Write \`${UNAUDITED}\`. This matrix names no reading, so no digest here records one.`;
     if (state === 'absent') {
       findings.push({
         level: 'error',
@@ -1381,7 +1468,7 @@ export function checkSkill({ skillText, matrixText, now }) {
     findings.push({
       level: 'note',
       code: 'audit-coverage',
-      message: `${sourced.filter((r) => auditState(r, today, pin).state === 'recorded').length} `
+      message: `${names ? sourced.filter((r) => auditState(r, today, pin).state === 'recorded').length : 0} `
         + `of ${sourced.length} G rows record a person reading them against the source.`,
     });
     // The second number the verdict cannot carry. A reader holds the
