@@ -110,8 +110,13 @@ reader is owed the evidence instead.
 A probe derives a pass when both arms answered and four things then hold. The
 installed arm repeated the nonce. The empty-home control answered and did not
 repeat it, which catches a probe passing for the wrong reason. The flags were a
-probe arm's. And the harness trace, where the record kept one, agrees with what
-the answers claim.
+probe arm's. And the harness trace did not contradict what the answers claim.
+
+Read that fourth condition as it is written. The gate is that the trace did not
+disagree, and it is not that the trace agreed. A record whose trace the check
+could not read passes on the strength of its answers, uncorroborated, and the
+next section names every state that happens in. Stating the gate as agreement
+would claim a corroboration the code does not require.
 
 `armAnswered` in `bench/probe.mjs` defines what answering means, and every
 check reads it from there. Saying only that the control did not repeat the nonce
@@ -174,9 +179,12 @@ reader cannot act on a `null` without knowing which state produced it.
   pass over lines nobody has.
 - `unscoped`. A retained line does not name the scope's own count, so the only
   number left is the total.
+- `unrequested`. The record carries a trace and its own flag set never asked
+  for one, so nothing in that run could have written the lines it holds.
 
 `false` means one thing only. The harness's own numbers contradict what the
-answers claim.
+answers claim. A withheld reading passes, so a probe in any of the four states
+above is corroborated by its answers alone.
 
 Two residues follow, and this file states them rather than hiding them. A
 harness that stops printing the per-scope counts makes every probe unreadable
@@ -214,6 +222,14 @@ home is respected and that the two arms differ by the installed skill alone. It
 says nothing about the empty spelling. The measurement that `''` loads zero
 skills over an installed tree came from a scratchpad diagnostic, and no
 committed record carries it.
+
+One thing a committer checks by hand. A retained `Loading skills from:` line
+carries absolute paths, and the throwaway home sits under the temporary
+directory, so the committed line names whatever `TMPDIR` resolved to. On macOS
+that is an opaque per-user token. On Windows the temporary directory sits under
+the user profile, so the line would carry the account name. The check scans a
+record for credential shapes and asks nothing about operator identifiers, and
+issue #114 carries that decision.
 
 One residue, stated. The record is the author's own file, like every other
 record in this protocol. The check derives the outcome from the bytes, and it

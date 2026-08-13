@@ -17,7 +17,7 @@ import {
   TUPLE, ENV_CLASSES, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory,
   describe, redact, summarise, traceProblems, loadCounts, traceAgrees, traceReading,
   managedSeen, sourceCount, TRACE_LINE_LIMIT,
-  REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG, flagShapeProblems,
+  REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG, flagShapeProblems, flagsSeen,
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
@@ -628,10 +628,21 @@ test('a directory of records reports every problem in one pass', async () => {
   await fs.writeFile(path.join(dir, 'good.json'), JSON.stringify(record()));
   await fs.writeFile(path.join(dir, 'bad.json'), JSON.stringify(record({ date: 'today' })));
   await fs.writeFile(path.join(dir, 'torn.json'), '{ not json');
-  const { problems, lines } = await checkDirectory(dir);
-  assert.equal(lines.length, 1);
+  const { problems, lines, outcomes } = await checkDirectory(dir);
   assert.match(problems.join(' '), /bad.json: date is YYYY-MM-DD/);
   assert.match(problems.join(' '), /torn.json: not readable as JSON/);
+  // Every record the directory carries gets a line, including the two this
+  // check cannot read. Dropping them shrank the DENOMINATOR, so the census
+  // described fewer records than the directory held — the `unread-matrix-row`
+  // defect reappearing in the probe corpus.
+  assert.equal(lines.length, 3);
+  assert.deepEqual(outcomes, { pass: 1, fail: 0, unread: 2 });
+  assert.match(lines.join(' '), /bad\.json: derives NOTHING \(the record is malformed/);
+  assert.match(lines.join(' '), /torn\.json: derives NOTHING \(the file is not readable/);
+  // And the summary carries them, so a reader is never told three records were
+  // well formed when one of them was never read.
+  assert.match(summarise(outcomes), /3 checked: 1 derives PASS, 2 unread/);
+  assert.doesNotMatch(summarise(outcomes), /well formed/);
 });
 
 test('a missing probe directory holds no records and reports no problem', async () => {
@@ -1034,7 +1045,7 @@ test('a directory of records reports what each one derived', async () => {
     },
   })));
   const { outcomes } = await checkDirectory(dir);
-  assert.deepEqual(outcomes, { pass: 1, fail: 1 });
+  assert.deepEqual(outcomes, { pass: 1, fail: 1, unread: 0 });
 });
 
 // A description this probe cannot extend by appending to its line. Every skill
@@ -1123,7 +1134,10 @@ test('a trace path inside a .claude directory is refused, and never quoted back'
 // answers and the flags alone. A record whose control trace said `Loaded 1
 // unique skills` derived PASS on the strength of an answer that said nothing.
 const traced = (installed, control) => {
-  const r = record();
+  // The flag set carries `--debug-file`, because a record whose invocation
+  // never asked for a trace and carries one anyway is now withheld as
+  // `unrequested`. A fixture without it would be testing that case instead.
+  const r = record({ flags: armFlags('opus', '/tmp/sw-probe-ab12/harness-debug.log') });
   r.installed.trace = installed;
   r.control.trace = control;
   return r;
@@ -1355,15 +1369,17 @@ test('a trace standing at the limit is withheld, because its tail may be gone', 
     { agrees: true, withheld: null });
 });
 
-// The bound is the reader's constant, so a record may never carry more lines
-// than the collector would write. Without this the cut is not the only place a
-// reading is lost, and the boundary test above stops meaning anything.
-test('a record carrying more lines than the bound is refused', () => {
+// The bound decides a READING and never a record's validity. An earlier pass
+// refused a record carrying more lines than the collector writes, which made a
+// probe a MALFORMED FILE — the ADR-0024 inversion one column over — and meant a
+// lowered constant would retire committed evidence. A long trace is withheld
+// instead, which is conservative in the same direction and costs no record.
+test('a trace past the bound is withheld, and never makes the record malformed', () => {
   const over = Array.from({ length: TRACE_LINE_LIMIT + 1 }, () => LOADED_ONE);
-  assert.match(traceProblems(over).join(' '), /at most 40 lines/);
-  const record = traced(over, [LOADED_NONE]);
-  assert.match(checkRecord(record).join(' '), /installed.trace keeps at most/);
-  assert.deepEqual(traceProblems(over.slice(1)), []);
+  assert.deepEqual(traceProblems(over), []);
+  const long = traced(over, [LOADED_NONE]);
+  assert.deepEqual(checkRecord(long), []);
+  assert.deepEqual(traceReading(long), { agrees: null, withheld: 'truncated' });
 });
 
 // Codex, PR #110, P1. The total counts managed skills, and a redirected home
@@ -1414,4 +1430,139 @@ test('a line without the scope count is withheld, never read off the total', () 
   const noPathway = traced([LOADED_ONE], [LOADED_NONE]);
   noPathway.identity.pathway = '';
   assert.deepEqual(traceReading(noPathway), { agrees: null, withheld: 'unscoped' });
+});
+
+// The committed corpus, pinned to the reading it was committed under.
+//
+// `TRACE_LINE_LIMIT` and the reading around it are ordinary code, and the
+// records under `bench/probes/` are append-only evidence. Nothing bound one to
+// the other, so an edit to the constant silently re-graded committed bytes:
+// lowering it retired records the corpus depends on, and raising it turned a
+// trace cut at the bound into one that reads complete, which is the codex P1
+// restored by a one-line edit. This pins each record's whole derived tuple, so
+// any such edit fails CI and a person decides rather than a constant.
+//
+// A record ADDED here is expected to fail this test once. Add its row after
+// reading what the check derived for it, which is the point.
+const COMMITTED = {
+  '2026-08-07-claude-user-0969efef.json': {
+    installed_served: true,
+    control_served: true,
+    discovered: false,
+    control_clean: true,
+    isolated: false,
+    trace_agrees: null,
+    trace_withheld: 'absent',
+    managed_seen: null,
+    passes: false,
+  },
+  '2026-08-07-claude-user-bfbea42b.json': {
+    installed_served: true,
+    control_served: true,
+    discovered: true,
+    control_clean: true,
+    isolated: true,
+    trace_agrees: null,
+    trace_withheld: 'absent',
+    managed_seen: null,
+    passes: true,
+  },
+  '2026-08-07-claude-user-d80e11b7.json': {
+    installed_served: true,
+    control_served: true,
+    discovered: true,
+    control_clean: true,
+    isolated: true,
+    trace_agrees: true,
+    trace_withheld: null,
+    managed_seen: 0,
+    passes: true,
+  },
+};
+
+test('every committed record still derives what it derived when it was committed', async () => {
+  const dir = new URL('../bench/probes/', import.meta.url);
+  const names = (await fs.readdir(dir)).filter((n) => n.endsWith('.json')).sort();
+  assert.deepEqual(names, Object.keys(COMMITTED).sort(),
+    'a record joined or left the corpus, so the pinned readings need a person');
+  for (const name of names) {
+    const record = JSON.parse(await fs.readFile(new URL(name, dir), 'utf8'));
+    assert.deepEqual(checkRecord(record, name), [],
+      `${name} must stay readable: a committed record is evidence, not a draft`);
+    assert.deepEqual(deriveOutcome(record), COMMITTED[name],
+      `${name} derives something other than the reading it was committed under`);
+  }
+});
+
+// The census counts every record the directory carries. A record this check
+// cannot read is NAMED, never dropped, because a count that omits its hard
+// cases describes a corpus nobody has.
+test('an unreadable record stays in the census rather than leaving it', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-census-'));
+  await fs.writeFile(path.join(dir, 'a-good.json'), JSON.stringify(record()));
+  await fs.writeFile(path.join(dir, 'b-bad.json'), JSON.stringify(record({ kind: 'other' })));
+  const { lines, outcomes } = await checkDirectory(dir);
+  assert.equal(lines.length, 2, 'the denominator carries every record on disk');
+  assert.deepEqual(outcomes, { pass: 1, fail: 0, unread: 1 });
+  assert.match(lines[1], /b-bad\.json: derives NOTHING/);
+});
+
+// Cluster B: the record check asks of a record what the collector could have
+// produced. Each case below was a way for a record to be looser than the
+// writer, on a field the trace reading depends on.
+
+// `parsePathway` refuses these at write time. `checkRecord` asked only whether
+// the field was text, so a typo disabled the trace reading permanently and
+// reported the cause as `unscoped` — which names a harness that printed no
+// scope column. The record's own defect was reported as the harness's.
+test('a pathway the collector would refuse is refused here too', () => {
+  for (const pathway of ['claude:usr', 'claude:user ', 'nonsense', 'claude:user:extra']) {
+    const identity = { ...record().identity, pathway };
+    assert.match(checkRecord(record({ identity })).join(' '), /identity.pathway is <platform>:<scope>/,
+      `${pathway} must be refused`);
+  }
+  assert.deepEqual(checkRecord(record()), []);
+});
+
+// A trace beside a flag set that never asked for one. Nothing in that run could
+// have written the lines the record carries, so certifying agreement from them
+// reads evidence the record itself says was never collected.
+test('a trace the record\'s own flags never asked for is withheld', () => {
+  const unasked = record();
+  unasked.installed.trace = [LOADED_ONE];
+  unasked.control.trace = [LOADED_NONE];
+  assert.equal(unasked.flags.includes(TRACE_FLAG), false, 'the fixture asks for no trace');
+  assert.deepEqual(checkRecord(unasked), [], 'a record inconsistency, not a broken file');
+  assert.deepEqual(traceReading(unasked), { agrees: null, withheld: 'unrequested' });
+  // The same bytes with the flag present read normally.
+  assert.deepEqual(traceReading(traced([LOADED_ONE], [LOADED_NONE])),
+    { agrees: true, withheld: null });
+  // And a record with no trace at all still reads `absent`, not `unrequested`.
+  assert.equal(traceReading(record()).withheld, 'absent');
+});
+
+// `flagsSeen` comes off the walk that reports the problems, so a flag sitting
+// in a VALUE position is not a flag the arm ran.
+test('a flag in a value position is not a flag the arm ran', () => {
+  assert.equal(flagsSeen(armFlags('opus', '/tmp/x/debug.log')).has(TRACE_FLAG), true);
+  assert.equal(flagsSeen(armFlags('opus')).has(TRACE_FLAG), false);
+  // `--model --debug-file` consumes the trace flag as the model alias.
+  assert.equal(flagsSeen(['-p', '--model', TRACE_FLAG]).has(TRACE_FLAG), false);
+  assert.equal(flagsSeen('not a list').size, 0);
+});
+
+// The guard's docstring promised a `.claude` segment refused on either
+// separator, and requiring one in FRONT admitted a relative path whose FIRST
+// segment is `.claude`. An operator running from their own home resolves that
+// straight into the tree the guard exists to keep out.
+test('a .claude segment is refused at the start of a path as well', () => {
+  const inside = (p) => [...armFlags('opus'), TRACE_FLAG, p];
+  for (const p of ['.claude/trace.log', '.claude\\trace.log',
+    'x/.claude/trace.log', '/Users/someone/.claude/debug.log']) {
+    assert.match(isolationProblems(inside(p)).join(' '), /writes into a .claude directory/,
+      `refused: ${p}`);
+  }
+  // A directory merely NAMED .claude-something is still not a .claude segment.
+  assert.deepEqual(isolationProblems(inside('.claude-probe/debug.log')), []);
+  assert.deepEqual(isolationProblems(inside('/tmp/sw-probe-ab12/harness-debug.log')), []);
 });

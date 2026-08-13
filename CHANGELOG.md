@@ -70,11 +70,26 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   answer that said nothing. ADR-0024 records the decisions and what would
   reopen each one. Issue #94.
 - `TRACE_LINE_LIMIT` moved into `bench/probe.mjs`, beside the derivation that
-  depends on it, and `traceProblems` refuses a record carrying more lines than
-  the collector would write. The collector cuts the kept set at that bound, so
-  a trace standing at it may be the prefix of a longer run. Reading the prefix
-  as the whole trace let twenty sessions loading one skill certify a pass over
-  a twenty-first that loaded zero.
+  depends on it. The collector cuts the kept set at that bound, so a trace
+  standing at it may be the prefix of a longer run. Reading the prefix as the
+  whole trace let twenty sessions loading one skill certify a pass over a
+  twenty-first that loaded zero. The bound decides a reading and never a
+  record's validity, because refusing a record for its length made a probe a
+  malformed file and would have retired committed evidence whenever somebody
+  lowered the constant.
+- `npm run check:probes` names a record it cannot read and counts it as
+  `unread`. It counted an outcome only for a record that checked clean, so a
+  record that became malformed left the census and the count described fewer
+  records than the directory carried. A test pins each committed record's whole
+  derived tuple, so an edit to the reading or its constants fails the suite
+  rather than silently re-grading append-only evidence.
+- `checkRecord` asks of a record what the collector could have produced.
+  `identity.pathway` parses as `<platform>:<scope>` with both halves known,
+  because the trace reading is keyed on it and a typo reported the record's own
+  defect as the harness's. A record carrying a trace whose flag set never asked
+  for one withholds as `unrequested`. The `.claude` refusal on the trace path
+  anchors at a segment boundary, so a relative `.claude/trace.log` is refused
+  as well as a nested one.
 - The probe's arm sequence moved out of `main`, into `runArms`, and three
   invariants ADR-0024 states as prose now have a test each. The debug path is
   derived under the throwaway root and a path outside it is refused. The trace

@@ -233,14 +233,40 @@ reader the number and not a verdict. `check:probes` prints it on every line, for
 the reason `ground --check` prints its own counts: a note nothing reads is a
 comment.
 
-**The bound lives with the reader.** `TRACE_LINE_LIMIT` moved from
-`bench/collect-probe.mjs` into `bench/probe.mjs`, because the derivation is what
-has to know that a list of exactly that length may be a prefix. The collector
-imports it and cuts at it, and `traceProblems` refuses a record carrying more
-lines than the collector would write. So the cut is the only place a reading is
-lost, and the boundary is the only place it is ambiguous. At the boundary a
-complete run and a cut one are indistinguishable, so the boundary itself is
-withheld.
+**The bound lives with the reader, and it decides a reading and never a
+record's validity.** `TRACE_LINE_LIMIT` moved from `bench/collect-probe.mjs`
+into `bench/probe.mjs`, because the derivation is what has to know that a list
+of exactly that length may be a prefix. A trace at or past the bound is
+withheld, and at the boundary a complete run and a cut one are
+indistinguishable, so the boundary itself is withheld.
+
+An earlier draft of this section also had `traceProblems` refuse a record
+carrying more lines than the collector would write. That looked like pinning the
+coupling and it was this ADR's own inversion, one column over from the flag
+case: it made such a probe a MALFORMED FILE rather than a failed or unreadable
+one. Worse, lowering the constant would have retired committed evidence, and
+`checkDirectory` counted an outcome only for a record that checked clean, so the
+corpus would have left the census with nothing saying so. That is the
+`unread-matrix-row` defect in the probe corpus. Two things answer it. Length is
+an input to the reading alone. And the census NAMES a record it cannot read,
+counting it as `unread`, so a denominator can no longer shrink quietly.
+
+**A committed record is pinned to the reading it was committed under.** The
+records under `bench/probes/` are append-only evidence and the reading around
+them is ordinary code, so nothing stopped an edit to a constant from silently
+re-grading them. `test/probe.test.js` pins each committed record's whole derived
+tuple. Raising the bound would turn a trace cut at it into one that reads
+complete, which is the codex finding restored by a one-line edit, and the pin is
+what makes that a CI failure and a person's decision.
+
+**The record check asks what the writer asks.** `identity.pathway` was validated
+only as text while the whole reading is keyed on it, so a typo disabled the
+trace check permanently and reported the cause as `unscoped` — a harness-wording
+state. The RECORD's defect was reported as the HARNESS's, and a misattributed
+cause is worse than a missing one. The same looseness admitted a record carrying
+a trace whose own flag set never asked for one, which now withholds as
+`unrequested`, and a `--debug-file` value whose FIRST segment is `.claude`,
+which the guard now refuses.
 
 **What would reopen the withholding.** A harness whose skill-loading line drops
 the per-scope counts, or one that emits more than forty of those lines in an
@@ -248,6 +274,18 @@ ordinary run. The first makes every probe read `unscoped` and the second makes
 every probe read `truncated`, and in both cases the probe stops answering rather
 than starting to fail. Raising the bound is a decision about what a committed
 record may carry, and it belongs here rather than in a patch.
+
+**What would reopen the blocking.** A harness that prints a zero-loading line in
+an ordinary run. Every `Loaded` line is read, so one later session that loaded
+nothing makes the installed arm read `false` and every probe derive FAIL. That
+contradicts the stance the paragraph above states, which is that a harness
+change stops a probe answering rather than starting to fail, and the blocking
+direction is the one place that stance does not hold by construction. The
+reading is also non-monotonic there: the same harness behaviour blocks below the
+bound and withholds at or above it, because withholding on truncation and
+reading every line cannot both be strict. If that harness arrives, the exit is
+to read the LAST loading line per arm rather than every one, and to say so here
+rather than to relax the rule quietly.
 
 **The arm sequence is extracted.** `runArms` in `bench/collect-probe.mjs` holds
 the three invariants above, and `main` calls it. It builds one flag set above

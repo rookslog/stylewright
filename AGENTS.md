@@ -464,20 +464,42 @@ number published in `bench/README.md`.
   construction, never by subtracting it from the total.
 - **A reading this check cannot make is withheld, and it names the
   cause.** `trace_agrees` reads `null` and `trace_withheld` says
-  `absent`, `truncated`, or `unscoped`, because a `null` whose cause a
-  reader cannot see is the wrong number one step removed. `truncated`
-  is the one that has to exist: `skillTraceLines` cuts at
+  `absent`, `truncated`, `unscoped`, or `unrequested`, because a `null`
+  whose cause a reader cannot see is the wrong number one step removed.
+  `truncated` is the one that has to exist: `skillTraceLines` cuts at
   `TRACE_LINE_LIMIT`, and treating the retained prefix as the whole
   trace let twenty sessions loading one skill certify a pass over a
   twenty-first that loaded zero. Do not turn a withheld reading into a
   failure. An unreadable artifact is answered here by withholding the
-  number and naming why, the way a broken matrix table is.
-- **`TRACE_LINE_LIMIT` lives in `bench/probe.mjs`, with the reader.**
-  The collector imports it and cuts at it, and `traceProblems` refuses a
-  record carrying more lines than the collector would write. That makes
-  the cut the only place a reading is lost and the boundary the only
-  place it is ambiguous. Moving the constant back beside the selector
-  hides the coupling the derivation depends on.
+  number and naming why, the way a broken matrix table is. A withheld
+  reading PASSES, so a document that states the gate as "the trace
+  agrees" claims a corroboration the code does not require.
+- **`TRACE_LINE_LIMIT` lives in `bench/probe.mjs`, with the reader, and
+  it decides a reading and never a record's validity.** The collector
+  imports it and cuts at it, and a trace at or past the bound is
+  withheld. Refusing a record for carrying more lines was this rule's
+  own inversion: it made a probe a malformed FILE, and lowering the
+  constant would have retired committed evidence. Moving the constant
+  back beside the selector hides the coupling, and refusing a record on
+  length reopens the inversion.
+- **The census names a record it cannot read.** `checkDirectory` counts
+  it as `unread` and gives it a line, because counting an outcome only
+  for records that check clean let a newly-malformed record leave the
+  denominator. That is `unread-matrix-row` in the probe corpus, and the
+  count described fewer records than the directory carried.
+- **A committed record is pinned to the reading it was committed under.**
+  `test/probe.test.js` holds each record under `bench/probes/` to its
+  whole derived tuple, so an edit to the reading or its constants fails
+  CI instead of silently re-grading append-only evidence. A record added
+  to the corpus fails this test once, and a person adds its row after
+  reading what the check derived.
+- **`checkRecord` asks of a record what the collector could have
+  produced.** `identity.pathway` parses as `<platform>:<scope>` with both
+  halves known, because the trace reading is keyed on it and a typo
+  otherwise reported the RECORD's defect as the HARNESS's `unscoped`. A
+  trace beside a flag set carrying no `--debug-file` withholds as
+  `unrequested`. The `.claude` refusal anchors at a segment boundary, so
+  a relative `.claude/trace.log` is refused as well.
 - **Three invariants make a trace attributable to the arm it came
   from**, and `runArms` holds all three. The debug path is derived under
   the throwaway root and a path outside it is refused. The file is read

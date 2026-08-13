@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 // The scopes a pathway can install into, which are also the names the harness
 // gives its own skill sources. One list, so the reading below cannot name a
 // scope this tool cannot install into.
-import { SCOPES } from '../src/targets.js';
+import { PLATFORMS, SCOPES } from '../src/targets.js';
 
 /** The identity tuple, from the measurement design, section 4.1. */
 export const TUPLE = [
@@ -121,12 +121,16 @@ export const REQUIRED_FLAGS = [
  * Accepting any path would let a run write its trace under a real `.claude`
  * directory, which reaches into the configuration a redirected home exists to
  * exclude — and that record would derive PASS, because nothing else in it shows
- * the path. A `.claude` segment is refused on either separator. The collector
- * builds its own path under a throwaway root and never produces one, so this
- * closes a cell only a later caller or a hand-written record could reach.
+ * the path. A `.claude` segment is refused on either separator, and at the
+ * START of a relative path as well: requiring a separator in FRONT admitted
+ * `.claude/trace.log`, which an operator running from their own home resolves
+ * straight into the configuration tree this guard exists to keep out. The
+ * collector builds its own path under a throwaway root and never produces one,
+ * so this closes a cell only a later caller or a hand-written record could
+ * reach.
  */
 export const TRACE_FLAG = '--debug-file';
-export const TRACE_PATH_REFUSED = /[/\\]\.claude[/\\]/;
+export const TRACE_PATH_REFUSED = /(^|[/\\])\.claude[/\\]/;
 export const ALLOWED_FLAGS = [...REQUIRED_FLAGS, TRACE_FLAG];
 export const FLAGS_TAKING_A_VALUE = [
   '--model', '--setting-sources', '--output-format', TRACE_FLAG,
@@ -308,15 +312,29 @@ function keyPaths(value, prefix = '') {
  * pass. What changed is that it reads as evidence rather than as a broken file.
  */
 export function isolationProblems(flags) {
-  return flagProblems(flags, true);
+  return flagProblems(flags, true).problems;
 }
 
 export function flagShapeProblems(flags) {
-  return flagProblems(flags, false);
+  return flagProblems(flags, false).problems;
+}
+
+/**
+ * Which flags the arm actually RAN, as the walk saw them.
+ *
+ * It comes off the same walk that reports the problems, rather than off
+ * `includes`, because a flag sitting in a value position is not a flag the arm
+ * ran. One walk answers both questions, so no second reading of an invocation
+ * can drift from the one the acceptance test uses.
+ */
+export function flagsSeen(flags) {
+  return flagProblems(flags, false).seen;
 }
 
 function flagProblems(flags, values) {
-  if (!Array.isArray(flags) || !flags.length) return ['flags is a non-empty array.'];
+  if (!Array.isArray(flags) || !flags.length) {
+    return { problems: ['flags is a non-empty array.'], seen: new Set() };
+  }
   const problems = [];
   // EVERY element is consumed, as a flag or as the value of the flag before it.
   // Skipping anything that does not open with a dash left a stray positional
@@ -376,7 +394,7 @@ function flagProblems(flags, values) {
   for (const required of REQUIRED_FLAGS) {
     if (!seen.has(required)) problems.push(`flags omit ${required}.`);
   }
-  return problems;
+  return { problems, seen };
 }
 
 /**
@@ -396,10 +414,16 @@ function flagProblems(flags, values) {
  * The bound lives HERE rather than beside the selector that applies it. The
  * collector cuts the kept set at `TRACE_LINE_LIMIT`, and the derivation below
  * has to know that a list of exactly that many lines may be a prefix of a
- * longer run. Two modules reading one constant is the coupling made visible,
- * and this check is what pins it: a record carrying more lines than the
- * collector would write is refused, so the limit is the only place a reading
- * can be cut.
+ * longer run.
+ *
+ * The bound decides a READING and never a record's validity. An earlier pass
+ * refused a record carrying more lines than the collector would write, which
+ * looked like pinning the coupling and was the ADR-0024 inversion one column
+ * over: it made a probe a MALFORMED FILE rather than a failed or unreadable
+ * one, and lowering a constant in this file would have retired committed
+ * evidence and shrunk the derived census without anything saying so. Length is
+ * now nothing but an input to `loadCounts`, where a trace at or past the bound
+ * is withheld. Do not move it back.
  */
 export const TRACE_LINE_LIMIT = 40;
 
@@ -407,10 +431,6 @@ export function traceProblems(trace) {
   if (trace === null || trace === undefined) return [];
   if (!Array.isArray(trace) || trace.some((line) => typeof line !== 'string')) {
     return ['trace is null, or the harness\'s own lines as a list of strings.'];
-  }
-  if (trace.length > TRACE_LINE_LIMIT) {
-    return [`trace keeps at most ${TRACE_LINE_LIMIT} lines, and this one keeps `
-      + `${trace.length}.`];
   }
   return [];
 }
@@ -520,6 +540,16 @@ export function traceReading(record) {
   const scope = String(record?.identity?.pathway ?? '').split(':')[1];
   const installed = loadCounts(record?.installed?.trace);
   const control = loadCounts(record?.control?.trace);
+  // A trace beside a flag set that never asked for one. The arm's own recorded
+  // invocation says no `--debug-file` was passed, so nothing in that run could
+  // have written the lines the record carries, and certifying agreement from
+  // them would read evidence the record itself says was never collected. This
+  // is the `armAnswered` discipline on the trace side: a field is read only
+  // where the record shows it could exist.
+  if (ARMS.some((arm) => record?.[arm]?.trace != null)
+    && !flagsSeen(record?.flags).has(TRACE_FLAG)) {
+    return { agrees: null, withheld: 'unrequested' };
+  }
   if (!installed || !control) return { agrees: null, withheld: 'absent' };
   if (installed.truncated || control.truncated) return { agrees: null, withheld: 'truncated' };
   if (!SCOPES.includes(scope)) return { agrees: null, withheld: 'unscoped' };
@@ -620,6 +650,20 @@ export function checkRecord(record, name = 'record') {
   if (!answered.length && isText(identity.model)) {
     say('identity.model names a build, and no arm answered, so nothing served this probe. '
       + 'Drop the element rather than editing the arms, because it was never true.');
+  }
+  // The pathway is asked what the WRITER asks it. `parsePathway` refuses
+  // anything that is not `<platform>:<scope>` with both halves known, and this
+  // check only asked `isText`, so the checker was looser than the collector on
+  // the one field `traceReading` is keyed on. A typo then disabled the trace
+  // reading permanently and reported the cause as `unscoped`, which names a
+  // harness that printed no scope column — so the RECORD's defect was reported
+  // as the HARNESS's. A misattributed cause is worse than a missing one.
+  if (isText(identity.pathway)) {
+    const parts = identity.pathway.split(':');
+    if (parts.length !== 2 || !PLATFORMS.includes(parts[0]) || !SCOPES.includes(parts[1])) {
+      say('identity.pathway is <platform>:<scope>, and both halves are known: '
+        + `${PLATFORMS.join(', ')} and ${SCOPES.join(', ')}.`);
+    }
   }
   if (identity.environment_class && !ENV_CLASSES.includes(identity.environment_class)) {
     say(`identity.environment_class must be one of: ${ENV_CLASSES.join(', ')}.`);
@@ -820,22 +864,40 @@ export async function readRecords(dir) {
   return records;
 }
 
-/** Returns `{ problems, lines, outcomes }` over a directory of records. */
+/**
+ * Returns `{ problems, lines, outcomes }` over a directory of records.
+ *
+ * A record the checker cannot read is NAMED and counted as `unread`. It used to
+ * be dropped, so the census described fewer records than the directory carried
+ * — which is the `unread-matrix-row` defect this repository already names for
+ * grounding matrices, reappearing in the probe corpus. It was reachable by
+ * editing a constant: a lower `TRACE_LINE_LIMIT` made committed records
+ * malformed and the denominator fell from three to two with nothing saying so.
+ * That specific route is closed, and the census is counted this way regardless,
+ * because a count that quietly omits its hard cases is the defect rather than
+ * the route to it.
+ */
 export async function checkDirectory(dir) {
   const problems = [];
   const lines = [];
-  const outcomes = { pass: 0, fail: 0 };
+  const outcomes = { pass: 0, fail: 0, unread: 0 };
   for (const { name, record, unreadable } of await readRecords(dir)) {
     if (unreadable) {
       problems.push(`${name}: not readable as JSON.`);  // Our own words only.
+      lines.push(`${name}: derives NOTHING (the file is not readable as JSON)`);
+      outcomes.unread += 1;
       continue;
     }
     const found = checkRecord(record, name);
     problems.push(...found);
-    if (!found.length) {
-      lines.push(describe(name, record));
-      outcomes[deriveOutcome(record).passes ? 'pass' : 'fail'] += 1;
+    if (found.length) {
+      lines.push(`${name}: derives NOTHING (the record is malformed, so no `
+        + 'outcome is computed from it)');
+      outcomes.unread += 1;
+      continue;
     }
+    lines.push(describe(name, record));
+    outcomes[deriveOutcome(record).passes ? 'pass' : 'fail'] += 1;
   }
   return { problems, lines, outcomes };
 }
@@ -848,13 +910,17 @@ export async function checkDirectory(dir) {
  * second one out loud: a directory holding nothing but failures is clean and
  * says the probe failed.
  */
-export function summarise({ pass, fail }) {
-  const total = pass + fail;
+export function summarise({ pass, fail, unread = 0 }) {
+  const total = pass + fail + unread;
   if (!total) return 'No probe records yet. The isolation probe is a manual protocol.';
   const derived = [];
   if (pass) derived.push(`${pass} derives PASS`);
   if (fail) derived.push(`${fail} derives FAIL`);
-  return `Probe records well formed. ${total} checked: ${derived.join(', ')}.`;
+  // Named in the same breath as the other two, because a record the checker
+  // could not read is a record the count has to carry rather than lose.
+  if (unread) derived.push(`${unread} unread`);
+  return `${unread ? 'Probe records checked' : 'Probe records well formed'}. `
+    + `${total} checked: ${derived.join(', ')}.`;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
