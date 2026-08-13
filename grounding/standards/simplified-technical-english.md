@@ -31,7 +31,8 @@ quotation marks, beside the identifier that names them. Every row below reads
 publication on 2026-08-04 on the stated condition that no rule text is
 reproduced. The check refuses any cell in this file but `unquoted` while this
 line stands. Lifting it is the owner's decision, and it is made by editing this
-line and the record in `SOURCE.md`.
+line and the source record at
+`source/standards/simplified-technical-english.md`.
 
 **Provenance of the rule identifiers.** Read from the official PDF on 2026-07-26.
 This file cites rule numbers and section locations, and it carries no rule text.
@@ -42,8 +43,9 @@ allowed that since 2026-07-27.
 Nobody may write in this column yet. ASD reserves all rights and grants free
 reproduction to eight kinds of organization, none of which is this repository,
 and the owner approved publication on 2026-08-04 on the stated condition that
-no rule text is reproduced. `SOURCE.md` in the skill directory carries both,
-and it carries the extraction command. Filling this column crosses that
+no rule text is reproduced. The source record at
+`source/standards/simplified-technical-english.md` carries both, and it carries
+the extraction command. Filling this column crosses that
 condition, so it is the owner's decision and not a contributor's.
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |

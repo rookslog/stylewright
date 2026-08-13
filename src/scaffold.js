@@ -135,7 +135,7 @@ check, and stop well short of a quoted set that could stand in for the source.
 
 **Quotation:** forbidden. No licence has been checked for this source yet, so
 this file starts where every file starts. Read the licence, record the check in
-\`SOURCE.md\`, and then edit this line.
+\`source/${tier}/${name}.md\`, and then edit this line.
 
 A row that tells the reader to do something is never an \`N\` row. The kinds
 below are a starting guess. Revise them as you write the skill.
@@ -150,8 +150,8 @@ ${rows.join('\n')}
 `;
 }
 
-function sourceMd({ source, url, license }) {
-  return `# Source record
+function sourceMd({ name, source, url, license }) {
+  return `# Source record for ${name}
 
 - Source: ${source}
 - URL: ${url}
@@ -160,11 +160,47 @@ function sourceMd({ source, url, license }) {
 - Verified: FILL IN a date, and the URL that stated the license
 - Transformation: an operational digest in our own words. No rule text.
 
+This file stays in the repository. It does not install with the skill.
+
 ## How to re-check this record
 
 1. Open the URL above.
 2. Find the license statement.
 3. Compare it against the line above.
+`;
+}
+
+/**
+ * A craft skill has no source, and that is the thing its record states. The
+ * question a reader asks of a craft rule is what stands behind it, and the
+ * answer has to be written down rather than left to be discovered.
+ */
+function craftSourceMd({ name }) {
+  return `# Source record for ${name}
+
+This file stays in the repository. It does not install with the skill.
+
+- Source: none. No standard, no vendor documentation, and no published guidance
+  says any of this.
+- Rights holder: not applicable. Nothing is reproduced.
+- Transformation: not applicable. Every rule is written from scratch, and the
+  grounding matrix carries no \`G\` row.
+- Reproduction check: not required, because no source wording is carried into
+  the skill. Anyone who later adds a quotation records the check here first.
+- Recorded: FILL IN the date you wrote this.
+
+## What evidence stands behind the rules
+
+FILL IN. A craft rule has no standard behind it, so measurement is the only
+evidence it can ever have, and \`bench/README.md\` holds that protocol. Say what
+has been run for this skill. Where nothing has been run, say that plainly, and
+say that a reader must take every rule as discipline we assert.
+
+## When this record expires
+
+FILL IN the conditions. A measurement that lands replaces the section above it,
+whichever way the result goes. A source that turns up for one of these rules
+needs a \`G\` row, and its licence check goes here first.
 `;
 }
 
@@ -216,12 +252,16 @@ export async function scaffoldSkill({
   const outputs = [
     [`${dir}/SKILL.md`, skillText],
     [`${dir}/agents/openai.yaml`, agentsYaml({ name, description: desc })],
+    // The source record is an audit artifact for a reader, so it sits beside
+    // the matrix and not beside the skill. Every install pathway copies the
+    // skill directory whole, and four of them run none of our code, so
+    // location is what keeps the record out of an installed tree. ADR-0025.
     [`${dir}/LICENSE`, tier === 'standards'
-      ? `Source license: ${license || 'FILL IN'}\n\nThe original digest in this directory is licensed MIT.\nSee SOURCE.md for the source record.\n`
+      ? `Source license: ${license || 'FILL IN'}\n\nThe original digest in this directory is licensed MIT.\nThe source record for this skill is in the stylewright repository, at\nsource/${tier}/${name}.md. It is not installed with this skill.\n`
       : 'MIT\n'],
-    ...(tier === 'standards'
-      ? [[`${dir}/SOURCE.md`, sourceMd({ source, url, license: license || 'FILL IN' })]]
-      : []),
+    [`source/${tier}/${name}.md`, tier === 'standards'
+      ? sourceMd({ name, source, url, license: license || 'FILL IN' })
+      : craftSourceMd({ name })],
     [`grounding/${tier}/${name}.md`,
       groundingMd({ name, tier, skillText, source })],
   ];

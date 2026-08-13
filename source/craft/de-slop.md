@@ -1,4 +1,6 @@
-# Source record
+# Source record for de-slop
+
+This file stays in the repository. It does not install with the skill.
 
 This skill has no source. The record exists anyway, because the question a
 reader asks of a craft skill is what stands behind its rules, and the answer
@@ -19,7 +21,7 @@ here has to be stated rather than left to be discovered.
 A vendor page reporting that its own model writes at length would not become a
 source for this skill. Such a page describes a model and prescribes nothing.
 `compressed-deliberation` is the skill that carries that material, and its own
-`SOURCE.md` holds the record for it.
+record at `source/craft/compressed-deliberation.md` holds it.
 
 ## One row rests on a report nobody here has read
 
@@ -28,7 +30,7 @@ instruction in Claude Code, on the ground that it reduced coding quality. That
 report is real and it is first-party. Nobody on this branch opened it.
 
 The record it came from is `A6` in
-`skills/craft/compressed-deliberation/SOURCE.md`, which carries the URL, and
+`source/craft/compressed-deliberation.md`, which carries the URL, and
 the owner relayed the episode in a comment on issue #1 as the countertest this
 skill must keep. So the provenance is a relay, and the row is graded `E` rather
 than `G` for that reason alone. A `G` row would name a source location for a
