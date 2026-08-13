@@ -33,6 +33,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// The scopes a pathway can install into, which are also the names the harness
+// gives its own skill sources. One list, so the reading below cannot name a
+// scope this tool cannot install into.
+import { PLATFORMS, SCOPES, targetProblems } from '../src/targets.js';
+
 /** The identity tuple, from the measurement design, section 4.1. */
 export const TUPLE = [
   'harness_build', 'model', 'platform', 'pathway', 'environment_class', 'stack_digest',
@@ -116,18 +121,76 @@ export const REQUIRED_FLAGS = [
  * Accepting any path would let a run write its trace under a real `.claude`
  * directory, which reaches into the configuration a redirected home exists to
  * exclude — and that record would derive PASS, because nothing else in it shows
- * the path. A `.claude` segment is refused on either separator. The collector
- * builds its own path under a throwaway root and never produces one, so this
- * closes a cell only a later caller or a hand-written record could reach.
+ * the path. A `.claude` segment is refused on either separator, at the START of
+ * a relative path, and in ANY CASE. Each was measured rather than imagined.
+ * Requiring a separator in FRONT admitted `.claude/trace.log`, which an
+ * operator running from their own home resolves straight into the configuration
+ * tree this guard exists to keep out. Matching case-sensitively admitted
+ * `.CLAUDE/trace.log`, and the default filesystems this tool runs on fold case
+ * — measured on APFS, where a file written through `.claude` reads back through
+ * `.CLAUDE` — so both spellings name the one directory. `SECRET` carries `/i`
+ * one guard over, for the same reason in the same words.
+ *
+ * The residue, stated. On a case-SENSITIVE filesystem `.Claude` is a different
+ * directory, and this now refuses a path that would have been harmless there.
+ * That is the correct direction: the collector builds its own path under a
+ * throwaway root and never produces one, so a false refusal costs a
+ * hand-written record its trace flag, and the alternative costs an operator
+ * their configuration tree.
  */
 export const TRACE_FLAG = '--debug-file';
-export const TRACE_PATH_REFUSED = /[/\\]\.claude[/\\]/;
+export const TRACE_PATH_REFUSED = /(^|[/\\])\.claude[/\\]/i;
 export const ALLOWED_FLAGS = [...REQUIRED_FLAGS, TRACE_FLAG];
 export const FLAGS_TAKING_A_VALUE = [
   '--model', '--setting-sources', '--output-format', TRACE_FLAG,
 ];
 /** Values a flag must carry, where the probe arm fixes one. */
 export const FIXED_VALUES = { '--setting-sources': 'user', '--output-format': 'json' };
+
+/**
+ * What is wrong with a pathway a record names, as a list.
+ *
+ * It asks what the COLLECTOR asks, and it asks it of the COMBINATION. Reading
+ * the halves separately admitted `cowork:project` and `agents:project`, which
+ * `resolveTarget` refuses because those platforms carry no project directory,
+ * and `codex:user`, which `parsePathway` refuses because no runner here drives
+ * Codex. Each named a record no run of this collector could have written, and
+ * each was counted as well formed with an outcome derived from it.
+ *
+ * **Why this does not weaken the flag rule.** ADR-0024 keeps a record collected
+ * under the wrong FLAGS readable, because such a run HAPPENED: the collector
+ * produced it, the answers are real, and refusing it would throw away the
+ * evidence of this repository's own failure. A pathway no runner drives is the
+ * other case. `parsePathway` throws before the first call is paid for, so no
+ * such record exists to keep, and the file describes a collection this tool
+ * defines and cannot have performed. That is the reasoning that made an
+ * over-bound trace refusable, one field over.
+ *
+ * **What a future runner does to this.** It arrives by adding its entry to
+ * `HARNESS_FOR`, and the same commit that lets the collector produce such a
+ * record lets this check accept it, because both read the one table.
+ *
+ * **The residue, stated.** These tables can shrink. Drop a platform and every
+ * committed record naming it becomes malformed, which is the class where a
+ * constant re-grades append-only evidence. Nothing here prevents that. The
+ * corpus pin in `test/probe.test.js` makes it a loud CI failure rather than a
+ * silent one, which is a mitigation and not a guarantee.
+ */
+export function pathwayProblems(pathway) {
+  const parts = String(pathway).split(':');
+  if (parts.length !== 2) {
+    return [`identity.pathway is <platform>:<scope>, and "${pathway}" is not.`];
+  }
+  const [platform, scope] = parts;
+  const problems = targetProblems({ platform, scope })
+    .map((p) => `identity.pathway names a target this tool cannot install into. ${p}`);
+  if (!problems.length && !HARNESS_FOR[platform]) {
+    problems.push(`identity.pathway names "${platform}", which needs its own runner. `
+      + `This collector drives ${[...new Set(Object.values(HARNESS_FOR))].join(', ')}, so no `
+      + 'run here could have written this record.');
+  }
+  return problems;
+}
 
 /**
  * Words a record may not carry. Each one states an outcome, and the outcome is
@@ -222,6 +285,21 @@ export function looksLikeCredential(text) {
   return SECRET.test(unwrap(text));
 }
 
+/**
+ * Which harness reads a pathway's tree, and therefore which pathways a record
+ * can name.
+ *
+ * It lives HERE, with the reader, for the reason `TRACE_LINE_LIMIT` does: the
+ * record check has to know it, and `bench/collect-probe.mjs` already imports
+ * from this file. The other direction would be a cycle, and would pull a spawn
+ * and an installer into a module that reads committed bytes and nothing else.
+ *
+ * `cowork` resolves to the Claude directory and `agents` is a cross-agent
+ * convention Claude reads, so both are probed with `claude`. Codex needs its
+ * own runner, and no collector here has one.
+ */
+export const HARNESS_FOR = { claude: 'claude', cowork: 'claude', agents: 'claude' };
+
 /** The auth routes a record may name, from `bench/collect-probe.mjs`. */
 export const AUTH_ROUTE_NAMES = ['subscription', 'api-key'];
 
@@ -303,15 +381,29 @@ function keyPaths(value, prefix = '') {
  * pass. What changed is that it reads as evidence rather than as a broken file.
  */
 export function isolationProblems(flags) {
-  return flagProblems(flags, true);
+  return flagProblems(flags, true).problems;
 }
 
 export function flagShapeProblems(flags) {
-  return flagProblems(flags, false);
+  return flagProblems(flags, false).problems;
+}
+
+/**
+ * Which flags the arm actually RAN, as the walk saw them.
+ *
+ * It comes off the same walk that reports the problems, rather than off
+ * `includes`, because a flag sitting in a value position is not a flag the arm
+ * ran. One walk answers both questions, so no second reading of an invocation
+ * can drift from the one the acceptance test uses.
+ */
+export function flagsSeen(flags) {
+  return flagProblems(flags, false).seen;
 }
 
 function flagProblems(flags, values) {
-  if (!Array.isArray(flags) || !flags.length) return ['flags is a non-empty array.'];
+  if (!Array.isArray(flags) || !flags.length) {
+    return { problems: ['flags is a non-empty array.'], seen: new Set() };
+  }
   const problems = [];
   // EVERY element is consumed, as a flag or as the value of the flag before it.
   // Skipping anything that does not open with a dash left a stray positional
@@ -371,7 +463,7 @@ function flagProblems(flags, values) {
   for (const required of REQUIRED_FLAGS) {
     if (!seen.has(required)) problems.push(`flags omit ${required}.`);
   }
-  return problems;
+  return { problems, seen };
 }
 
 /**
@@ -387,13 +479,201 @@ function flagProblems(flags, values) {
  * before 2026-08-07 carries that, and a harness offering no trace would too.
  * Section 4.1 asks for the trace "where one exists", so absence is a state and
  * not a defect.
+ *
+ * The bound lives HERE rather than beside the selector that applies it. The
+ * collector cuts the kept set at `TRACE_LINE_LIMIT`, and the derivation below
+ * has to know that a list of exactly that many lines may be a prefix of a
+ * longer run.
+ *
+ * The bound decides a READING and never a record's validity. An earlier pass
+ * refused a record carrying more lines than the collector would write, which
+ * looked like pinning the coupling and was the ADR-0024 inversion one column
+ * over: it made a probe a MALFORMED FILE rather than a failed or unreadable
+ * one, and lowering a constant in this file would have retired committed
+ * evidence and shrunk the derived census without anything saying so. Length is
+ * now nothing but an input to `loadCounts`, where a trace at or past the bound
+ * is withheld. Do not move it back.
  */
+export const TRACE_LINE_LIMIT = 40;
+
 export function traceProblems(trace) {
   if (trace === null || trace === undefined) return [];
   if (!Array.isArray(trace) || trace.some((line) => typeof line !== 'string')) {
     return ['trace is null, or the harness\'s own lines as a list of strings.'];
   }
   return [];
+}
+
+/**
+ * The numbers a harness states about skill loading, and where they come from.
+ *
+ * ONE line carries all of them. The harness writes `Loaded 1 unique skills (1
+ * unconditional, 0 conditional, managed: 0, user: 1, project: 0, …)`, so the
+ * total, the managed count and the per-scope counts are read in one pass. The
+ * `Loading skills from:` line names the managed PATH and no count, so nothing
+ * is read off it.
+ *
+ * The TOTAL is read and never used to decide agreement. It counts managed
+ * skills, and a probe redirects `HOME` while the harness consults a
+ * machine-global managed skills path that `HOME` does not move. So on a machine
+ * carrying one managed skill the control's total is 1 rather than 0, and a
+ * total-based reading would block a valid probe through exactly the path
+ * `managed_seen` declares non-blocking. Codex reported that on pull request
+ * #110 and it is real.
+ *
+ * Agreement therefore reads the count for the SCOPE the probe installed into,
+ * which the record already names in `identity.pathway`. That excludes managed
+ * by construction rather than by subtraction, and it stays right for a
+ * project-scope pathway, where reading `user:` would be the same defect one
+ * column over. `SCOPES` and the harness's own source names coincide, which is
+ * what makes the lookup possible.
+ */
+export const LOADED_LINE = /Loaded\s+(\d+)\s+unique skills/i;
+export const MANAGED_COUNT = /\bmanaged:\s*(\d+)/i;
+
+/** The count one harness line states for one named source, or `null`. */
+export function sourceCount(line, name) {
+  const found = new RegExp(`\\b${name}:\\s*(\\d+)`, 'i').exec(String(line));
+  return found ? Number(found[1]) : null;
+}
+
+/**
+ * What one arm's trace states, or `null` where there is no trace to read.
+ *
+ * `null` in, `null` out. Absence is a state: every record written before
+ * 2026-08-07 carries no trace, and so would a record from a harness that offers
+ * none. A malformed trace reads as absent here too, because `checkRecord`
+ * already refuses that record and a second refusal from this side would say the
+ * probe failed rather than that the file is broken.
+ *
+ * `truncated` is the other half of the honesty. The collector cuts the kept set
+ * at `TRACE_LINE_LIMIT`, so a list of exactly that length may be the prefix of
+ * a longer run and the lines past the cut are gone. At the boundary a complete
+ * run and a cut one are indistinguishable, so the boundary itself is reported
+ * and the caller withholds.
+ */
+export function loadCounts(trace) {
+  if (trace === null || trace === undefined) return null;
+  if (traceProblems(trace).length) return null;
+  const lines = [];
+  for (const line of trace) {
+    const found = LOADED_LINE.exec(line);
+    if (!found) continue;
+    const managed = MANAGED_COUNT.exec(line);
+    lines.push({
+      total: Number(found[1]),
+      managed: managed ? Number(managed[1]) : null,
+      scopes: Object.fromEntries(SCOPES.map((s) => [s, sourceCount(line, s)])),
+    });
+  }
+  return { truncated: trace.length >= TRACE_LINE_LIMIT, lines };
+}
+
+/**
+ * Does the record carry a trace its own invocation never asked for?
+ *
+ * The arm's recorded flag set says no `--debug-file` was passed, so nothing in
+ * that run could have written the lines the record holds. This is the
+ * `armAnswered` discipline on the trace side: a field is read only where the
+ * record shows it could exist.
+ *
+ * It is a named predicate because TWO readers ask it. `traceReading` withholds
+ * the verdict, and `managedSeen` withholds the count, and a second copy of the
+ * question is a second thing to drift — which here meant one reader refusing
+ * the evidence while the other published a number off it.
+ */
+export function traceUnrequested(record) {
+  return ARMS.some((arm) => record?.[arm]?.trace != null)
+    && !flagsSeen(record?.flags).has(TRACE_FLAG);
+}
+
+/**
+ * The reading the trace supports, and the reason there is none where there is
+ * none.
+ *
+ * `agrees` is `true`, `false`, or `null`. `withheld` names why a `null` came
+ * about, because a reader cannot otherwise tell an old record from a record
+ * whose evidence this check refused to certify. Three reasons, and each was a
+ * finding rather than a shape somebody imagined:
+ *
+ * - `absent`. An arm kept no trace. This is every record before 2026-08-07.
+ * - `truncated`. An arm's trace stands at `TRACE_LINE_LIMIT`, so a disagreeing
+ *   line past the cut would have been dropped and the retained prefix would
+ *   certify a pass on evidence nobody has. Codex's case on pull request #110:
+ *   twenty sessions loading one skill, then a twenty-first loading zero.
+ * - `unscoped`. A retained line does not name the count for the scope this
+ *   probe installed into, so the only number available is the total, and the
+ *   total counts managed skills the redirected home does not control.
+ *
+ * `false` is reserved for the one thing it should mean: the harness's own
+ * numbers contradict what the answers claim. Withholding covers every case
+ * where the record cannot answer, which corrects the earlier reading that
+ * blocked on a trace naming no loading. Blocking there said the harness
+ * disagreed when the truth was that the evidence was unreadable, and this
+ * repository already answers an unreadable artifact by withholding the number
+ * and naming the cause rather than by publishing a wrong one.
+ *
+ * The cost is stated rather than hidden. A harness that stops printing
+ * per-scope counts makes every probe unreadable instead of failing, and a
+ * `trace: []` record falls back to the answers, which is the state before this
+ * reading existed. The exit for both is to move `TRACE_PATTERNS`, `LOADED_LINE`
+ * and `sourceCount` onto the new wording.
+ *
+ * Every `Loaded` line is read, not the first. The harness repeats the line per
+ * session, and a run whose installed arm loaded one skill once and none the
+ * next time has corroborated nothing.
+ */
+export function traceReading(record) {
+  const scope = String(record?.identity?.pathway ?? '').split(':')[1];
+  const installed = loadCounts(record?.installed?.trace);
+  const control = loadCounts(record?.control?.trace);
+  if (traceUnrequested(record)) return { agrees: null, withheld: 'unrequested' };
+  if (!installed || !control) return { agrees: null, withheld: 'absent' };
+  if (installed.truncated || control.truncated) return { agrees: null, withheld: 'truncated' };
+  if (!SCOPES.includes(scope)) return { agrees: null, withheld: 'unscoped' };
+  const counted = (arm) => arm.lines.map((line) => line.scopes[scope]);
+  const here = counted(installed);
+  const there = counted(control);
+  if (!here.length || !there.length || [...here, ...there].some((n) => n === null)) {
+    return { agrees: null, withheld: 'unscoped' };
+  }
+  return {
+    agrees: here.every((n) => n >= 1) && there.every((n) => n === 0),
+    withheld: null,
+  };
+}
+
+/** The reading's verdict alone, for a caller that wants the one field. */
+export function traceAgrees(record) {
+  return traceReading(record).agrees;
+}
+
+/**
+ * The largest managed count either arm's trace states, or `null` where no trace
+ * states one.
+ *
+ * It is a NOTE and it blocks nothing, for the reason `ground --check` prints
+ * its counts without failing on them: whether a managed skill reaching an arm
+ * spoils that arm is a judgment about what stood in that path, and a record
+ * carries no way to ask. What the derivation owes a reader is the number, on
+ * the line, so the question can be asked at all. `describe` prints it.
+ *
+ * It is read from a TRUNCATED trace, and withheld from an UNREQUESTED one. The
+ * two states ask different questions and an earlier docstring here answered
+ * only the first. Under truncation the bytes ARE evidence and the bound can
+ * only hide a larger count, so the number is a floor and never an
+ * overstatement. Under `unrequested` the question is not whether the count is a
+ * floor but whether the bytes are evidence at all, and the record's own
+ * invocation says they are not — so publishing a count off them would state a
+ * number about a machine from lines no recorded run could have produced.
+ */
+export function managedSeen(record) {
+  if (traceUnrequested(record)) return null;
+  const counts = ARMS
+    .flatMap((arm) => loadCounts(record?.[arm]?.trace)?.lines ?? [])
+    .map((line) => line.managed)
+    .filter((n) => n !== null);
+  return counts.length ? Math.max(...counts) : null;
 }
 
 /**
@@ -454,6 +734,16 @@ export function checkRecord(record, name = 'record') {
   if (!answered.length && isText(identity.model)) {
     say('identity.model names a build, and no arm answered, so nothing served this probe. '
       + 'Drop the element rather than editing the arms, because it was never true.');
+  }
+  // The pathway is asked what the WRITER asks it. `parsePathway` refuses
+  // anything that is not `<platform>:<scope>` with both halves known, and this
+  // check only asked `isText`, so the checker was looser than the collector on
+  // the one field `traceReading` is keyed on. A typo then disabled the trace
+  // reading permanently and reported the cause as `unscoped`, which names a
+  // harness that printed no scope column — so the RECORD's defect was reported
+  // as the HARNESS's. A misattributed cause is worse than a missing one.
+  if (isText(identity.pathway)) {
+    for (const problem of pathwayProblems(identity.pathway)) say(problem);
   }
   if (identity.environment_class && !ENV_CLASSES.includes(identity.environment_class)) {
     say(`identity.environment_class must be one of: ${ENV_CLASSES.join(', ')}.`);
@@ -556,12 +846,24 @@ export function checkRecord(record, name = 'record') {
  *
  * `discovered` is the evidence the installed text reached the context.
  * `control_clean` is the empty-home control that catches a probe passing for
- * the wrong reason. `isolated` is section 4.2's acceptance test. A probe passes
- * only on all three, and a caller that wants one word reads `passes`.
+ * the wrong reason. `isolated` is section 4.2's acceptance test. `trace_agrees`
+ * is the harness's own account of the same run, and a caller that wants one
+ * word reads `passes`.
  *
- * All three read the ANSWERS and the flags, and none reads the trace, so the
- * better evidence a record now retains is not consulted here. Issue #94 carries
- * that work, and the gap is stated rather than left to be discovered.
+ * `trace_agrees` BLOCKS. Section 4.1 calls a trace naming the loaded file
+ * better evidence than either answer, and evidence that is better and
+ * contradicted cannot be a note beside a pass. It blocks on `false` alone,
+ * which is the harness's own numbers contradicting the answers.
+ *
+ * `trace_withheld` names why a `null` came about, and it exists because two
+ * different states used to spell themselves the same way. A record with no
+ * trace and a record whose trace this check refused to certify both read
+ * `null`, and a reader cannot act on the second without knowing which it has.
+ * It is `absent`, `truncated`, `unscoped`, or `null` when a reading was made.
+ *
+ * `managed_seen` is the number and not a verdict, so it blocks nothing.
+ *
+ * ADR-0024 records the decisions and what would reopen each one.
  */
 export function deriveOutcome(record) {
   const nonce = record?.nonce ?? '';
@@ -576,13 +878,17 @@ export function deriveOutcome(record) {
   const controlClean = controlServed && Boolean(nonce)
     && !(record?.control?.answer ?? '').includes(nonce);
   const isolated = isolationProblems(record?.flags).length === 0;
+  const reading = traceReading(record);
   return {
     installed_served: installedServed,
     control_served: controlServed,
     discovered,
     control_clean: controlClean,
     isolated,
-    passes: discovered && controlClean && isolated,
+    trace_agrees: reading.agrees,
+    trace_withheld: reading.withheld,
+    managed_seen: managedSeen(record),
+    passes: discovered && controlClean && isolated && reading.agrees !== false,
   };
 }
 
@@ -602,10 +908,16 @@ export function describe(name, record) {
   // empty answer, and a line that showed only the second would hide the first.
   // The name and the derived flags are this module's own words, so they carry
   // nothing to redact and stay outside the question.
+  // These three print their `null` verbatim, because `null` is a reading here
+  // and not a missing value. Printing a dash would spell it the way an absent
+  // tuple element is spelled, and those are different states. `trace_withheld`
+  // rides beside `trace_agrees` rather than under it, because a withheld
+  // reading printed without its cause is the wrong number one step removed.
   return `${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
     + `(installed_served=${o.installed_served} discovered=${o.discovered} `
     + `control_served=${o.control_served} control_clean=${o.control_clean} `
-    + `isolated=${o.isolated}) ${tuple}`;
+    + `isolated=${o.isolated} trace_agrees=${o.trace_agrees} `
+    + `trace_withheld=${o.trace_withheld} managed_seen=${o.managed_seen}) ${tuple}`;
 }
 
 /** Reads every record under `dir`. A missing directory holds no records. */
@@ -632,22 +944,40 @@ export async function readRecords(dir) {
   return records;
 }
 
-/** Returns `{ problems, lines, outcomes }` over a directory of records. */
+/**
+ * Returns `{ problems, lines, outcomes }` over a directory of records.
+ *
+ * A record the checker cannot read is NAMED and counted as `unread`. It used to
+ * be dropped, so the census described fewer records than the directory carried
+ * — which is the `unread-matrix-row` defect this repository already names for
+ * grounding matrices, reappearing in the probe corpus. It was reachable by
+ * editing a constant: a lower `TRACE_LINE_LIMIT` made committed records
+ * malformed and the denominator fell from three to two with nothing saying so.
+ * That specific route is closed, and the census is counted this way regardless,
+ * because a count that quietly omits its hard cases is the defect rather than
+ * the route to it.
+ */
 export async function checkDirectory(dir) {
   const problems = [];
   const lines = [];
-  const outcomes = { pass: 0, fail: 0 };
+  const outcomes = { pass: 0, fail: 0, unread: 0 };
   for (const { name, record, unreadable } of await readRecords(dir)) {
     if (unreadable) {
       problems.push(`${name}: not readable as JSON.`);  // Our own words only.
+      lines.push(`${name}: derives NOTHING (the file is not readable as JSON)`);
+      outcomes.unread += 1;
       continue;
     }
     const found = checkRecord(record, name);
     problems.push(...found);
-    if (!found.length) {
-      lines.push(describe(name, record));
-      outcomes[deriveOutcome(record).passes ? 'pass' : 'fail'] += 1;
+    if (found.length) {
+      lines.push(`${name}: derives NOTHING (the record is malformed, so no `
+        + 'outcome is computed from it)');
+      outcomes.unread += 1;
+      continue;
     }
+    lines.push(describe(name, record));
+    outcomes[deriveOutcome(record).passes ? 'pass' : 'fail'] += 1;
   }
   return { problems, lines, outcomes };
 }
@@ -660,13 +990,17 @@ export async function checkDirectory(dir) {
  * second one out loud: a directory holding nothing but failures is clean and
  * says the probe failed.
  */
-export function summarise({ pass, fail }) {
-  const total = pass + fail;
+export function summarise({ pass, fail, unread = 0 }) {
+  const total = pass + fail + unread;
   if (!total) return 'No probe records yet. The isolation probe is a manual protocol.';
   const derived = [];
   if (pass) derived.push(`${pass} derives PASS`);
   if (fail) derived.push(`${fail} derives FAIL`);
-  return `Probe records well formed. ${total} checked: ${derived.join(', ')}.`;
+  // Named in the same breath as the other two, because a record the checker
+  // could not read is a record the count has to carry rather than lose.
+  if (unread) derived.push(`${unread} unread`);
+  return `${unread ? 'Probe records checked' : 'Probe records well formed'}. `
+    + `${total} checked: ${derived.join(', ')}.`;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -674,6 +1008,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const { problems, lines, outcomes } = await checkDirectory(dir);
   for (const line of lines) process.stdout.write(`${line}\n`);
   for (const p of problems) process.stderr.write(`${p}\n`);
-  if (problems.length) process.exit(1);
+  // The summary prints BEFORE the exit status is decided, on every run.
+  // Exiting first meant the census never printed on the one run it was built
+  // for: every branch that counts a record `unread` also files a problem, so
+  // the total naming the unread denominator was unreachable from the command
+  // line. The individual `derives NOTHING` line printed and the denominator did
+  // not, which is the defect the census work exists to close, one step out.
   process.stdout.write(`${summarise(outcomes)}\n`);
+  if (problems.length) process.exit(1);
 }

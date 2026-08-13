@@ -2,7 +2,7 @@
 type: adr
 status: accepted
 decided: 2026-08-07
-issues: [21, 43]
+issues: [21, 43, 94, 95]
 ---
 
 # ADR-0024 — A probe arm enables the user source, and plants in the description
@@ -156,15 +156,157 @@ the file removed between them. Two paths would put a different value in each
 arm's invocation, and a record carries one flag set, which would then be true of
 neither arm.
 
-Those three invariants are prose here and no test holds them, because the arm
-sequence lives inside a function that spawns a live harness. Issue #95 carries
-the extraction that makes them reachable, with the three surviving mutations
-named. The `--debug-file` VALUE is the one part already enforced.
+Those three invariants were prose here and no test held them, because the arm
+sequence lived inside a function that spawns a live harness. The section below
+records the extraction that closed that, on issue #95.
 
-The derivation does not read the trace. `deriveOutcome` reads the answers and
-the flags, so the better evidence is retained and not consulted, and issue #94
-carries that work. A record whose control trace says `Loaded 1 unique skills`
-derives PASS today on the strength of its answers alone.
+The derivation did not read the trace either. The section below records the
+reading that closed that, on issue #94.
+
+## Amended 2026-08-13 — the trace is read, and a disagreement blocks
+
+Two follow-through items above became one pull request, because both make a
+retained trace count as evidence rather than as an attachment.
+
+**The derivation reads the trace.** `deriveOutcome` gains `trace_agrees`. It
+parses `Loaded (\d+) unique skills` from the retained lines, and the reading
+agrees when the installed arm loaded at least one skill and the control loaded
+zero. Every such line is read rather than the first, because the harness repeats
+the line per session and a run that loaded one skill once and none the next time
+has corroborated nothing.
+
+**It reads the count for the scope the probe installed into, never the total.**
+The total counts managed skills. A probe redirects `HOME`, and the harness
+consults a machine-global managed skills path that `HOME` does not move, so on a
+machine carrying one managed skill the control's total is 1 rather than 0. A
+total-based reading blocked a valid probe through the very path `managed_seen`
+declares non-blocking, which made this decision contradict itself. The record
+names its pathway, the pathway names its scope, and `SCOPES` and the harness's
+own source names coincide, so the reading takes that column. Excluding managed
+by construction beats subtracting it, and reading `user:` for every pathway
+would repeat the defect one column over on a project-scope probe.
+
+**A disagreement blocks `passes`, and this is the decision the issue left
+open.** The alternative was to report it beside the verdict as a note. Section
+4.1 calls a trace naming the loaded file better evidence than either answer, and
+better evidence that contradicts the answers cannot sit beside a pass without
+making the word meaningless. The concrete case is the one that motivated the
+issue: a control whose trace says `Loaded 1 unique skills` while its answer says
+nothing derived PASS, and the contradiction sat in the same file.
+
+**An unreadable trace is withheld, and it names why.** `trace_agrees` is `null`
+wherever the evidence cannot answer, and `trace_withheld` carries the cause,
+because a reader cannot act on a `null` without knowing which state produced it.
+There are three causes. `absent` is an arm that kept no trace, which is every
+record written before 2026-08-07 and would be a record from a harness that
+offers none. `truncated` is an arm whose trace stands at `TRACE_LINE_LIMIT`, so
+a disagreeing line past the cut is gone and the retained prefix would certify a
+pass over evidence nobody has. `unscoped` is a retained line that does not name
+the scope's own count, which leaves only the total.
+
+`false` is reserved for the harness's own numbers contradicting the answers.
+This corrects a reading in the first draft of this amendment, which blocked on a
+trace that named no loading. That said the harness disagreed when the truth was
+that the evidence was unreadable, and this repository already answers an
+unreadable artifact by withholding the number and naming the cause rather than
+by publishing a wrong one. The correction came out of the codex review of the
+pull request carrying this section.
+
+The cost is stated rather than hidden. A harness that stops printing per-scope
+counts makes every probe unreadable instead of failing, and a record whose trace
+is an empty list falls back to its answers, which is the state before this
+reading existed. The exit is to move `TRACE_PATTERNS`, `LOADED_LINE` and
+`sourceCount` onto the new wording.
+
+**Measured effect on the committed records: none.** Two carry no trace and
+derive `null`, so their verdicts stand. The third carries a trace that agrees.
+The blocking reading therefore costs nothing today, and it is written down now
+rather than the first time it would change an answer.
+
+**The managed count is read off the same line, and it blocks nothing.** A probe
+redirects `HOME`, and the harness consults a machine-global managed skills path
+that `HOME` does not move, which is why `environment_class` names the home and
+never the machine. `managed_seen` is the largest count either trace states.
+Whether a managed skill reaching an arm spoils that arm is a judgment about what
+stood in that path, and a record carries no way to ask, so the derivation owes a
+reader the number and not a verdict. `check:probes` prints it on every line, for
+the reason `ground --check` prints its own counts: a note nothing reads is a
+comment.
+
+**The bound lives with the reader, and it decides a reading and never a
+record's validity.** `TRACE_LINE_LIMIT` moved from `bench/collect-probe.mjs`
+into `bench/probe.mjs`, because the derivation is what has to know that a list
+of exactly that length may be a prefix. A trace at or past the bound is
+withheld, and at the boundary a complete run and a cut one are
+indistinguishable, so the boundary itself is withheld.
+
+An earlier draft of this section also had `traceProblems` refuse a record
+carrying more lines than the collector would write. That looked like pinning the
+coupling and it was this ADR's own inversion, one column over from the flag
+case: it made such a probe a MALFORMED FILE rather than a failed or unreadable
+one. Worse, lowering the constant would have retired committed evidence, and
+`checkDirectory` counted an outcome only for a record that checked clean, so the
+corpus would have left the census with nothing saying so. That is the
+`unread-matrix-row` defect in the probe corpus. Two things answer it. Length is
+an input to the reading alone. And the census NAMES a record it cannot read,
+counting it as `unread`, so a denominator can no longer shrink quietly.
+
+**A committed record is pinned to the reading it was committed under.** The
+records under `bench/probes/` are append-only evidence and the reading around
+them is ordinary code, so nothing stopped an edit to a constant from silently
+re-grading them. `test/probe.test.js` pins each committed record's whole derived
+tuple. Raising the bound would turn a trace cut at it into one that reads
+complete, which is the codex finding restored by a one-line edit, and the pin is
+what makes that a CI failure and a person's decision.
+
+**A pathway no runner drives is refused, and that is not the flag rule
+loosening.** The check validates the COMBINATION through `targetProblems` and
+`HARNESS_FOR`, because reading the halves separately admitted `cowork:project`,
+`agents:project` and `codex:user`. The distinction against the rule above is the
+one the over-bound trace turned on. A record collected under the wrong FLAGS is
+a run that HAPPENED, and refusing it throws away the evidence of this
+repository's own failure. A pathway no runner drives is a file no run of this
+collector could have written, because `parsePathway` throws before the first
+call is paid for. A future runner arrives by adding its entry to `HARNESS_FOR`,
+and the same commit that lets the collector produce such a record lets the check
+accept it, because both read the one table. The residue: these tables can
+shrink, and dropping a platform would retire every committed record naming it.
+Nothing prevents that, and the corpus pin makes it loud rather than silent.
+
+**The record check asks what the writer asks.** `identity.pathway` was validated
+only as text while the whole reading is keyed on it, so a typo disabled the
+trace check permanently and reported the cause as `unscoped` — a harness-wording
+state. The RECORD's defect was reported as the HARNESS's, and a misattributed
+cause is worse than a missing one. The same looseness admitted a record carrying
+a trace whose own flag set never asked for one, which now withholds as
+`unrequested`, and a `--debug-file` value whose FIRST segment is `.claude`,
+which the guard now refuses.
+
+**What would reopen the withholding.** A harness whose skill-loading line drops
+the per-scope counts, or one that emits more than forty of those lines in an
+ordinary run. The first makes every probe read `unscoped` and the second makes
+every probe read `truncated`, and in both cases the probe stops answering rather
+than starting to fail. Raising the bound is a decision about what a committed
+record may carry, and it belongs here rather than in a patch.
+
+**What would reopen the blocking.** A harness that prints a zero-loading line in
+an ordinary run. Every `Loaded` line is read, so one later session that loaded
+nothing makes the installed arm read `false` and every probe derive FAIL. That
+contradicts the stance the paragraph above states, which is that a harness
+change stops a probe answering rather than starting to fail, and the blocking
+direction is the one place that stance does not hold by construction. The
+reading is also non-monotonic there: the same harness behaviour blocks below the
+bound and withholds at or above it, because withholding on truncation and
+reading every line cannot both be strict. If that harness arrives, the exit is
+to read the LAST loading line per arm rather than every one, and to say so here
+rather than to relax the rule quietly.
+
+**The arm sequence is extracted.** `runArms` in `bench/collect-probe.mjs` holds
+the three invariants above, and `main` calls it. It builds one flag set above
+the loop, derives the debug path under the throwaway root, and reads then
+removes the file on every arm rather than on the first alone. A caller-supplied
+path outside the root is refused. `test/probe.test.js` holds each invariant, and
+each of the three mutations issue #95 named now fails the suite.
 
 ## Consequences
 
