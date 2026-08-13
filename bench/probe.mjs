@@ -121,16 +121,25 @@ export const REQUIRED_FLAGS = [
  * Accepting any path would let a run write its trace under a real `.claude`
  * directory, which reaches into the configuration a redirected home exists to
  * exclude — and that record would derive PASS, because nothing else in it shows
- * the path. A `.claude` segment is refused on either separator, and at the
- * START of a relative path as well: requiring a separator in FRONT admitted
- * `.claude/trace.log`, which an operator running from their own home resolves
- * straight into the configuration tree this guard exists to keep out. The
- * collector builds its own path under a throwaway root and never produces one,
- * so this closes a cell only a later caller or a hand-written record could
- * reach.
+ * the path. A `.claude` segment is refused on either separator, at the START of
+ * a relative path, and in ANY CASE. Each was measured rather than imagined.
+ * Requiring a separator in FRONT admitted `.claude/trace.log`, which an
+ * operator running from their own home resolves straight into the configuration
+ * tree this guard exists to keep out. Matching case-sensitively admitted
+ * `.CLAUDE/trace.log`, and the default filesystems this tool runs on fold case
+ * — measured on APFS, where a file written through `.claude` reads back through
+ * `.CLAUDE` — so both spellings name the one directory. `SECRET` carries `/i`
+ * one guard over, for the same reason in the same words.
+ *
+ * The residue, stated. On a case-SENSITIVE filesystem `.Claude` is a different
+ * directory, and this now refuses a path that would have been harmless there.
+ * That is the correct direction: the collector builds its own path under a
+ * throwaway root and never produces one, so a false refusal costs a
+ * hand-written record its trace flag, and the alternative costs an operator
+ * their configuration tree.
  */
 export const TRACE_FLAG = '--debug-file';
-export const TRACE_PATH_REFUSED = /(^|[/\\])\.claude[/\\]/;
+export const TRACE_PATH_REFUSED = /(^|[/\\])\.claude[/\\]/i;
 export const ALLOWED_FLAGS = [...REQUIRED_FLAGS, TRACE_FLAG];
 export const FLAGS_TAKING_A_VALUE = [
   '--model', '--setting-sources', '--output-format', TRACE_FLAG,

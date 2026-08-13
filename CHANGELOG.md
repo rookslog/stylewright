@@ -88,8 +88,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   because the trace reading is keyed on it and a typo reported the record's own
   defect as the harness's. A record carrying a trace whose flag set never asked
   for one withholds as `unrequested`. The `.claude` refusal on the trace path
-  anchors at a segment boundary, so a relative `.claude/trace.log` is refused
-  as well as a nested one.
+  anchors at a segment boundary and ignores case, so a relative
+  `.claude/trace.log` and a shouted `.CLAUDE/trace.log` are both refused. The
+  filesystems this tool runs on fold case, so those two spellings name one
+  directory, and the guard's promise is about the directory.
 - The probe's arm sequence moved out of `main`, into `runArms`, and three
   invariants ADR-0024 states as prose now have a test each. The debug path is
   derived under the throwaway root and a path outside it is refused. The trace

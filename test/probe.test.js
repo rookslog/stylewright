@@ -18,6 +18,7 @@ import {
   describe, redact, summarise, traceProblems, loadCounts, traceAgrees, traceReading,
   managedSeen, sourceCount, TRACE_LINE_LIMIT,
   REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG, flagShapeProblems, flagsSeen,
+  TRACE_PATH_REFUSED,
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
@@ -1565,4 +1566,36 @@ test('a .claude segment is refused at the start of a path as well', () => {
   // A directory merely NAMED .claude-something is still not a .claude segment.
   assert.deepEqual(isolationProblems(inside('.claude-probe/debug.log')), []);
   assert.deepEqual(isolationProblems(inside('/tmp/sw-probe-ab12/harness-debug.log')), []);
+});
+
+// The guard is case-insensitive, because the filesystems this tool runs on fold
+// case and the guard's promise is about a DIRECTORY rather than a spelling.
+// `SECRET` carries `/i` one guard over, in the same file, for the same reason.
+//
+// The oracle is measured, not assumed: the case-folding assertion below runs
+// only where this machine actually folds, so a case-sensitive filesystem does
+// not fail a test about a property it does not have.
+test('a .claude segment is refused in any case, because a filesystem folds it', async (t) => {
+  const inside = (p) => [...armFlags('opus'), TRACE_FLAG, p];
+  for (const p of ['.CLAUDE/t.log', '/home/u/.Claude/t.log', 'C:\\Users\\u\\.CLAUDE\\t.log',
+    '.claude/t.log', 'x/.claude/t.log']) {
+    assert.match(isolationProblems(inside(p)).join(' '), /writes into a .claude directory/,
+      `refused: ${p}`);
+  }
+  // Still not a `.claude` SEGMENT, in either case. The flag widens the letters
+  // and must not widen the boundary.
+  for (const p of ['.claude-probe/t.log', '.CLAUDE-probe/t.log', 'foo.claude/t.log',
+    '/tmp/sw-probe-ab12/harness-debug.log']) {
+    assert.deepEqual(isolationProblems(inside(p)), [], `admitted: ${p}`);
+  }
+
+  // The reason the flag is needed, asked of the filesystem rather than assumed.
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-case-'));
+  await fs.mkdir(path.join(dir, '.claude'));
+  await fs.writeFile(path.join(dir, '.claude', 'marker.txt'), 'x');
+  const folds = await fs.readFile(path.join(dir, '.CLAUDE', 'marker.txt'), 'utf8')
+    .then(() => true, () => false);
+  if (!folds) return t.skip('this filesystem is case-sensitive, so .CLAUDE is another directory');
+  assert.ok(TRACE_PATH_REFUSED.test('.CLAUDE/t.log'),
+    'this filesystem resolves .CLAUDE to .claude, so the guard must refuse both');
 });
