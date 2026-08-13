@@ -192,7 +192,7 @@ nothing.
 enough. The entry states the corpus its expected rate was measured against and
 what that rate was, in ADR-0021 and in a comment beside the entry. Without a
 baseline, "this setting overuses W" is a count with nothing to compare against.
-That is the objection `compressed-deliberation/SOURCE.md` levels at the
+That is the objection `source/craft/compressed-deliberation.md` levels at the
 community reports it refuses to grade, and this metric may not earn it.
 
 The corpus today makes the point concrete. It is a handful of task prompts

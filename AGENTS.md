@@ -90,8 +90,8 @@ authority the source never granted, and nothing but the marks tells a reader
 which it is reading.
 
 Check the licence before writing in that column, and record what you checked in
-`SOURCE.md`. The run prints how many `G` rows quote their source beside the
-audited count. It is a note, and no threshold enforces the substitution limit,
+the skill's source record. The run prints how many `G` rows quote their source
+beside the audited count. It is a note, and no threshold enforces the substitution limit,
 because whether a body of quotation could replace the source is a judgment for
 the reader of that number.
 
@@ -182,8 +182,9 @@ the header row, outside raw HTML, stated once, and a second declaration refused
 rather than overruling the first. Doubt reads as the strict case here too. A
 declaration the check cannot read leaves the matrix naming no reading, so the
 digest binds the empty pin and every recorded audit reads stale. The pin
-duplicates what `SOURCE.md` says in prose, and that is deliberate: the matrix
-copy is the one the digest binds, and no check here opens a second file.
+duplicates what `source/<tier>/<skill>.md` says in prose, and that is
+deliberate: the matrix copy is the one the digest binds, and no check here
+opens a second file.
 ADR-0026 records the decision, and it amends ADR-0018's digest.
 
 **The matrix table is checked, not just its rows.** The header and the
@@ -268,8 +269,9 @@ Two specific cases:
   definitions and usage notes attached to each entry are expression. Reproducing
   those in bulk is the defect.
 - **An unchecked license.** Some sources restrict reproduction beyond ordinary
-  quotation, and ASD is one of them. `SOURCE.md` must record what was checked and
-  when. A quotation added without checking the source record is worth flagging.
+  quotation, and ASD is one of them. `source/<tier>/<skill>.md` must record what
+  was checked and when. A quotation added without checking that record is worth
+  flagging.
 
 Amended 2026-07-27. The earlier rule banned every reproduced sentence, which was
 broader than the risk and made every matrix harder to audit.
@@ -284,6 +286,37 @@ A matrix inside `skills/` is a defect, even when every row is correct. The
 matrices do ship at the root of the npm package, where the published `ground`
 command reads them. That is deliberate, and `test/package.test.js` asserts the
 line that matters: no matrix reaches an installed tree.
+
+### A file in a skill directory that nothing governs
+
+The matrix disposes of `SKILL.md` and opens no other file, so a second file
+beside it installs ungraded on every pathway. A `SOURCE.md` shipped that way
+for four releases, carrying numbered procedures at whoever read it.
+
+So a skill directory ships `SKILL.md`, `LICENSE`, `agents/`, and `references/`,
+and `ground --check` refuses anything else by name. The source record moved to
+`source/<tier>/<skill>.md`, beside the matrix, and it is out of an installed
+tree for the reason a matrix is: location, and not a filter in our engine, which
+four pathways never run.
+
+The list states what may ship rather than what may not. A rejection list is only
+as complete as its last review, which is the inversion ADR-0016 records for the
+extractor. Answer a new file the way that ADR answers a new Markdown shape. Ask
+what governs it, and add it to the allowlist only when something does.
+
+The allowlist reads a name, and a name is not a file. So the check asks the
+filesystem what stands at each one, with `lstat`, and refuses anything but a
+plain file. `copyFile` resolves a link, so a link called `LICENSE` ships the
+bytes on the other end of it and the allowlist would have passed it. This is
+the disposition a study already gives a link inside it.
+
+`references/` is the one entry whose governance is owed. `SKILL.md` routes a
+writer into it, so it is context and not an audit record, and the answer to
+ungraded context is to grade it rather than to evict it. Until issue #99 lands,
+every run prints how many files under `references/` no row disposes of. That
+count is a note, like `audit-coverage` beside it. Do not promote it to an
+error, and do not remove it to quiet the output. ADR-0025 records both
+decisions.
 
 ### Impurity in `src/`
 
@@ -472,8 +505,8 @@ the measurement design says it should.
 A **controlled vocabulary** is a list whose word pairs trace to a published
 standard. Those pairs are method rather than expression, and they trace to a
 standard rather than to an observed setting, so they may ship. The gate is the
-three conditions above plus their own licence check, recorded in `SOURCE.md`,
-and not the promoted study. The ASD word-pair dictionary on
+three conditions above plus their own licence check, recorded in the source
+record, and not the promoted study. The ASD word-pair dictionary on
 issue #19 is that case.
 
 Which gate applies turns on where the list came from, and never on what it

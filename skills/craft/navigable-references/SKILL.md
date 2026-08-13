@@ -11,8 +11,9 @@ A writer who names something the reader cannot reach has moved the work of
 finding it onto the reader. The writer already had the location open, and chose
 a label instead. That is a writing defect, and not a gap in the tools.
 
-No measurement stands behind this skill. `SOURCE.md` beside this file records
-that, and it names where a measurement would live.
+No measurement stands behind this skill. The source record in the stylewright
+repository, at `source/craft/navigable-references.md`, states that and names
+where a measurement would live.
 
 ## Give the reference a form the reader can follow
 

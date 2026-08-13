@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { sections, indentOf, isIndented } from './markdown.js';
 import { loadCatalog } from './catalog.js';
+import { walk } from './tree.js';
 
 /**
  * The columns a matrix carries, in order. The last is the audit.
@@ -1496,6 +1497,92 @@ export function checkSkill({ skillText, matrixText, now }) {
   return findings;
 }
 
+/**
+ * What a skill directory may ship, and what governs each name.
+ *
+ * The matrix disposes of every unit in `SKILL.md` and opens no other file, so
+ * a second file in the directory installs ungraded. Four of the six install
+ * pathways copy the directory whole, so an exclusion list inside our engine
+ * would not reach them. Location is the mechanism here as it is for the
+ * matrix, and this is the check that says so before a release.
+ *
+ * The list is stated as what may ship rather than as what may not, for the
+ * reason ADR-0016 gives about the extractor: a rejection list is only as
+ * complete as its last review, and the next file nobody imagined would ship
+ * ungoverned. A false refusal costs an author one decision about what governs
+ * the file. The other direction costs a reader nothing they can see.
+ */
+export const SHIPPED_FILES = {
+  'SKILL.md': 'the grounding matrix disposes of every unit in it',
+  LICENSE: 'it is a legal notice, and it carries no rule for a writer',
+};
+
+/**
+ * Directories a skill may ship, and what governs what is inside them.
+ *
+ * `references/` is the one entry whose governance is owed rather than held.
+ * The skill routes an agent into it while the agent writes, so it is context
+ * and not an audit record, and the answer to ungraded context is to grade it
+ * rather than to evict it. ADR-0025 records that, and issue #99 carries the
+ * work. Until it lands, every run counts what those files hold.
+ */
+export const SHIPPED_DIRS = {
+  agents: 'a harness reads it as metadata, the way it reads front matter',
+  references: 'the skill routes a writer into it, and no matrix disposes of it yet',
+};
+
+/**
+ * The files in one skill directory, against that list. Pure, so the walk that
+ * finds them stays in the caller.
+ *
+ * The reference count is a note, for the reason `audit-coverage` is one: no
+ * run of this program can raise it, and a gate that fails on it would fail
+ * every release until issue #99 lands. Do not promote it to an error, and do
+ * not remove it to quiet the output. A green run over files nothing grades is
+ * the thing this number exists to report.
+ */
+export function checkShippedFiles({ files, irregular = [], tier, name }) {
+  const allowed = Object.entries(SHIPPED_FILES)
+    .map(([f, why]) => `${f} (${why})`)
+    .concat(Object.entries(SHIPPED_DIRS).map(([d, why]) => `${d}/ (${why})`))
+    .join(', ');
+  // The allowlist reads a name, and a name is not a file. `copyFile` resolves
+  // a link, so a link called `LICENSE` ships whatever it points at, and the
+  // allowlist would have passed it. A study already answers this shape: a
+  // symbolic link inside one is refused by name, rather than skipped by a
+  // walker that filters on file type. A skill directory holds plain files.
+  const findings = irregular.map((rel) => ({
+    level: 'error',
+    code: 'shipped-file-not-regular',
+    message: `${rel} is not a plain file. A skill directory holds plain files only, `
+      + 'because the copy resolves a link and ships the bytes on the other end of it, '
+      + 'wherever they live. The allowlist reads the name, so it cannot see that. '
+      + 'Replace it with the file itself.',
+  }));
+  findings.push(...files
+    .filter((rel) => !Object.hasOwn(SHIPPED_FILES, rel))
+    .filter((rel) => !Object.keys(SHIPPED_DIRS).some((d) => rel.startsWith(`${d}/`)))
+    .map((rel) => ({
+      level: 'error',
+      code: 'ungoverned-shipped-file',
+      message: `${rel} sits in the skill directory, so every install pathway copies it, `
+        + 'and nothing here reads it. A skill directory ships '
+        + `${allowed}. An audit record goes in source/${tier}/${name}.md, beside the `
+        + 'matrix and outside every copy. Anything else needs a decision about what '
+        + 'governs it before it ships.',
+    })));
+  const referenced = files.filter((rel) => rel.startsWith('references/'));
+  if (referenced.length) {
+    findings.push({
+      level: 'note',
+      code: 'reference-coverage',
+      message: `${referenced.length} file(s) under references/ install with this skill and `
+        + `no row disposes of them: ${referenced.join(', ')}.`,
+    });
+  }
+  return findings;
+}
+
 export async function checkAll(repoRoot, { now } = {}) {
   const out = {};
   for (const skill of await loadCatalog(repoRoot)) {
@@ -1506,7 +1593,21 @@ export async function checkAll(repoRoot, { now } = {}) {
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
-    out[skill.name] = checkSkill({ skillText, matrixText, now });
+    // `walk` returns names, and a name says nothing about what stands at it.
+    // The type is asked for here, with `lstat`, so the link itself answers
+    // rather than whatever it points at.
+    const files = await walk(skill.dir);
+    const irregular = [];
+    for (const rel of files) {
+      const st = await fs.lstat(path.join(skill.dir, rel));
+      if (!st.isFile()) irregular.push(rel);
+    }
+    out[skill.name] = [
+      ...checkShippedFiles({
+        files, irregular, tier: skill.tier, name: skill.name,
+      }),
+      ...checkSkill({ skillText, matrixText, now }),
+    ];
   }
   return out;
 }

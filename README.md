@@ -36,12 +36,12 @@ Install one tier, the other, or both.
 
 | Skill | Tier | Source | License of the source |
 |---|---|---|---|
-| `simplified-technical-english` | standards | ASD-STE100 Issue 9 (2025) | (c) ASD 2025. All rights reserved. See the skill `SOURCE.md`. |
+| `simplified-technical-english` | standards | ASD-STE100 Issue 9 (2025) | (c) ASD 2025. All rights reserved. See `source/standards/simplified-technical-english.md`. |
 | `plain-language` | standards | Federal Plain Language Guidelines | CC0 1.0 Universal. Public domain. |
-| `compressed-deliberation` | craft | None. Anthropic documents the defaults, and our own baseline traces the inflation to the instruction stack above them. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
-| `navigable-references` | craft | None. The rule is ours, and no measurement stands behind it yet. See the skill `SOURCE.md`. | Not applicable. Nothing is reproduced. |
-| `proportionate-execution` | craft | None. Anthropic documents the behaviours, and every rule answering them is ours. See the skill `SOURCE.md`. | No source wording is reproduced, so no reproduction right is relied on. See the skill `SOURCE.md`. |
-| `de-slop` | craft | None. Every rule is ours, and no measurement stands behind it yet. See the skill `SOURCE.md`. | Not applicable. Nothing is reproduced. |
+| `compressed-deliberation` | craft | None. Anthropic documents the defaults, and our own baseline traces the inflation to the instruction stack above them. | No source wording is reproduced, so no reproduction right is relied on. See `source/craft/compressed-deliberation.md`. |
+| `navigable-references` | craft | None. The rule is ours, and no measurement stands behind it yet. See `source/craft/navigable-references.md`. | Not applicable. Nothing is reproduced. |
+| `proportionate-execution` | craft | None. Anthropic documents the behaviours, and every rule answering them is ours. See `source/craft/proportionate-execution.md`. | No source wording is reproduced, so no reproduction right is relied on. See the same record. |
+| `de-slop` | craft | None. Every rule is ours, and no measurement stands behind it yet. See `source/craft/de-slop.md`. | Not applicable. Nothing is reproduced. |
 
 A craft skill has no standard behind it, so measurement is the only evidence its
 rules can have. `bench/` holds that protocol, and `bench/README.md` states the
@@ -50,8 +50,8 @@ clean, which is how we learned the skill we were about to write would have been
 aimed at the wrong thing.
 
 That is the evidence a craft rule can have, and not the evidence each one
-already has. `navigable-references` and `de-slop` ship with none, and each
-`SOURCE.md` says so in those words. Read both as discipline that we assert.
+already has. `navigable-references` and `de-slop` ship with none, and each source record
+says so in those words. Read both as discipline that we assert.
 
 `de-slop` gives a shape to write toward, and names the departures from it. It
 governs rhetorical moves and never words. No skill here ships a list of
@@ -361,6 +361,11 @@ because the count is the only line that reports the second thing.
 Matrices ship at the root of the npm package, so the published `ground` command
 has them to read. No install pathway copies them with a skill. A matrix is an
 audit record for a reader, and an agent does not need it while it writes.
+
+A source record works the same way. It sits in `source/<tier>/<skill>.md`,
+beside the matrix and outside every skill directory. `ground --check` refuses a
+file in a skill directory that nothing governs, so a record put back beside a
+skill fails the gate. ADR-0025 records that decision.
 
 `stylewright ground --check --all` fails when a skill changes and its matrix
 does not. Every heading, paragraph, list item, table and code block counts,

@@ -18,7 +18,7 @@ because an audit answers to one reading of the source.
 The `Source text` cell of a `G` row carries the words of the rule it cites, in
 quotation marks. Every row below reads `unquoted`, and that is not a backlog.
 
-**Quotation:** forbidden. `SOURCE.md` records that nobody has read the
+**Quotation:** forbidden. The source record states that nobody has read the
 governing terms of the vendor pages these rows cite, so no sentence of one may
 be carried here. Read those terms and record the check, then edit this line.
 
@@ -37,14 +37,14 @@ Every prescription here is therefore an `E` row, including the ones that read as
 obvious consequences of a `G` row. The citations look authoritative, and that is
 why the line has to hold.
 
-`SOURCE.md` beside the skill carries the URLs, the sections read, the read date,
-and the expiry conditions.
+The source record at `source/craft/compressed-deliberation.md` carries the
+URLs, the sections read, the read date, and the expiry conditions.
 
 ## Why no `G` row supports a word budget
 
 Anthropic also published a postmortem in which brevity instructions to an
-earlier Claude Code build reduced coding quality. That report is `A6` in
-`SOURCE.md`. It is the reason `E-14` exists, and the reason this skill states
+earlier Claude Code build reduced coding quality. That report is `A6` in the
+source record. It is the reason `E-14` exists, and the reason this skill states
 shapes rather than lengths. We carry the counterevidence rather than omit it.
 
 ## Baseline
@@ -133,10 +133,10 @@ and the cutoff are what a reading of these pages is a reading of.
 | E-15 | Do not drop a finding to make a reply shorter. | What this skill does not ask for |  |  | Our own guidance |  |
 | E-16 | Do not suppress the narration that a reader uses to intervene. | What this skill does not ask for |  |  | Our own guidance |  |
 | N-01 | Deliberation is not the product. Monitoring, qualifying, verifying, managing scope and correcting course are all real work, and a reader wants the edited result of that work rather than a transcript of it. | Purpose |  |  | Purpose framing, asserts no rule |  |
-| N-02 | This skill is pinned to one model build. The record of what it targets, and of when it expires, is in `SOURCE.md` beside this file. | Purpose |  |  | Points at SOURCE.md, asserts no rule |  |
+| N-02 | This skill is pinned to one model build. The record of what it targets, and of when it expires, lives in the stylewright repository at `source/craft/compressed-deliberation.md`. It is not installed with this skill. | Purpose |  |  | Points at the source record, asserts no rule |  |
 | N-03 | Anthropic publishes these as differences in Claude Opus 5. They describe the model. They prescribe nothing, and no rule below inherits their authority. | What this corrects |  |  | States what the G rows do NOT license |  |
 | E-17 | Those are the documented defaults. What our own baseline found is narrower and partly different: an unguided run was already clean, and an operator instruction stack above it was what inflated the reply. So read the rules below as aimed at the whole stack you are running inside, and not at the model alone. | What this corrects |  |  | Records our baseline, and instructs how to read the rules |  |
-| E-18 | Where the rules have been measured: single-turn replies, one prompt each, five runs. Not agentic sessions, and not files written to disk. The second is the case `SOURCE.md` records the vendor documenting most clearly and the one we have tested least, so apply the rules there on their reasoning, not on our evidence. | What this corrects |  |  | States the evidence, and instructs where to apply the rules |  |
+| E-18 | Where the rules have been measured: single-turn replies, one prompt each, five runs. Not agentic sessions, and not files written to disk. The second is the case that record names as the one the vendor documents most clearly, and the one we have tested least, so apply the rules there on their reasoning, not on our evidence. | What this corrects |  |  | States the evidence, and instructs where to apply the rules |  |
 | E-19 | `de-slop` treats prose that reads as machine-written, whatever produced it. This skill treats one model's documented defaults, and it expires when that model does. Follow both. They do not disagree. | How this differs from de-slop |  |  | Relates two skills, and instructs the reader to follow both |  |
 | N-07 | compressed-deliberation | compressed-deliberation |  |  | Section title, asserts no rule |  |
 | N-08 | Purpose | Purpose |  |  | Section title, asserts no rule |  |

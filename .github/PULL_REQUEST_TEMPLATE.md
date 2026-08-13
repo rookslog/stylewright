@@ -19,9 +19,9 @@
 - [ ] Every statement in `SKILL.md` has a row in the grounding matrix.
 - [ ] Each `G` row cites a real rule identifier that I checked against the source.
 - [ ] Each `E` row is honestly ours, and cites no rule.
-- [ ] `SOURCE.md` records the license, the date I checked it, and the URL that stated it.
+- [ ] The source record states the license, the date I checked it, and the URL that stated it.
 - [ ] The skill carries a non-affiliation notice.
-- [ ] The grounding matrix is in `grounding/`, not inside the skill directory.
+- [ ] The grounding matrix is in `grounding/`, and the source record is in `source/`. Neither sits inside the skill directory.
 
 ## If you changed the engine
 

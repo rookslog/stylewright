@@ -35,6 +35,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the prose-shape lane exists. `de-slop` treats one passage of prose, and this
   skill governs a session, so it holds what an agent does as well as what it
   says. The matrix disposes of both new units, as `E-28` and `N-09`.
+- A skill directory ships `SKILL.md`, `LICENSE`, `agents/`, and `references/`,
+  and `ground --check` refuses any other file by name. The matrix disposes of
+  `SKILL.md` and opens no other file, so a second file beside it installed
+  ungraded on every pathway. The source record moved out of the skill
+  directory, to `source/<tier>/<name>.md` beside the matrix, and it no longer
+  reaches an installed tree. Location is the mechanism, because four of the six
+  install pathways run none of our code. The allowlist states what may ship
+  rather than what may not, for the reason ADR-0016 gives about the extractor.
+  Each shipped `LICENSE` and each `SKILL.md` that pointed at `SOURCE.md` now
+  names the record's path in the repository. `ground --check` also prints how
+  many files under `references/` no row disposes of, per skill that ships one.
+  That count is a note and it fails nothing, the way the audited count does.
+  ADR-0025 records both decisions, and issue #99 carries the grading work that
+  closes the second.
 
 ## 0.3.0 — 2026-08-07
 

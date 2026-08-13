@@ -13,9 +13,9 @@ read, so editing the row voids the audit.
 
 The digest binds the row. It binds nothing about the source. A `G` row
 cites a rule by number, and a rule number survives a new edition of the
-standard, so moving `SOURCE.md` from ASD-STE100 Issue 9 to a later issue
-changes no cell in any row. Every audit in the file stays current and
-counted, over an edition nobody has opened. A review of PR #71 found
+standard, so moving `source/<tier>/<skill>.md` from ASD-STE100 Issue 9
+to a later issue changes no cell in any row. Every audit in the file stays
+current and counted, over an edition nobody has opened. A review of PR #71 found
 this, and issue 73 records it.
 
 Nothing live is false yet. Every `G` row in this repository ships
@@ -28,7 +28,7 @@ trap after a first audit pass would cost that pass.
 | Option | What it buys | What it costs |
 |---|---|---|
 | A declaration in the matrix | The pin sits beside the rows it binds, and one file answers the question | The version is stated in two files |
-| A field in `SOURCE.md` | One statement of the version, in the record that already holds the licence | The checker opens a second file, and a matrix outside `skills/` has to find it |
+| A field in `source/<tier>/<skill>.md` | One statement of the version, in the record that already holds the licence | The checker opens a second file, and a matrix outside `skills/` has to find it |
 | A dated audit header per matrix | The version sits beside the date already, and there is no per-row editing | It replaces ADR-0018's per-row record, which no evidence yet says to replace |
 | Defer | Nothing to unwind | The trap arms itself on the first audit pass |
 
@@ -77,8 +77,9 @@ placeholder while the run stayed green.
 
 ## What it costs
 
-The version is stated twice, in `SOURCE.md` as prose for a reader and in
-the matrix as the pin that binds. That duplication is accepted. The
+The version is stated twice, in `source/<tier>/<skill>.md` as prose for
+a reader and in the matrix as the pin that binds. That duplication is
+accepted. The
 alternative is a checker that opens a second file to grade the first, and
 `ground --check` reads one file per matrix today.
 
@@ -88,7 +89,8 @@ well-formed quotation of a sentence the source never wrote passes. The
 `Audited` cell is the only thing that speaks to that.
 
 **What would flip this.** An owner who wants one statement of the version
-rather than two. The `SOURCE.md` field then becomes the right option, and
-the living-source question has to be answered first: a repository that
+rather than two. The `source/<tier>/<skill>.md` field then becomes the
+right option, and the living-source question has to be answered first: a
+repository that
 publishes no edition number needs a commit or a date of reading, and
-`SOURCE.md` records neither as a field today.
+the source record holds neither as a field today.

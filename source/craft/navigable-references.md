@@ -1,4 +1,6 @@
-# Source record
+# Source record for navigable-references
+
+This file stays in the repository. It does not install with the skill.
 
 This skill has no source. The record exists anyway, because the question a
 reader asks of a craft skill is what stands behind its rules, and the answer

@@ -1,4 +1,6 @@
-# Source record
+# Source record for plain-language
+
+This file stays in the repository. It does not install with the skill.
 
 - Source: Federal Plain Language Guidelines
 - URL: https://github.com/GSA/plainlanguage.gov

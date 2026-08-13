@@ -12,7 +12,8 @@ what to say about what it did. Both decisions default to more than the task
 needs, and this skill holds each one to the size of the thing it serves.
 
 This skill is pinned to one model build. The record of what it targets, of what
-stands behind it, and of when it expires, is in `SOURCE.md` beside this file.
+stands behind it, and of when it expires, lives in the stylewright repository at
+`source/craft/proportionate-execution.md`. It is not installed with this skill.
 
 ## What this corrects
 
@@ -25,7 +26,7 @@ model. They prescribe nothing, and no rule below inherits their authority.
 - It can widen a task past the request, taking on steps nobody asked for.
 - It narrates a correction to its own earlier statement more often than earlier models did.
 
-No measurement stands behind any rule below. The bench named in `SOURCE.md`
+No measurement stands behind any rule below. The bench named in that record
 cannot drive a multi-step session yet, so read every rule here as discipline we
 assert, and never as an effect we observed.
 

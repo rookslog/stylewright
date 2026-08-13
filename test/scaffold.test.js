@@ -33,6 +33,23 @@ test('a scaffolded standards skill passes the grounding check immediately', asyn
     'a fresh scaffold must be green, or contributors learn to silence the check');
 });
 
+test('the source record lands beside the matrix, not beside the skill', async () => {
+  // Four of the six install pathways copy the skill directory whole, so the
+  // record's location is the only thing keeping it out of an installed tree.
+  const repo = await tmp();
+  await scaffoldSkill({ repoRoot: repo, ...STD });
+  const record = await fs.readFile(
+    path.join(repo, 'source', 'standards', 'demo-guide.md'), 'utf8');
+  assert.match(record, /# Source record for demo-guide/);
+  await assert.rejects(
+    () => fs.access(path.join(repo, 'skills', 'standards', 'demo-guide', 'SOURCE.md')));
+  const licence = await fs.readFile(
+    path.join(repo, 'skills', 'standards', 'demo-guide', 'LICENSE'), 'utf8');
+  assert.match(licence, /source\/standards\/demo-guide\.md/);
+  assert.deepEqual((await checkAll(repo, { now: NOW }))['demo-guide']
+    .filter((f) => f.level !== 'note'), []);
+});
+
 test('a scaffolded G row starts unaudited and unquoted, and says so', async () => {
   // The scaffold guesses the rule identifier. Seeding a date beside a guess
   // would make the matrix claim a reading nobody has done, on the day the file
@@ -88,6 +105,21 @@ test('a craft skill needs no source and gets an E row', async () => {
   await assert.rejects(
     () => fs.access(path.join(repo, 'skills', 'craft', 'demo-craft', 'SOURCE.md')));
   assert.deepEqual((await checkAll(repo, { now: NOW }))['demo-craft'], []);
+});
+
+test('a craft skill gets a source record too, because it has a status to state', async () => {
+  // A craft skill has no standard behind it, and that is the thing the record
+  // says. All four shipped craft skills carry one, and the scaffold wrote none.
+  const repo = await tmp();
+  await scaffoldSkill({
+    repoRoot: repo, name: 'demo-craft', tier: 'craft', description: 'Craft demo.',
+  });
+  const record = await fs.readFile(
+    path.join(repo, 'source', 'craft', 'demo-craft.md'), 'utf8');
+  assert.match(record, /# Source record for demo-craft/);
+  assert.match(record, /no source/i);
+  await assert.rejects(
+    () => fs.access(path.join(repo, 'skills', 'craft', 'demo-craft', 'SOURCE.md')));
 });
 
 test('a standards skill without a source is refused', async () => {
