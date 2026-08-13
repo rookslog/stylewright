@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import {
-  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO, rowDigest, InvalidMoment, readMatrix,
+  parseMatrix, checkSkill, checkAll, contentUnits, unmodelled, AT_COLUMN_ZERO, rowDigest, InvalidMoment, readMatrix, readSourceVersion,
 } from '../src/ground.js';
 import { sections } from '../src/markdown.js';
 
@@ -27,9 +29,16 @@ description: d
 // fixture here attributes a fabricated quotation to a real rule.
 const DECLARED = '**Quotation:** permitted. The Demo Standard is invented.';
 
+// The reading these rows were checked against. It is a pin rather than a name,
+// so a later issue of the same standard is a different declaration.
+const PINNED = '**Source version:** The Demo Standard, issue 1 of 2026-08-06.';
+const PIN = PINNED.replace('**Source version:** ', '');
+
 const MATRIX = `# Grounding: s
 
 ${DECLARED}
+
+${PINNED}
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|
@@ -104,7 +113,7 @@ const audited = (row) => MATRIX.replace(
   `| The Demo Standard, clause 4 | ${row} |`,
 );
 
-const CURRENT = rowDigest(parseMatrix(MATRIX).find((r) => r.id === 'G-01'));
+const CURRENT = rowDigest(parseMatrix(MATRIX).find((r) => r.id === 'G-01'), PIN);
 
 test('a G row records its audit and a row of another kind does not', () => {
   const silent = MATRIX.replace('| The Demo Standard, clause 4 | unaudited |', '| The Demo Standard, clause 4 |  |');
@@ -513,7 +522,7 @@ test('an audit records the quotation the person read, so rewriting it goes stale
   // against. Left out of the digest, they could be rewritten under a recorded
   // audit, which is the defect the digest exists to catch one column over.
   const before = MATRIX.replace('| DEMO-4 | unquoted |', '| DEMO-4 | "Keep to 20 words." |');
-  const stamp = rowDigest(parseMatrix(before).find((r) => r.id === 'G-01'));
+  const stamp = rowDigest(parseMatrix(before).find((r) => r.id === 'G-01'), PIN);
   const recorded = before.replace('| The Demo Standard, clause 4 | unaudited |', `| The Demo Standard, clause 4 | 2026-08-06 ${stamp} |`);
   assert.deepEqual(errors(check({ skillText: SKILL, matrixText: recorded })), []);
 
@@ -1313,4 +1322,297 @@ test('checkAll covers every skill in the repository', async () => {
   assert.ok('demo-standard' in all);
   assert.deepEqual(errors(all['demo-standard']), []);
   assert.ok(all['demo-craft'].some((f) => f.code === 'no-matrix'));
+});
+
+// The source version. A `G` row's audit says a person read that row against
+// the source, and the digest binds the row's own words. It bound nothing about
+// WHICH reading of the source they read it against, so bumping ASD-STE100 from
+// Issue 9 to a later issue left every audit current and counted while nobody
+// had opened the new issue. The matrix declares the reading, and the
+// declaration joins the digest.
+
+const UNSOURCED = `# Grounding: s
+
+${DECLARED}
+
+| ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
+|---|---|---|---|---|---|---|
+| N-01 | S | S |  |  | Section title |  |
+| N-02 | Rules | Rules |  |  | Section title |  |
+| E-01 | Use no more than 20 words in a sentence. | Rules |  |  | Our own guidance |  |
+| E-02 | Do not use semicolons. | Rules |  |  | Our own guidance |  |
+`;
+
+test('a matrix carrying a G row declares the source version it was read against', () => {
+  const bare = MATRIX.replace(`${PINNED}\n\n`, '');
+  const found = check({ skillText: SKILL, matrixText: bare });
+  assert.ok(found.some((f) => f.code === 'matrix-no-source-version'),
+    'a matrix with G rows and no source version was accepted');
+});
+
+test('a matrix citing no source names no version, and one that does is refused', () => {
+  // The other direction. A pin no row answers to is a line nobody maintains,
+  // and the two matrices here that cite nothing would carry one forever.
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: UNSOURCED })), []);
+  const pinned = UNSOURCED.replace(DECLARED, `${DECLARED}\n\n${PINNED}`);
+  assert.ok(check({ skillText: SKILL, matrixText: pinned })
+    .some((f) => f.code === 'matrix-source-version-without-g-rows'));
+});
+
+test('bumping the source version voids every audit in the matrix', () => {
+  // Issue 73, in the shape it was reported. A rule identifier is stable across
+  // editions, so moving the standard on changed no cell in any row and every
+  // recorded audit stayed current over an edition nobody had opened.
+  const recorded = MATRIX.replace(
+    '| The Demo Standard, clause 4 | unaudited |',
+    `| The Demo Standard, clause 4 | 2026-08-06 ${CURRENT} |`,
+  );
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: recorded })), []);
+
+  const bumped = recorded.replace(PINNED, '**Source version:** The Demo Standard, issue 2 of 2026-08-07.');
+  const found = check({ skillText: SKILL, matrixText: bumped });
+  assert.ok(found.some((f) => f.code === 'audit-stale' && f.message.startsWith('G-01:')),
+    'the audit survived a source version nobody read the row against');
+  // The remedy names the digest under the new reading, not the old one.
+  const after = rowDigest(parseMatrix(bumped).find((r) => r.id === 'G-01'),
+    'The Demo Standard, issue 2 of 2026-08-07.');
+  assert.ok(found.some((f) => f.code === 'audit-stale' && f.message.includes(after)));
+  assert.notEqual(after, CURRENT);
+});
+
+test('the pin is the whole paragraph, so a wrapped one binds every word of it', () => {
+  // House style wraps at eighty columns. Reading the first line alone bound
+  // `Issue 9, January` while the file said `Issue 9, January 2025`, which is
+  // the checker and the reader disagreeing about the record.
+  const wrapped = MATRIX.replace(PINNED,
+    '**Source version:** The Demo Standard, issue 1 of\n2026-08-06.');
+  const pin = 'The Demo Standard, issue 1 of 2026-08-06.';
+  assert.deepEqual(readSourceVersion(wrapped).map((v) => v.pin), [pin]);
+  // The wrapped spelling and the one-line spelling are the same pin, so an
+  // audit recorded under one reads as current under the other.
+  const stamp = rowDigest(parseMatrix(MATRIX).find((r) => r.id === 'G-01'), pin);
+  assert.equal(stamp, CURRENT);
+  assert.deepEqual(errors(check({
+    skillText: SKILL,
+    matrixText: wrapped.replace('| The Demo Standard, clause 4 | unaudited |',
+      `| The Demo Standard, clause 4 | 2026-08-06 ${stamp} |`),
+  })), []);
+
+  // It ends at the blank line. The paragraph under a declaration is a different
+  // statement, and a pin that swallowed one bound words nobody meant as a pin.
+  const trailed = MATRIX.replace(PINNED, `${PINNED}\n\nThe rows below cite it.`);
+  assert.deepEqual(readSourceVersion(trailed).map((v) => v.pin), [pin]);
+});
+
+test('a pin that names no particular reading is refused', () => {
+  for (const words of ['the latest issue', 'whatever is current', 'HEAD of the repository',
+    'the newest edition', 'the most recent issue']) {
+    const vague = MATRIX.replace(PINNED, `**Source version:** ${words}.`);
+    assert.ok(check({ skillText: SKILL, matrixText: vague })
+      .some((f) => f.code === 'matrix-source-version-unpinned'),
+    `"${words}" pins nothing and was accepted`);
+  }
+  // An empty declaration is the same refusal, and it is not read as an absent
+  // one: the author wrote the line, and the finding has to name what they wrote.
+  const empty = check({ skillText: SKILL, matrixText: MATRIX.replace(PINNED, '**Source version:**') });
+  assert.ok(empty.some((f) => f.code === 'matrix-source-version-unpinned'));
+  assert.ok(!empty.some((f) => f.code === 'matrix-no-source-version'));
+});
+
+test('a source version the reader cannot find governs nothing', () => {
+  // The placement doctrine ADR-0020 wrote for the quotation declaration, one
+  // declaration over. A line under the table is a footnote to the rows it
+  // governs, and a line inside a collapsed `<details>` is a line a reader on
+  // GitHub never sees.
+  const bare = MATRIX.replace(`${PINNED}\n\n`, '');
+  for (const [what, m, code] of [
+    ['sits below the table', `${bare}\n${PINNED}\n`, 'matrix-source-version-below-the-table'],
+    ['sits inside HTML', MATRIX.replace(PINNED, `<details>\n\n${PINNED}\n\n</details>`),
+      'matrix-source-version-inside-html'],
+  ]) {
+    const found = check({ skillText: SKILL, matrixText: m });
+    assert.ok(found.some((f) => f.code === code), `the declaration that ${what} was accepted`);
+    // Doubt reads as the strict case. An audit recorded under the pin the
+    // reader can see does not count where the check cannot read the pin.
+    const recorded = m.replace('| The Demo Standard, clause 4 | unaudited |',
+      `| The Demo Standard, clause 4 | 2026-08-06 ${CURRENT} |`);
+    assert.ok(check({ skillText: SKILL, matrixText: recorded })
+      .some((f) => f.code === 'audit-without-a-source-version'),
+    `an audit counted under a source version that ${what}`);
+  }
+});
+
+test('a second source version is refused, and neither one governs', () => {
+  const twice = MATRIX.replace(PINNED, `${PINNED}\n\n${PINNED}`);
+  const found = check({ skillText: SKILL, matrixText: twice });
+  assert.ok(found.some((f) => f.code === 'matrix-two-source-versions'));
+  const recorded = twice.replace('| The Demo Standard, clause 4 | unaudited |',
+    `| The Demo Standard, clause 4 | 2026-08-06 ${CURRENT} |`);
+  assert.ok(check({ skillText: SKILL, matrixText: recorded })
+    .some((f) => f.code === 'audit-without-a-source-version'),
+  'a doubled declaration left one of them governing the digest');
+});
+
+test('a source version finding is not a broken table, and the ratios still print', () => {
+  // The withholding rule reads the container the reader sees. The source
+  // version sits in the prose above the table, so a finding about it says
+  // nothing about the header, the delimiter or the rows.
+  const bare = MATRIX.replace(`${PINNED}\n\n`, '');
+  for (const [what, m] of [
+    ['is absent', bare],
+    ['is doubled', MATRIX.replace(PINNED, `${PINNED}\n\n${PINNED}`)],
+    ['names no reading', MATRIX.replace(PINNED, '**Source version:** the latest issue.')],
+    ['sits below the table', `${bare}\n${PINNED}\n`],
+  ]) {
+    const found = check({ skillText: SKILL, matrixText: m });
+    assert.ok(found.some((f) => f.code.startsWith('matrix-source-version')
+      || f.code === 'matrix-no-source-version' || f.code === 'matrix-two-source-versions'),
+    `the source version that ${what} was read as well formed, so this fixture proves nothing`);
+    for (const code of ['audit-coverage', 'quote-coverage']) {
+      const note = found.find((f) => f.code === code);
+      assert.ok(note, `${code} is absent where the source version ${what}`);
+      assert.match(note.message, /^\d+ of 2 G rows /,
+        `the ratio over 2 G rows is not printed where the source version ${what}`);
+    }
+  }
+});
+
+test('rowDigest refuses a caller that hands in no pin', () => {
+  // The rule `now` obeys, one function over. A default here would compute the
+  // digest this function computed before issue 73, so the caller who forgot the
+  // argument would get the defect back and no error.
+  const row = parseMatrix(MATRIX).find((r) => r.id === 'G-01');
+  assert.throws(() => rowDigest(row), TypeError);
+  assert.throws(() => rowDigest(row, null), TypeError);
+  // The empty string is a value, not an omission. It is what the check binds
+  // when the matrix names no reading it can read.
+  assert.equal(typeof rowDigest(row, ''), 'string');
+});
+
+test('a broken table is not a matrix that cites no source', () => {
+  // The G rows decide whether the source version is required, and a broken
+  // table carries no row this check can read. Asking there refused an honest
+  // declaration for citing nothing, over a table nobody can see, which is the
+  // wrong-number defect the coverage note answers the same way.
+  const noDelimiter = MATRIX.replace('|---|---|---|---|---|---|---|\n', '');
+  const found = check({ skillText: SKILL, matrixText: noDelimiter });
+  assert.ok(found.some((f) => f.code === 'matrix-no-table'));
+  assert.ok(!found.some((f) => f.code === 'matrix-source-version-without-g-rows'),
+    'a declaration was refused for citing nothing, over a table nobody can read');
+  assert.ok(!found.some((f) => f.code === 'matrix-no-source-version'));
+});
+
+// Codex autoreview on PR #101.
+
+test('a matrix that names no reading refuses an audit rather than binding one', () => {
+  // The scaffold shipped a placeholder pin, and a placeholder passes every
+  // word test there is. A person who audited a row under it bound the digest
+  // to the placeholder, and the check went green over the trap this whole
+  // change exists to close. `unread` is the honest state, and it is the one
+  // pin that refuses an audit outright.
+  const unread = MATRIX.replace(PINNED, '**Source version:** unread');
+  assert.deepEqual(errors(check({ skillText: SKILL, matrixText: unread })), []);
+  const bound = unread.replace('| The Demo Standard, clause 4 | unaudited |',
+    `| The Demo Standard, clause 4 | 2026-08-06 ${rowDigest(parseMatrix(unread).find((r) => r.id === 'G-01'), '')} |`);
+  const found = check({ skillText: SKILL, matrixText: bound });
+  assert.ok(found.some((f) => f.code === 'audit-without-a-source-version'),
+    'an audit bound to a matrix that names no reading was counted');
+  // The remedy may not hand out a digest to paste, because pasting it is the
+  // defect. Every doubt case reads the same way, not only `unread`.
+  assert.ok(!found.some((f) => f.level === 'error' && /\b[0-9a-f]{8}\b/.test(f.message)));
+  assert.ok(found.some((f) => f.code === 'audit-coverage' && f.message.startsWith('0 of 2')));
+});
+
+test('a declaration inside a comment, a CDATA block or an instruction is hidden', () => {
+  // The region model read a tag and nothing else, so CommonMark's other four
+  // raw HTML openers left a declaration reading as ordinary prose while the
+  // renderer hid it. Each runs to its own closer rather than to a blank line.
+  for (const [open, close] of [['<!--', '-->'], ['<?php', '?>'], ['<![CDATA[', ']]>'], ['<!DOCTYPE html', '>']]) {
+    const buried = MATRIX.replace(PINNED, `${open}\n\n${PINNED}\n\n${close}`);
+    assert.deepEqual(readSourceVersion(buried).map((v) => v.inHtml), [true],
+      `a declaration inside ${open} read as visible prose`);
+    assert.ok(check({ skillText: SKILL, matrixText: buried })
+      .some((f) => f.code === 'matrix-source-version-inside-html'));
+    const quoted = MATRIX.replace(DECLARED, `${open}\n\n${DECLARED}\n\n${close}`);
+    assert.ok(check({ skillText: SKILL, matrixText: quoted })
+      .some((f) => f.code === 'matrix-declaration-inside-html'),
+    `a quotation declaration inside ${open} read as visible prose`);
+  }
+});
+
+test('a file written with CRLF still declares what it declares', () => {
+  const crlf = MATRIX.replace(/\n/g, '\r\n');
+  assert.deepEqual(readSourceVersion(crlf).map((v) => v.pin), [PIN]);
+  assert.ok(!check({ skillText: SKILL, matrixText: crlf })
+    .some((f) => f.code === 'matrix-no-source-version'),
+  'a CRLF file was told it declares no source version');
+});
+
+test('the pin stops where the renderer starts another block', () => {
+  // It stopped at a blank line, a heading and the table. GFM ends a paragraph
+  // at more than those, and a blockquote under the declaration was read as
+  // part of the pin while the reader saw a separate block.
+  for (const next of ['> A note about it.', '---', '- An item.', '<!-- hidden -->']) {
+    const trailed = MATRIX.replace(PINNED, `${PINNED}\n${next}`);
+    assert.deepEqual(readSourceVersion(trailed).map((v) => v.pin), [PIN],
+      `the pin swallowed ${JSON.stringify(next)}, which the renderer shows as its own block`);
+  }
+  // A wrapped line still continues it, which is the case the stop must not eat.
+  const wrapped = MATRIX.replace(PINNED, '**Source version:** The Demo Standard, issue 1 of\n2026-08-06.');
+  assert.deepEqual(readSourceVersion(wrapped).map((v) => v.pin), [PIN]);
+});
+
+test('a file the skill directory ships and nothing governs is refused by name', async () => {
+  // The matrix reads `SKILL.md` and no other file, so every other file in the
+  // directory installs ungraded. This plants the file the repository actually
+  // shipped that way, and the refusal has to name it rather than throw.
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-ship-'));
+  await fsp.cp(REPO, repo, { recursive: true });
+  await fsp.writeFile(
+    path.join(repo, 'skills', 'standards', 'demo-standard', 'SOURCE.md'),
+    '# Source record\n\nDownload the PDF from the URL above.\n');
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'ungoverned-shipped-file');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.match(refusal.message, /^SOURCE\.md/);
+  assert.match(refusal.message, /source\/standards\/demo-standard\.md/);
+});
+
+test('a link at an allowed name is refused, because the name is not the file', async (t) => {
+  // The allowlist reads names, and `copyFile` follows a link out of the tree,
+  // so a link called `LICENSE` ships whatever it points at. This is the
+  // disposition a study already gives a link inside it: refused by name.
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-link-'));
+  await fsp.cp(REPO, repo, { recursive: true });
+  const dir = path.join(repo, 'skills', 'standards', 'demo-standard');
+  const outside = path.join(repo, 'outside.txt');
+  await fsp.writeFile(outside, 'bytes from outside the skill\n');
+  await fsp.rm(path.join(dir, 'LICENSE'));
+  try {
+    await fsp.symlink(outside, path.join(dir, 'LICENSE'));
+  } catch {
+    return t.skip('this platform does not let the test create a symbolic link');
+  }
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'shipped-file-not-regular');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.match(refusal.message, /^LICENSE/);
+  return undefined;
+});
+
+test('what a skill directory may ship passes, and the shipped catalogue does', async () => {
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-ship-'));
+  await fsp.cp(REPO, repo, { recursive: true });
+  const dir = path.join(repo, 'skills', 'standards', 'demo-standard');
+  await fsp.mkdir(path.join(dir, 'agents'), { recursive: true });
+  await fsp.writeFile(path.join(dir, 'agents', 'openai.yaml'), 'interface:\n');
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.deepEqual(found.filter((f) => f.code === 'ungoverned-shipped-file'), []);
+
+  const all = await checkAll(path.join(import.meta.dirname, '..'), { now: NOW });
+  assert.deepEqual(Object.entries(all)
+    .flatMap(([name, fs]) => fs.filter((f) => f.code === 'ungoverned-shipped-file')
+      .map((f) => `${name}: ${f.message}`)), []);
 });

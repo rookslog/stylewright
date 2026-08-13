@@ -34,7 +34,7 @@ npm ci
 npm test
 ```
 
-Seven checks gate every pull request. `npm run check` runs all seven, and you
+Eight checks gate every pull request. `npm run check` runs all eight, and you
 can run any one of them on its own.
 
 ```
@@ -45,6 +45,7 @@ npm run check:docs      # every document's front matter fits the schema
 npm run check:probes    # every probe record carries what a reader derives from
 npm run check:resident  # the resident fragment still matches its skill
 npm run check:studies   # every promoted study still matches its own digests
+npm run check:editorial # the editorial audit record, and what it counts
 ```
 
 ## Add a skill
@@ -76,7 +77,8 @@ Then do this:
 
 1. Replace the placeholder rule in `SKILL.md`. Write one instruction in each line.
 2. Add a matching row to the grounding matrix for every rule that you write.
-3. Fill in the `FILL IN` fields in `SOURCE.md`.
+3. Fill in the `FILL IN` fields in `source/<tier>/<name>.md`. The scaffold
+   writes that record beside the matrix, and not inside the skill.
 4. Run the three checks above.
 
 ### Choose a source, for a standards skill
@@ -87,7 +89,7 @@ A source qualifies when both of these are true:
 2. Its reuse terms permit a digest in our own words.
 
 The first condition alone is not enough. Check the second before you write
-anything. Record the license and the date that you checked it in `SOURCE.md`.
+anything. Record the license and the date that you checked it in the source record.
 
 We rejected the Chicago Manual of Style, the AP Stylebook, ISO/IEC 26514, and
 IEEE 1063. None of them is readable without payment, so a reader cannot check
@@ -114,7 +116,7 @@ Two specific limits:
   method, and a lint dictionary may carry them.
 - Check the license first. Some sources forbid derivative work, and a source may
   restrict reproduction beyond what quotation practice allows. Record what you
-  found in `SOURCE.md`.
+  found in the source record.
 
 This limit is what lets the repository be public.
 
@@ -152,6 +154,45 @@ inside a fenced block, which the check skips.
 Editing any other cell in the row changes the digest. The check then reports
 the audit as stale, because the words you read are no longer the words in the
 row. Read the row against the source again, or write `unaudited`.
+
+## The matrix names the reading its audits answer to
+
+Write the source version above the header row, at column 0:
+
+```
+**Source version:** ASD-STE100 Simplified Technical English, Issue 9,
+January 2025, read from the official PDF on 2026-07-26.
+```
+
+A `G` row cites a rule by number, and a rule number survives a new edition of
+the standard. So the digest bound nothing about which edition you read, and
+bumping the source left every audit in the file reading as current. The pin
+joins the digest and closes that. Move the pin and every audit in the file goes
+stale, which is what a new edition means for a reading of the old one.
+
+Pin one reading. A versioned source names its version. A living source names a
+commit, or the day you read it. A model target names the build and the evidence
+cutoff. The check refuses a pin that means whichever reading a reader happens
+to fetch, so do not write `latest` or `HEAD`.
+
+The pin is the whole paragraph, so wrap the line where you like. It ends at the
+blank line under it, at the next heading, at the table, and wherever the
+renderer starts another block.
+
+Write `unread` while nobody has read the source. It names no reading, so it
+records none: every `G` row stays `unaudited`, and the check refuses an audit
+under it rather than giving you a digest to paste. A scaffolded matrix starts
+there.
+
+A matrix with a `G` row carries the line. A matrix without one is refused for
+carrying it, because no row there answers to a source. The placement rules are
+the ones the quotation declaration obeys, and the section below states them:
+above the table, outside raw HTML, and once. A second line is refused rather
+than overruling the first. A source version the check cannot read leaves the
+matrix naming no reading at all, and every audit in it reads stale.
+
+`source/<tier>/<skill>.md` states the same thing in prose, for a reader. The
+matrix carries the copy that binds, because no check here opens a second file.
 
 ## Quote the rule in the `Source text` cell
 
@@ -220,10 +261,10 @@ permitting line under it.
 
 Do three things before you write a quotation, in this order:
 
-1. Read `SOURCE.md` for that skill. It records what licence was checked and
-   when. Some sources restrict reproduction beyond ordinary quotation, and one
-   of ours does.
-2. Record the check you made, in the same `SOURCE.md`, with the date. Then edit
+1. Read `source/<tier>/<skill>.md` for that skill. It records what licence was
+   checked and when. Some sources restrict reproduction beyond ordinary
+   quotation, and one of ours does.
+2. Record the check you made, in the same record, with the date. Then edit
    the declaration, and say there what changed.
 3. Ask whether the matrix has started to replace the source. A quoted operative
    sentence per row is citation. Every rule quoted in full is republishing, and

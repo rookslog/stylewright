@@ -1,4 +1,6 @@
-# Source record
+# Source record for proportionate-execution
+
+This file stays in the repository. It does not install with the skill.
 
 This skill is pinned to one model build. It is expected to date, and the record
 below is what makes the dating visible.
@@ -45,9 +47,9 @@ land near one in substance. None is copied, and none claims authority from one.
 A rule that reads like vendor guidance is still an `E` row, because the vendor
 wrote guidance for its own product and not a standard for anybody to cite.
 
-`compressed-deliberation` beside this skill cites the same two pages, and its
-own `SOURCE.md` carries a wider register including the system card and the
-counterevidence. Read that record with this one. Neither skill supersedes the
+`compressed-deliberation` cites the same two pages, and its own record at
+`source/craft/compressed-deliberation.md` carries a wider register including the
+system card and the counterevidence. Read that record with this one. Neither skill supersedes the
 other.
 
 ## What this record does not carry
@@ -59,7 +61,8 @@ row, and nothing in it is quoted here.
 
 The Claude Opus 5 system card records an audited episode in which a request to
 explain became an unrequested fix. That episode is cited in
-`compressed-deliberation/SOURCE.md`, and it was not re-opened for this skill, so
+`source/craft/compressed-deliberation.md`, and it was not re-opened for this
+skill, so
 no row here rests on it.
 
 ## What evidence stands behind the rules

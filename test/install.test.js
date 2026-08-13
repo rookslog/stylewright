@@ -24,19 +24,23 @@ test('copies the skill tree and writes a manifest', async () => {
   });
   assert.deepEqual(res.installed, ['demo-standard']);
   assert.ok(await exists(path.join(target, 'demo-standard', 'SKILL.md')));
-  assert.ok(await exists(path.join(target, 'demo-standard', 'SOURCE.md')));
+  assert.ok(await exists(path.join(target, 'demo-standard', 'LICENSE')));
   const mf = await readManifest(target);
   assert.equal(mf.skills['demo-standard'].tier, 'standards');
   assert.equal(mf.skills['demo-standard'].pathway, 'engine');
   assert.match(mf.skills['demo-standard'].files['SKILL.md'], /^[0-9a-f]{64}$/);
 });
 
-test('never installs a grounding matrix', async () => {
+test('never installs a grounding matrix or a source record', async () => {
   const target = await tmp();
   await installSkills({ repoRoot: REPO, targetDir: target, names: ['demo-standard'], now: NOW });
   const entries = await fs.readdir(path.join(target, 'demo-standard'));
   assert.ok(!entries.some((e) => /grounding/i.test(e)));
   assert.ok(!(await exists(path.join(target, 'demo-standard', 'GROUNDING.md'))));
+  // Both audit artifacts stay out by the same mechanism, which is where they
+  // sit in the repository. Nothing filters them on the way through.
+  assert.ok(!entries.some((e) => /^SOURCE\.md$/.test(e)));
+  assert.ok(!(await exists(path.join(target, 'source'))));
 });
 
 test('refuses to clobber a locally edited file without force', async () => {

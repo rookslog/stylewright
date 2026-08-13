@@ -7,7 +7,7 @@ This repository ships writing skills. Its own documents are written under one of
 those skills, and continuous integration checks them with its own tool. Hold a
 change here to the standard the repository sells.
 
-## Run these seven before you claim a change is done
+## Run these eight before you claim a change is done
 
 ```bash
 npm test                # unit and conformance tests
@@ -17,9 +17,10 @@ npm run check:docs      # every document's front matter fits the schema
 npm run check:probes    # every probe record carries what a reader derives from
 npm run check:resident  # the resident fragment still matches its skill
 npm run check:studies   # every promoted study still matches its own digests
+npm run check:editorial # the editorial audit record, and what it counts
 ```
 
-`npm run check` runs all seven.
+`npm run check` runs all eight.
 
 ## What counts as a defect here
 
@@ -69,7 +70,8 @@ each time it says it.
 No check here opens a source, so no check can say whether a `G` row reads its
 rule correctly. Each `G` row therefore records its own audit, in the last cell.
 The cell says `unaudited`, or it carries the date a person read that row
-against the source and a digest of the five cells they read. Every other kind
+against the source, and a digest of the five cells they read and the reading
+they read them against. Every other kind
 of row leaves the cell empty, for the same reason its rule cell is empty. The
 cell itself is never absent. A row without it is refused whatever kind it is,
 because coalescing an absent cell with an empty one let a matrix of `E` and
@@ -89,8 +91,8 @@ authority the source never granted, and nothing but the marks tells a reader
 which it is reading.
 
 Check the licence before writing in that column, and record what you checked in
-`SOURCE.md`. The run prints how many `G` rows quote their source beside the
-audited count. It is a note, and no threshold enforces the substitution limit,
+the skill's source record. The run prints how many `G` rows quote their source
+beside the audited count. It is a note, and no threshold enforces the substitution limit,
 because whether a body of quotation could replace the source is a judgment for
 the reader of that number.
 
@@ -153,6 +155,38 @@ The moment is written in UTC: a bare day, or a day and a bounded time ending in
 another in UTC, and the check read the written one. A zero offset is UTC and is
 admitted. The time is bounded because `24:00:00Z` is a legal spelling of
 midnight ENDING that day, so its written day put the bound a day early.
+
+A matrix names the reading its audits answer to, at column 0, as `**Source
+version:** <pin>`. A rule identifier is stable across editions, so the row
+digest bound nothing about which edition a person read: moving ASD-STE100 from
+Issue 9 to a later issue changed no cell in any row, and every audit stayed
+current over an edition nobody had opened. Issue 73 reports it. The pin joins
+the digest, so moving it voids every audit in the file at once.
+
+The pin names one reading. A versioned source names its version, a living one
+names a commit or the day somebody read it, and a model target names the build
+and the evidence cutoff. `latest` and `HEAD` are refused, because a reader has
+to date those for themselves. The pin is the whole paragraph rather than the
+first line, because house style wraps at eighty columns and reading the line
+alone bound `Issue 9, January` while the file said `Issue 9, January 2025`.
+
+A matrix whose source nobody has read declares `unread`, which is the state
+`unaudited` and `unquoted` already give their own cells. It names no reading,
+so it binds no digest, and the check refuses a recorded audit under it by name
+rather than printing a digest to paste. Every doubt case reads that way, and
+the scaffold ships `unread` because a placeholder pin passes every word test
+there is.
+
+A matrix with a `G` row carries the line, and a matrix without one is refused
+for carrying it. The placement doctrine is ADR-0020's, inherited whole: above
+the header row, outside raw HTML, stated once, and a second declaration refused
+rather than overruling the first. Doubt reads as the strict case here too. A
+declaration the check cannot read leaves the matrix naming no reading, so the
+digest binds the empty pin and every recorded audit reads stale. The pin
+duplicates what `source/<tier>/<skill>.md` says in prose, and that is
+deliberate: the matrix copy is the one the digest binds, and no check here
+opens a second file.
+ADR-0026 records the decision, and it amends ADR-0018's digest.
 
 **The matrix table is checked, not just its rows.** The header and the
 delimiter each carry seven columns, and every heading is checked by name.
@@ -254,8 +288,9 @@ Two specific cases:
   definitions and usage notes attached to each entry are expression. Reproducing
   those in bulk is the defect.
 - **An unchecked license.** Some sources restrict reproduction beyond ordinary
-  quotation, and ASD is one of them. `SOURCE.md` must record what was checked and
-  when. A quotation added without checking the source record is worth flagging.
+  quotation, and ASD is one of them. `source/<tier>/<skill>.md` must record what
+  was checked and when. A quotation added without checking that record is worth
+  flagging.
 
 Amended 2026-07-27. The earlier rule banned every reproduced sentence, which was
 broader than the risk and made every matrix harder to audit.
@@ -270,6 +305,37 @@ A matrix inside `skills/` is a defect, even when every row is correct. The
 matrices do ship at the root of the npm package, where the published `ground`
 command reads them. That is deliberate, and `test/package.test.js` asserts the
 line that matters: no matrix reaches an installed tree.
+
+### A file in a skill directory that nothing governs
+
+The matrix disposes of `SKILL.md` and opens no other file, so a second file
+beside it installs ungraded on every pathway. A `SOURCE.md` shipped that way
+for four releases, carrying numbered procedures at whoever read it.
+
+So a skill directory ships `SKILL.md`, `LICENSE`, `agents/`, and `references/`,
+and `ground --check` refuses anything else by name. The source record moved to
+`source/<tier>/<skill>.md`, beside the matrix, and it is out of an installed
+tree for the reason a matrix is: location, and not a filter in our engine, which
+four pathways never run.
+
+The list states what may ship rather than what may not. A rejection list is only
+as complete as its last review, which is the inversion ADR-0016 records for the
+extractor. Answer a new file the way that ADR answers a new Markdown shape. Ask
+what governs it, and add it to the allowlist only when something does.
+
+The allowlist reads a name, and a name is not a file. So the check asks the
+filesystem what stands at each one, with `lstat`, and refuses anything but a
+plain file. `copyFile` resolves a link, so a link called `LICENSE` ships the
+bytes on the other end of it and the allowlist would have passed it. This is
+the disposition a study already gives a link inside it.
+
+`references/` is the one entry whose governance is owed. `SKILL.md` routes a
+writer into it, so it is context and not an audit record, and the answer to
+ungraded context is to grade it rather than to evict it. Until issue #99 lands,
+every run prints how many files under `references/` no row disposes of. That
+count is a note, like `audit-coverage` beside it. Do not promote it to an
+error, and do not remove it to quiet the output. ADR-0025 records both
+decisions.
 
 ### Impurity in `src/`
 
@@ -458,12 +524,43 @@ the measurement design says it should.
 A **controlled vocabulary** is a list whose word pairs trace to a published
 standard. Those pairs are method rather than expression, and they trace to a
 standard rather than to an observed setting, so they may ship. The gate is the
-three conditions above plus their own licence check, recorded in `SOURCE.md`,
-and not the promoted study. The ASD word-pair dictionary on
+three conditions above plus their own licence check, recorded in the source
+record, and not the promoted study. The ASD word-pair dictionary on
 issue #19 is that case.
 
 Which gate applies turns on where the list came from, and never on what it
 looks like.
+
+### Prose that no person read
+
+A pull request that changes a governed document gets one reading with `de-slop`
+and `compressed-deliberation` open. `stylewright lint` reads that prose clean
+whatever shape it is in, and `skills/craft/de-slop/SKILL.md` says so in its own
+words. So the reading is the only thing between an author and a merge, and
+`editorial/AUDITS.md` is where it gets recorded.
+
+`npm run check:editorial` checks that record and never the prose. It refuses a
+malformed row, a document the list does not govern, a document stamped twice,
+and a day the calendar does not carry or that lies ahead of the run. It refuses
+raw HTML anywhere in the record, because a table inside an HTML comment is a
+table no reader sees. It names a row that sits outside the table rather than
+dropping one, for the reason `unread-matrix-row` exists. The governed list
+lives in `scripts/check-editorial.mjs`, because a list the record carries is a
+denominator the record can shrink.
+
+It prints `editorial-coverage` and `editorial-staleness`. Both are notes, so
+they fail nothing. Do not promote either to an error, and do not remove either
+to quiet the output, for the reason the grounding notes carry: a green run over
+prose nobody has read is the gap, and the count is the answer to it. A stale
+stamp is a note as well, so no document blocks a merge for having changed.
+ADR-0021 holds that this discipline lives in a writer or a reviewer, and a gate
+on our own prose would diverge from it.
+
+A stamp records a person. An agent never writes one. A date written for a
+reading nobody did is this record's worst defect, and it is the `G` row defect
+one file over: the row borrows an authority the reading never granted, and no
+check here can catch it. ADR-0027 records the decision and what would reopen
+it.
 
 ## Known blind spots in the test suite
 
@@ -476,6 +573,11 @@ Do not read a green pipeline as coverage of this one.
   rename or a removal fails CI. It does **not** catch a signature change that
   keeps those names, because that needs a terminal. Treat a green run as
   evidence about our logic, not about the library's behaviour.
+- **An editorial stamp is a claim, and the suite checks its form alone.**
+  `test/editorial.test.js` covers the record's table, the day, the digest and
+  both notes. Nothing can tell a row a person wrote after reading from a row an
+  agent wrote to make the count move. The `G` row audit cell carries the same
+  hole, and the same answer: the commit names who wrote it.
 
 ## The Node floor is enforced, and how
 

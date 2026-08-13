@@ -102,7 +102,7 @@ a glob, and the review has named refusals:
 - Every retained file is checked for reproduced licensed text — samples
   from either arm, and the prompt files the study retains, including an
   externally derived fresh scenario — against the relevant license record,
-  the skill's `SOURCE.md` or the scenario's recorded provenance. The check
+  the skill's source record or the scenario's recorded provenance. The check
   is recorded in the study manifest.
 - Samples are scanned for operator configuration content before they enter
   the tree.
@@ -498,10 +498,10 @@ four scenarios by five repetitions by two arms: forty live calls injected,
 eighty with an installed contrast, plus a human label per sample. The
 owner ratifies the protocol knowing what one run costs.
 
-A skill that ships before its measurement states that plainly in
-`SOURCE.md`. Honesty about an unmeasured rule is the fallback, never the
+A skill that ships before its measurement states that plainly in its
+source record. Honesty about an unmeasured rule is the fallback, never the
 goal. And the fallback is checked, not trusted: a static check verifies,
-in both directions, that a skill's `SOURCE.md` status agrees with the set
+in both directions, that a skill's recorded status agrees with the set
 of studies whose manifests cite its content digest. Shipping a skill,
 writing unmeasured, and never promoting is a state the gate can see.
 
@@ -532,7 +532,7 @@ and nothing else. A single word such as "tested" erases exactly those
 bindings. Status is a set of scoped
 statements, in three classes.
 
-- **Unmeasured**, hand-written in `SOURCE.md`, for a skill with no study.
+- **Unmeasured**, hand-written in the source record, for a skill with no study.
   There is no evidence to compute from.
 - **Measured without retained evidence**, hand-written and frozen, for a
   measurement whose samples were never kept. No study can ever be derived
@@ -573,7 +573,7 @@ decision, taken only with ADR-0007's test extended first.
   the drafting tool. Installed delivery is for publication runs.
 - CI never runs a live model. The static checks this design adds — the
   citation and numeral check, the manifest and digest validation, the
-  ledger ordering check, the `SOURCE.md` consistency check — join
+  ledger ordering check, the source-record consistency check — join
   `npm run check` as they are implemented, each as a named script.
   Probes are a manual protocol with committed records.
 - Sensitivity. Five repetitions is a floor the current runner enforces,

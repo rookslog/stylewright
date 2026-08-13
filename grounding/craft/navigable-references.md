@@ -46,7 +46,8 @@ here may be read as an effect that we observed.
 
 What the skill has instead is a result a reader can check without a bench: the
 reference resolves, or it does not. That is a property of the rule rather than
-evidence for it, and `SOURCE.md` beside the skill records the same status.
+evidence for it, and the source record at
+`source/craft/navigable-references.md` states the same status.
 
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|
@@ -63,7 +64,7 @@ evidence for it, and `SOURCE.md` beside the skill records the same status.
 | E-11 | A recalled line is wrong after any edit above it. The reference then points at unrelated text with full confidence. That is worse than no reference at all, because it looks checked. | Find the line at the moment you cite it |  |  | Our own guidance |  |
 | E-12 | A check can find a bare filename that carries no path, because that shape is mechanical. It cannot tell you whether the path resolves, whether the line is still the one you meant, or whether the identifier exists. Those need a reader to follow the reference. `stylewright lint` carries no such check today, so every rule above is yours to apply. | What a check can see |  |  | Our own guidance |  |
 | E-13 | `de-slop` treats prose that reads as machine-written, whatever produced it. This skill treats one habit, one reference at a time, and its result is visible without a judgment call. Either the reference resolves or it does not. Follow both. They do not disagree. | How this differs from de-slop |  |  | Our own guidance, and it instructs the reader to follow both |  |
-| N-01 | No measurement stands behind this skill. `SOURCE.md` beside this file records that, and it names where a measurement would live. | Purpose |  |  | Points at SOURCE.md, asserts no rule |  |
+| N-01 | No measurement stands behind this skill. The source record in the stylewright repository, at `source/craft/navigable-references.md`, states that and names where a measurement would live. | Purpose |  |  | Points at the source record, asserts no rule |  |
 | N-02 | This skill has no external standard behind it. Every rule in it is our own editorial guidance, and the trace marks the rest as narrative that asserts no rule. The trace lives in the stylewright repository at `grounding/craft/navigable-references.md`. It is not installed with this skill. | Boundary |  |  | Describes the trace, asserts no rule |  |
 | N-03 | navigable-references | navigable-references |  |  | Section title, asserts no rule |  |
 | N-04 | Purpose | Purpose |  |  | Section title, asserts no rule |  |
