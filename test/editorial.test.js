@@ -150,6 +150,37 @@ test('a row carrying a fourth cell is refused', () => {
   assert.deepEqual(codes(result.problems), ['row-wrong-width']);
 });
 
+// A reader never sees a table inside raw HTML, and a check that read one would
+// count rows nobody has. This record is prose and one table, so it carries no
+// raw HTML at all, which refuses every hiding place rather than modelling them.
+test('a table inside an HTML comment is refused by name, and the notes are withheld', () => {
+  const hidden = ['# Editorial audits', '', '<!--', `| ${COLUMNS.join(' | ')} |`,
+    '| --- | --- | --- |', `| README.md | 2026-08-11 | ${digestOf(README)} |`, '-->', ''].join('\n');
+  const result = checkRecord({ recordText: hidden, documents: corpus(), now: NOW });
+  assert.deepEqual(codes(result.problems), ['record-has-raw-html']);
+  assert.deepEqual(result.notes, []);
+});
+
+// A fence closes on a run at least as long as the one that opened it. Reading
+// the first character alone reopened the file at the shorter line, so a table
+// below it bound.
+test('a three-backtick line does not close a four-backtick fence', () => {
+  const text = ['# Editorial audits', '', '````', `| ${COLUMNS.join(' | ')} |`,
+    '| --- | --- | --- |', '```', `| ${COLUMNS.join(' | ')} |`, '| --- | --- | --- |',
+    `| README.md | 2026-08-11 | ${digestOf(README)} |`, ''].join('\n');
+  const result = checkRecord({ recordText: text, documents: corpus(), now: NOW });
+  assert.deepEqual(codes(result.problems), ['record-has-no-table']);
+});
+
+// GFM ends a table at the first blank line, so a row below one is text to the
+// reader. Dropping it shrank the count, which is the unread-matrix-row defect.
+test('a row detached from the table is named rather than dropped', () => {
+  const detached = `${record([])}\n| README.md | 2026-08-11 | ${digestOf(README)} |\n`;
+  const result = checkRecord({ recordText: detached, documents: corpus(), now: NOW });
+  assert.deepEqual(codes(result.problems), ['unread-record-row']);
+  assert.deepEqual(result.notes, []);
+});
+
 test('a table inside a fence does not bind, and the record with none is refused', () => {
   const fenced = ['# Editorial audits', '', '```', `| ${COLUMNS.join(' | ')} |`,
     '| --- | --- | --- |', '```', ''].join('\n');
@@ -173,6 +204,9 @@ test('the record this repository ships is clean against the documents it governs
   for (const name of GOVERNED) {
     documents.set(name, await readFile(path.join(repoRoot, name), 'utf8'));
   }
-  const result = checkRecord({ recordText, documents, now: NOW });
+  // The day comes from the clock and not from a constant. A fixed day here
+  // passes today and fails CI on the first reading dated after it, which is
+  // the check reporting on a calendar rather than on the record.
+  const result = checkRecord({ recordText, documents, now: new Date().toISOString() });
   assert.deepEqual(result.problems, []);
 });

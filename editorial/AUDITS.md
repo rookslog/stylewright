@@ -20,6 +20,9 @@ document stamped twice, and a day the calendar does not carry or that lies
 ahead of the run. It counts what is read and what has changed since, and both
 counts are notes that fail nothing.
 
+The record carries no raw HTML. A table inside an HTML comment is a table no
+reader sees, and the check refuses one rather than counting rows nobody has.
+
 `scripts/check-editorial.mjs` holds the list of governed documents, so the list
 cannot be shortened from here.
 

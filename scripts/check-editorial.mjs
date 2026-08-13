@@ -47,6 +47,12 @@ export const GOVERNED = [
 ];
 
 const FENCE = /^\s*(`{3,}|~{3,})(.*)$/;
+// Every CommonMark HTML block opens with a line whose first non-space
+// character is `<`, so this catches every one of them without modelling which
+// ones swallow what follows. The record is prose and one table, and it needs
+// no raw HTML, so the whole file refuses it rather than the check deciding
+// which hiding places matter.
+const RAW_HTML = /^\s*</;
 const DELIMITER = /^\|(\s*:?-+:?\s*\|)+$/;
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DIGEST = /^[0-9a-f]{8}$/;
@@ -81,13 +87,29 @@ export function readRecord(text) {
   lines.forEach((line, i) => {
     const fence = FENCE.exec(line);
     if (open === null && fence) {
-      open = fence[1][0];
+      open = fence[1];
       fenced[i] = true;
     } else if (open !== null) {
       fenced[i] = true;
-      if (fence && fence[1][0] === open && !fence[2].trim()) open = null;
+      // A fence closes on a run of the same character at least as long as the
+      // one that opened it. Reading the first character alone let a shorter
+      // line reopen the file, and a table below it bound.
+      const closes = fence && fence[1][0] === open[0] && fence[1].length >= open.length
+        && !fence[2].trim();
+      if (closes) open = null;
     }
   });
+
+  const html = lines.findIndex((line, i) => !fenced[i] && RAW_HTML.test(line));
+  if (html !== -1) {
+    problems.push({
+      code: 'record-has-raw-html',
+      message: `line ${html + 1} opens raw HTML. A table inside an HTML comment or a `
+        + 'collapsed block is a table no reader sees, so this record carries no raw HTML '
+        + 'at all. Write it as prose.',
+    });
+    return { rows, problems, broken: true };
+  }
 
   const delimiters = lines
     .map((line, i) => (!fenced[i] && DELIMITER.test(line.trim()) ? i : -1))
@@ -177,6 +199,19 @@ export function readRecord(text) {
         + 'that rebound to a later one would read rows the first table never held.',
     });
     broken = true;
+  } else {
+    // GFM ends a table at the first blank line, so a row below one is text to
+    // the reader and was a recorded reading to this check. Dropping it shrank
+    // the count, which is the `unread-matrix-row` defect one file over.
+    for (let i = end; i < lines.length; i++) {
+      if (fenced[i] || !lines[i].trim().startsWith('|')) continue;
+      problems.push({
+        code: 'unread-record-row',
+        message: `line ${i + 1} looks like a row and sits outside the table. The table runs `
+          + 'unbroken from the line below the delimiter, and a blank line ends it.',
+      });
+      broken = true;
+    }
   }
   return { rows, problems, broken };
 }

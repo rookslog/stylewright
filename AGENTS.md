@@ -458,9 +458,12 @@ words. So the reading is the only thing between an author and a merge, and
 
 `npm run check:editorial` checks that record and never the prose. It refuses a
 malformed row, a document the list does not govern, a document stamped twice,
-and a day the calendar does not carry or that lies ahead of the run. The
-governed list lives in `scripts/check-editorial.mjs`, because a list the record
-carries is a denominator the record can shrink.
+and a day the calendar does not carry or that lies ahead of the run. It refuses
+raw HTML anywhere in the record, because a table inside an HTML comment is a
+table no reader sees. It names a row that sits outside the table rather than
+dropping one, for the reason `unread-matrix-row` exists. The governed list
+lives in `scripts/check-editorial.mjs`, because a list the record carries is a
+denominator the record can shrink.
 
 It prints `editorial-coverage` and `editorial-staleness`. Both are notes, so
 they fail nothing. Do not promote either to an error, and do not remove either

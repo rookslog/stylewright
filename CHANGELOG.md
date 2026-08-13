@@ -21,8 +21,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   document and says so. The governed list lives in the checker rather than in
   the record, because a list the record carried would be a denominator the
   record could shrink. ADR-0027 records the decision, the gate it declined, and
-  what would reopen it. Nothing installs from `editorial/`, and no published
-  file changes.
+  what would reopen it. Nothing installs from `editorial/`. Two published files
+  do change: `src/ground.js` exports the day reader this check dates a reading
+  with, and `package.json` names the new script. No behaviour in either moves.
 
 ### Changed
 
