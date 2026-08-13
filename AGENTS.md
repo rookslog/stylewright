@@ -258,6 +258,36 @@ own. A blockquote, an empty marker and an empty heading are the exceptions at
 column 0, because the checker does not read those either. Anything outside the
 forms fails as `unmodelled-construct`, with the line and what to write instead.
 
+A continuation line states what it may BEGIN with, and that is the third form
+read the same way round as the rest. It carries a letter, a digit or ordinary
+sentence punctuation, and a backtick or a tilde where the walk's own fence test
+says the line opens no fence. Every other lead is refused. It used to be admitted
+whenever prose was open, and `shapeOf` then called anything it did not
+recognise a paragraph, so the path was a rejection list under a positive
+heading and an HTML block reached a list item as the item's own words. One pipe
+was the widest hole there: `shapeOf` calls any line carrying a pipe a table
+row, so a pipe anywhere licensed whatever else the line opened. ADR-0029
+records the inversion, and it also records what it does not reach. A line at
+column 0 is still admitted by the second form whatever it is, so `Prose here.`
+over `<script>` is one unit and no refusal. Issue 111 carries that, and a rule
+naming `<` is not the answer to it.
+
+A table is read through its pipes, so a table with none is refused. GFM asks
+for no pipe at all when a table has one column, and `Prose here.` over `:-` is
+one to a reader at column 0 and under a list item alike. The walk read one
+prose unit there and said nothing, so a table's contents could be grounded as
+the paragraph's own words. A colon or a pipe in the delimiter is what stops the
+line being a setext underline, which is what `---` under prose is instead, and
+that is the whole test. Refusing rather than reading is ADR-0016's rule
+applied: this walk does not model a pipeless table, so it names the line. The
+render test holds the class rather than the shape that was reported.
+
+An empty marker is two states and not one. Under an open PARAGRAPH it is that
+paragraph's words, because an empty item interrupts no paragraph. Under an open
+ITEM at column 0 a reader sees the next item of the list, so it is refused
+there: `- First.` over `-` over an indented directive rendered as two items and
+reached one matrix row as the first item's own words.
+
 The grammar is stated this way round on purpose. It began as a list of shapes
 to reject, and three review rounds each found a shape the list did not name.
 A rejection list is only as complete as its last review. Do not answer a new
@@ -271,6 +301,25 @@ a refusal is one more finding rather than a replacement for one. A test runs
 drift outside the grammar without CI saying so. That test is also the flip
 condition ADR-0016 names: a refusal a skill author cannot write around reopens
 issue 37 for a Markdown parser, and it is not a sixth patch.
+
+The claims the grammar rests on answer to a parser, by ADR-0028's rule one file
+over. Which constructs interrupt a paragraph decided the whole shape of the
+continuation form, and `test/gfm-render.test.js` puts each one through
+`micromark` and asks. It corrected two of them the day ADR-0029 landed: an
+underline under a list item makes a setext heading inside the item rather than
+a thematic break, and an ordered marker indented under an item can be the
+list's next item rather than lazy continuation, which a reader resolves by the
+width of the open marker. Answer a divergence there by reading the render, and
+never by writing the comment that explains it away.
+
+Read that render the right way round. A TIGHT list drops the `<p>` around an
+item's paragraph, so `- Context.` over an indented `<script>` renders the same
+whether the HTML interrupted the paragraph or sits in it as inline markup. A
+substring of the page settles nothing there, and one review round drew both
+conclusions from it. Force the list loose with a second item, and the item's
+own content is then a fact: one paragraph and nothing else is prose, and
+anything else is a container. `readsAsProse` in the render test is that
+property, and a new shape belongs under it rather than beside it.
 
 ### A skill that substitutes for its source
 
@@ -652,6 +701,12 @@ Do not read a green pipeline as coverage of this one.
   rename or a removal fails CI. It does **not** catch a signature change that
   keeps those names, because that needs a terminal. Treat a green run as
   evidence about our logic, not about the library's behaviour.
+- **The shipped catalogue measures nothing about the continuation grammar.**
+  No skill here writes an indented line at all, so the `checkAll` test that
+  asserts no refusal cannot see over-refusal on that path. The parser oracle in
+  `test/gfm-render.test.js` is the only evidence that the grammar admits the
+  prose a reader admits. Read a green catalogue run as evidence about the block
+  path, and not about this one.
 - **An editorial stamp is a claim, and the suite checks its form alone.**
   `test/editorial.test.js` covers the record's table, the day, the digest and
   both notes. Nothing can tell a row a person wrote after reading from a row an

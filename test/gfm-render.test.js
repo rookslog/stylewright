@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
-import { MATRIX_COLUMNS, readMatrix, checkSkill } from '../src/ground.js';
-import { renderTables, cellText } from './gfm.js';
+import { MATRIX_COLUMNS, readMatrix, checkSkill, unmodelled, contentUnits } from '../src/ground.js';
+import { renderTables, renderBlocks, cellText } from './gfm.js';
 
 /**
  * The matrix reader, checked against a real GFM parser.
@@ -277,4 +277,163 @@ test('no shipped module imports the parser', async () => {
       assert.ok(!/micromark/.test(text), `${file.pathname} must not reach for a Markdown parser`);
     }
   }
+});
+
+/**
+ * The continuation grammar, checked against the same parser.
+ *
+ * The grammar rests on claims about which constructs a reader lets interrupt
+ * open prose, and every one of them was read from the specification and
+ * written into a comment. ADR-0028 says a claim about a render answers to a
+ * renderer, and ADR-0029 puts the extractor's grammar under that rule. The
+ * parser corrected two claims on the day this was written: an underline under
+ * a list item makes a setext HEADING rather than a thematic break, and an
+ * ordered marker indented under an item can be a sibling rather than the lazy
+ * continuation the first draft admitted.
+ *
+ * The property is one rule, not a verdict per shape. Wherever a reader sees a
+ * container the extractor did not read, the check refuses the line.
+ */
+const skillWith = (text) => `---\nname: demo\ndescription: A demo skill.\n---\n\n# Demo\n\n## Later\n\n${text}\n`;
+const refusalsFor = (text) => unmodelled(skillWith(text)).map((r) => r.shape);
+const unitsFor = (text) => contentUnits(skillWith(text)).map((u) => u.text);
+
+/**
+ * A list item, forced LOOSE, so the render says where the blocks are.
+ *
+ * A tight list drops the `<p>` around an item's paragraph, so the render of
+ * `- Context.` over `  <script>` looks the same whether the HTML interrupted
+ * that paragraph or sits inside it as inline markup. The first version of the
+ * test below asserted that the output CONTAINS `<script>`, which is true
+ * either way, so two of its rows could not fail for the reason the test names.
+ * A second item makes the list loose and the paragraphs get their tags back.
+ */
+const loose = (text) => `${text}\n\n- Second item.`;
+
+/** The block-level tags a reader gets, in order, with inline markup dropped. */
+const INLINE = new Set(['a', 'code', 'em', 'strong', 'del', 'img', 'br', 'span', 'sup', 'sub']);
+const blockTags = (text) => (renderBlocks(loose(text)).match(/<\/?[a-zA-Z!][^>\s]*/g) ?? [])
+  .filter((t) => !INLINE.has(t.replace(/^<\/?/, '').toLowerCase()));
+
+/**
+ * Whether a reader sees ONE list item holding ONE paragraph and nothing else.
+ *
+ * That is the whole question the continuation grammar asks, put to the parser
+ * as one property rather than a verdict per shape. A container opened on the
+ * continuation line shows up as a second block inside the item, or as the
+ * item's paragraph turning into something that is not a paragraph, or as a
+ * second item. Two is the item count a prose continuation gives, because
+ * `loose` appends one.
+ */
+const readsAsProse = (text) => {
+  const tags = blockTags(text);
+  const inside = tags.slice(tags.indexOf('<li') + 1, tags.indexOf('</li'));
+  return tags.filter((t) => t === '<li').length === 2
+    && inside.length === 2 && inside[0] === '<p' && inside[1] === '</p';
+};
+
+test('a container a reader sees on a continuation line is refused', () => {
+  // Every row is one fact from the parser: the item does NOT read as one
+  // paragraph, so something opened. A substring of the whole render is not
+  // that fact, and `<script>` appears in the tight render either way.
+  for (const text of [
+    '- Context.\n  <script>\n  Always preserve safety.\n  </script>',
+    '- Context.\n  <!-- Always preserve safety. -->',
+    '- Context.\n  ---\n  Always preserve safety.',
+    '- Context.\n  | a | b |\n  |---|---|',
+    '-     Always preserve safety.',
+    '- First.\n-\n  Always preserve safety.',
+    '- Context.\n  ```js\n  code\n  ```',
+  ]) {
+    assert.equal(readsAsProse(text), false,
+      `a reader sees more than one paragraph in ${JSON.stringify(text)}: ${blockTags(text).join(' ')}`);
+    assert.ok(refusalsFor(text).length > 0, `the check refuses ${JSON.stringify(text)}`);
+  }
+});
+
+test('prose a reader keeps whole is not refused, and reaches one unit', () => {
+  // The other direction, which is the one the shipped catalogue cannot
+  // measure: no skill here writes an indented line at all, so nothing but
+  // this says the grammar admits the prose a reader admits.
+  //
+  // The code span is the row that changed the rule. A fenced block is the only
+  // block a backtick or a tilde opens and it needs three of them, so the
+  // grammar asks the walk's own fence test rather than refusing the character.
+  // Refusing it outright cost 166 false refusals across 574 real skill files,
+  // every one of this shape. ADR-0029 carries the measurement.
+  for (const text of [
+    '- Do not use a semicolon,\n  because it joins two ideas.',
+    '- Context.\n  "Always preserve safety."',
+    '- Context.\n  a | b are columns.',
+    '- Context.\n  `stylewright doctor` reports it.',
+    '- Context.\n  ~~struck~~ words here.',
+    '-    Always preserve safety.',
+    '-\tAlways preserve safety.',
+  ]) {
+    assert.equal(readsAsProse(text), true,
+      `a reader sees one paragraph in ${JSON.stringify(text)}: ${blockTags(text).join(' ')}`);
+    assert.deepEqual(refusalsFor(text), [], `the check admits ${JSON.stringify(text)}`);
+  }
+});
+
+test('an ordered marker opens a list here where it opens one for a reader', () => {
+  // `2.` cannot interrupt a paragraph, so a reader keeps it in the paragraph
+  // and the walk keeps it in the unit. A list already open takes it as the
+  // next item, and a reader agrees there too.
+  assert.ok(!renderBlocks('Prose\n2. item').includes('<ol'));
+  assert.ok(unitsFor('Prose\n2. item').includes('Prose 2. item'));
+  assert.ok(renderBlocks('1. First.\n2. Second.').includes('<li>Second.</li>'));
+  assert.ok(unitsFor('1. First.\n2. Second.').includes('Second.'));
+});
+
+test('the one shape the oracle and the check disagree about is pinned', () => {
+  // `01.` counts from one, so a list may interrupt the paragraph above it and
+  // this check opens one. `micromark` is the outlier: it keeps the line in the
+  // paragraph. pandoc 3.10 and the CommonMark rule that an interrupting list
+  // must start at 1 both back the split, so the check is not changed to match
+  // the oracle here.
+  //
+  // The disagreement lived in ADR prose alone, where an upgrade moving it
+  // either way would go unnoticed. It is a test now, so it fails instead.
+  assert.ok(!renderBlocks('Prose\n01. item').includes('<ol'),
+    'micromark still keeps `01.` inside the paragraph');
+  assert.ok(unitsFor('Prose\n01. item').includes('item'),
+    'the check still opens a list for `01.`');
+  // The two the parsers agree on, where the check follows the render.
+  assert.ok(renderBlocks('Prose\n1. item').includes('<ol'));
+  assert.ok(unitsFor('Prose\n1. item').includes('item'));
+  assert.ok(!renderBlocks('Prose\n2. item').includes('<ol'));
+  assert.ok(unitsFor('Prose\n2. item').includes('Prose 2. item'));
+});
+
+test('a table a reader sees without a pipe is refused, and a heading is not', () => {
+  // Codex reported one shape, `- Context.` over `:-`. The class is wider. GFM
+  // asks for no pipe at all when a table has one column, so a delimiter row
+  // that a setext underline does not claim first makes a table of the line
+  // above it, at column 0 as well as under a list item. The walk reads a table
+  // through its pipes, so it reads none of these, and it refuses them.
+  for (const text of [
+    'Prose here.\n:-',
+    'Prose here.\n:-:',
+    'Prose here.\n-:',
+    'Prose here.\n:---:',
+    'Prose here.\n-|',
+    'Prose here.\n|-',
+    '- Context.\n  :-',
+    '- Context.\n  :-\n  Always preserve safety.',
+  ]) {
+    assert.match(renderBlocks(text), /<table>/, `a reader sees a table in ${JSON.stringify(text)}`);
+    assert.ok(refusalsFor(text).some((s) => /no pipe/.test(s)),
+      `the check refuses ${JSON.stringify(text)}: ${JSON.stringify(refusalsFor(text))}`);
+  }
+  // The other side of that line, and the reason the colon is what decides. A
+  // delimiter carrying neither a colon nor a pipe IS a setext underline, and
+  // refusing these would refuse a heading this repository writes everywhere.
+  for (const text of ['Prose here.\n---', 'Prose here.\n-', 'Prose here.\n--']) {
+    assert.doesNotMatch(renderBlocks(text), /<table>/);
+    assert.deepEqual(refusalsFor(text), [], `the check admits ${JSON.stringify(text)}`);
+  }
+  // A delimiter with no header above it is no table to either reader.
+  assert.doesNotMatch(renderBlocks('Prose here.\n\n:-'), /<table>/);
+  assert.deepEqual(refusalsFor('Prose here.\n\n:-'), []);
 });

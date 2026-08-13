@@ -71,3 +71,16 @@ test('reports 1-indexed line numbers', () => {
   const found = lintText('Clean line.\nDo this; then that.\n');
   assert.equal(found[0].line, 2);
 });
+
+test('a procedural section is procedural on a CRLF checkout too', () => {
+  // `proceduralLines` asks `sections` where the procedure is, so a setext
+  // heading that stopped being read there quietly relaxed the 20-word cap in a
+  // procedure back to the 25 an ordinary sentence gets. Nothing said so.
+  const long = 'Do the thing and then do the other thing and then do a third thing and then stop right here now.';
+  const doc = `Procedure steps\n---------------\n\n1. ${long}\n`;
+  assert.equal(long.split(' ').length, 21);
+  for (const text of [doc, doc.replace(/\n/g, '\r\n')]) {
+    assert.ok(lintText(text).some((f) => f.rule === 'sentence-length'),
+      'the procedural cap still applies');
+  }
+});

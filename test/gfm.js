@@ -29,6 +29,27 @@ export function renderTables(markdown) {
   });
 }
 
+/**
+ * The HTML a GFM reader sees, raw HTML and all.
+ *
+ * The extractor's grammar rests on claims about which constructs interrupt a
+ * paragraph, and those claims were read from the specification and written
+ * into comments beside the code. This renders the shape so a test can ask the
+ * parser instead. ADR-0028 records why a claim about a render answers to a
+ * renderer, and ADR-0029 applies it to the grammar.
+ *
+ * Raw HTML is kept, and `renderTables` above drops it. An HTML block is the
+ * construct the continuation grammar loses the most on, so a render that
+ * silently deleted it would be an oracle that could not see the case.
+ */
+export function renderBlocks(markdown) {
+  return micromark(markdown, {
+    extensions: [gfmTable()],
+    htmlExtensions: [gfmTableHtml()],
+    allowDangerousHtml: true,
+  });
+}
+
 /** The visible text of a rendered cell, with tags and entities resolved. */
 export function cellText(html) {
   return html.replace(/<[^>]*>/g, '')
