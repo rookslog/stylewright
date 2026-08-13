@@ -190,11 +190,12 @@ ADR-0026 records the decision, and it amends ADR-0018's digest.
 
 **The matrix table is checked, not just its rows.** The header and the
 delimiter each carry seven columns, and every heading is checked by name.
-Delete either line, cut either short, or rename any heading, and GFM drops the
-rendered column or stops the block being a table at all. The person loses the
-record while the check reports it intact, so the column the reader sees is the
-column that counts. An eighth cell is refused for the mirror reason: GFM drops
-it, so text there is seen by no reader and read by no check.
+Delete either line or cut it short, and GFM stops the block being a table at
+all. Rename a heading and GFM renders the column under the new name, so the
+record is gone because `Notes` is not the column an audit lives in. The person
+loses the record while the check reports it intact, so the column the reader
+sees is the column that counts. An eighth cell is refused for the mirror
+reason: GFM drops it, so text there is seen by no reader and read by no check.
 
 A row must begin at column 0. A row indented four spaces or fenced is an
 example to a reader and was a recorded audit to the checker. Fenced content is
@@ -223,6 +224,23 @@ table at all.
 `readMatrix` is the matrix's own reader. It is not the `SKILL.md` extractor,
 and the two share no grammar, so a shape refused there says nothing about
 issues 37 and 69.
+
+**Every claim above about how a matrix renders answers to a real parser.**
+`test/gfm-render.test.js` puts each shape through `micromark` and its GFM table
+extension, which reads the dialect GitHub renders, and compares what a reader
+sees against what the checker read. The contiguity hole survived three review
+rounds because every attack came out of the same reading of the specification
+that missed it. Two rules carry the shapes there, and neither names a shape: a
+matrix a reader sees damaged is called broken, and wherever a table stands to a
+reader the checker reads no row that reader does not see. Add a shape to the
+list, and let the render decide the verdict. The parser is a development
+dependency, and no module under `src/` or `bin/` may import it, which a test
+asserts. ADR-0028 records the decision.
+
+The parser corrected two claims on the day it landed. A line of prose under a
+table does not end the table, because GFM reads it as another row, so the check
+is stricter there than a reader is. And renaming a heading renders the column
+rather than dropping it.
 
 `ground --check` prints the audited count and the quoted count for each matrix
 beside its verdict. Both are notes, so they fail nothing. Do not promote either

@@ -16,12 +16,42 @@ import { walk } from './tree.js';
  */
 export const MATRIX_COLUMNS = ['ID', 'Our guidance', 'Our anchor', 'Source rule', 'Source text', 'Source location', 'Audited'];
 
-// Split on UNESCAPED pipes only. Without this a paragraph containing a pipe —
-// guidance about a shell pipeline, or about Markdown itself — could not be
-// reproduced in any cell, so `ground --check` stayed red for valid content and
-// no row could fix it.
-const cellsOf = (line) => line.split(/(?<!\\)\|/).slice(1, -1)
-  .map((c) => c.trim().replace(/\\\|/g, '|'));
+/**
+ * The cells of a row, split on UNESCAPED pipes. Without this a paragraph
+ * containing a pipe — guidance about a shell pipeline, or about Markdown
+ * itself — could not be reproduced in any cell, so `ground --check` stayed red
+ * for valid content and no row could fix it.
+ *
+ * A backslash escapes the character after it, so what escapes a pipe is an ODD
+ * run of backslashes. A one-character lookbehind read `x\\|` as an escaped
+ * pipe, where the render reads an escaped BACKSLASH followed by a cell
+ * boundary, and the checker then saw one cell where a reader sees two. That is
+ * the disagreement `test/gfm-render.test.js` exists to catch, and it caught
+ * this one. The scan reads the line once rather than growing the lookbehind,
+ * because the run length is what decides and a regular expression that counts
+ * it is unreadable.
+ *
+ * Only `\\` and `\|` are consumed. Every other backslash stays in the cell, so
+ * a cell's content is what it was and no recorded `rowDigest` moves.
+ */
+const rowOf = (line) => {
+  const parts = [];
+  let cell = '';
+  for (let i = 0; i < line.length; i += 1) {
+    if (line[i] === '\\' && (line[i + 1] === '\\' || line[i + 1] === '|')) {
+      cell += line[i + 1];
+      i += 1;
+    } else if (line[i] === '|') {
+      parts.push(cell);
+      cell = '';
+    } else cell += line[i];
+  }
+  // Whatever follows the last pipe. Nothing but space there means the row ends
+  // with a delimiter, which is the same reading `closed` needs, taken from the
+  // same scan. A second regular expression carried the same lookbehind and so
+  // the same defect.
+  return { cells: parts.slice(1).map((c) => c.trim()), closed: !cell.trim() };
+};
 
 const MATRIX_FENCE = /^(\s*)(`{3,}|~{3,})/;
 /** Anything a reader would take for a table row, wherever it sits. */
@@ -37,11 +67,16 @@ const IS_DELIMITER = (cells) => cells.length > 0
  *
  * The header and the delimiter were skipped rather than checked, so deleting
  * either one, or cutting either short, or renaming a heading to `Notes`, left
- * every row parsing and the coverage note printing full marks. In GFM each of
- * those either drops the rendered column or stops the block being a table at
- * all, so the person reading the matrix loses the record while the check
- * reports it intact. The record exists for the person, so the column they see
- * is the column that counts.
+ * every row parsing and the coverage note printing full marks. Deleting either
+ * line or cutting it short stops the block being a table at all. Renaming a
+ * heading renders the column under its new name, so the record is gone because
+ * `Notes` is not the column an audit lives in. Each way the person reading the
+ * matrix loses the record while the check reports it intact. The record exists
+ * for the person, so the column they see is the column that counts.
+ *
+ * `test/gfm-render.test.js` puts each of those through a real GFM parser, so
+ * the sentences above answer to a render rather than to a reading of the
+ * specification. It corrected this one. ADR-0028.
  *
  * A row inside a fenced block or indented four spaces is an EXAMPLE to a
  * reader and was a row to the checker, which is the same disagreement pointing
@@ -80,10 +115,10 @@ export function readMatrix(text) {
       continue;
     }
     // A row that does not end in a pipe is legal GFM and is not house style.
-    // It matters here because `cellsOf` drops the text after the last pipe, so
+    // It matters here because `rowOf` drops the text after the last pipe, so
     // an unclosed row reported "carries 5 columns, not 6" — a count that is an
     // artifact of the reading rather than the author's mistake.
-    read.push({ line: i + 1, cells: cellsOf(line), closed: /(?<!\\)\|\s*$/.test(line) });
+    read.push({ line: i + 1, ...rowOf(line) });
   }
   // A fence nobody closed swallows the rest of the file, so every row below it
   // leaves the parse at once. That is the silent denominator shrink again, by

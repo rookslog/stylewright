@@ -42,6 +42,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   what would reopen it. Nothing installs from `editorial/`. Two published files
   do change: `src/ground.js` exports the day reader this check dates a reading
   with, and `package.json` names the new script. No behaviour in either moves.
+- A test renders a grounding matrix through a real GFM parser and compares what
+  a reader sees against what the checker read. Every claim this repository made
+  about how a matrix renders came from a reading of the specification, and the
+  contiguity hole on pull request #71 survived three review rounds because every
+  attack came from that same reading. `micromark` and its GFM table extension
+  join the development dependencies, and a test asserts that no module under
+  `src/` or `bin/` imports either. ADR-0028.
 
 ### Changed
 
@@ -66,6 +73,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   That count is a note and it fails nothing, the way the audited count does.
   ADR-0025 records both decisions, and issue #99 carries the grading work that
   closes the second.
+- Two claims about GFM that the new render test corrected. A line of prose
+  under a table does not end the table, so the check is stricter there than a
+  reader is. Renaming a matrix heading renders the column under the new name
+  rather than dropping it, and the record is lost either way.
+
+### Fixed
+
+- A matrix row splits on a pipe that an ODD run of backslashes precedes, which
+  is what a reader's renderer does. A one-character lookbehind read `x\\|` as
+  an escaped pipe, so the checker saw one cell where a reader sees two, and a
+  row ending that way read as unclosed. The new render test found it.
 
 ## 0.3.0 — 2026-08-07
 
