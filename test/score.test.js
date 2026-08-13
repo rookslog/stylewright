@@ -335,7 +335,7 @@ test('every entry point guards itself the one way that works on both platforms',
       found.push(`${sub}/${name}`);
     }
   }
-  assert.equal(found.length, 10, `the entry-point inventory moved: ${found.sort().join(', ')}`);
+  assert.equal(found.length, 11, `the entry-point inventory moved: ${found.sort().join(', ')}`);
   for (const rel of found) {
     const text = await fs.readFile(path.join(root, rel), 'utf8');
     if (Object.hasOwn(UNGUARDED, rel)) {

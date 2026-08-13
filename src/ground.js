@@ -389,8 +389,12 @@ const LEAP = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
  *
  * This counts days rather than building a date, because no module under `src/`
  * may reach the clock and a constructed date is one argument away from it.
+ *
+ * It is exported for the editorial audit record, which dates a reading the
+ * same way a `G` row does. A second reading of what a day is would be a second
+ * thing to drift.
  */
-function isRealDate(year, month, day) {
+export function isRealDate(year, month, day) {
   if (month < 1 || month > 12 || day < 1) return false;
   const lengths = [31, LEAP(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day <= lengths[month - 1];
@@ -477,7 +481,7 @@ export class InvalidMoment extends Error {
     this.value = value;
   }
 }
-function dayOf(now) {
+export function dayOf(now) {
   const stamp = typeof now === 'string' ? ISO_DAY.exec(now) : null;
   if (!stamp || !isRealDate(Number(stamp[1]), Number(stamp[2]), Number(stamp[3]))) {
     throw new InvalidMoment(now);

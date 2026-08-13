@@ -55,6 +55,11 @@ jobs:
       - name: Check every promoted study
         run: npm run check:studies
 
+      # Fails when the editorial audit record is malformed. What it counts,
+      # coverage and staleness, prints as a note and fails nothing.
+      - name: Check the editorial audit record
+        run: npm run check:editorial
+
   # Windows support is a claim, and a claim nothing runs stops being true
   # quietly. This job is separate from `check` rather than an `os` dimension on
   # its matrix, because adding a dimension renames every existing job and the
