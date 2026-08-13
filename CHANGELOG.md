@@ -7,6 +7,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A grounding matrix names the reading its audits answer to, above its table,
+  as `**Source version:**` and a pin. The pin joins the row digest, so moving
+  the source on voids every audit in the file at once. A `G` row cites a rule
+  by number, and a rule number survives a new edition, so the row-only digest
+  let a source bump leave every audit reading as current over an edition
+  nobody had opened. A matrix with a `G` row carries the line, and a matrix
+  without one is refused for carrying it. The pin is the whole paragraph, so a
+  wrapped line binds every word a reader sees. `latest` and `HEAD` are refused,
+  because a reader has to date those for themselves. A matrix whose source
+  nobody has read declares `unread`, which names no reading, binds no digest,
+  and refuses a recorded audit by name rather than printing one to paste. A
+  scaffolded matrix starts there. Placement follows the
+  quotation declaration: above the header row, outside raw HTML, once, and a
+  second line refused rather than overruling the first. A declaration the check
+  cannot read leaves the matrix naming no reading, and every audit in it reads
+  stale. `rowDigest` takes the pin and refuses a caller that omits it, for the
+  reason `checkSkill` refuses a caller that omits the day. ADR-0026 records the
+  decision and amends ADR-0018's digest. Issue #73.
 - The repository records who read its own prose, in `editorial/AUDITS.md`, and
   `npm run check:editorial` checks that record. A row names a document, the UTC
   day a person read it with `de-slop` and `compressed-deliberation` open, and a
@@ -34,6 +52,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the prose-shape lane exists. `de-slop` treats one passage of prose, and this
   skill governs a session, so it holds what an agent does as well as what it
   says. The matrix disposes of both new units, as `E-28` and `N-09`.
+- A skill directory ships `SKILL.md`, `LICENSE`, `agents/`, and `references/`,
+  and `ground --check` refuses any other file by name. The matrix disposes of
+  `SKILL.md` and opens no other file, so a second file beside it installed
+  ungraded on every pathway. The source record moved out of the skill
+  directory, to `source/<tier>/<name>.md` beside the matrix, and it no longer
+  reaches an installed tree. Location is the mechanism, because four of the six
+  install pathways run none of our code. The allowlist states what may ship
+  rather than what may not, for the reason ADR-0016 gives about the extractor.
+  Each shipped `LICENSE` and each `SKILL.md` that pointed at `SOURCE.md` now
+  names the record's path in the repository. `ground --check` also prints how
+  many files under `references/` no row disposes of, per skill that ships one.
+  That count is a note and it fails nothing, the way the audited count does.
+  ADR-0025 records both decisions, and issue #99 carries the grading work that
+  closes the second.
 
 ## 0.3.0 — 2026-08-07
 

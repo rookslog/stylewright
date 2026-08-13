@@ -53,8 +53,10 @@ Each `standards/` skill contains these parts:
    See section 2.2.
 4. **A boundary statement.** State that the skill does not replace the official
    source. Give the link to the source. Give the link to the grounding matrix.
-5. **A `SOURCE.md` file.** Record the source name, the canonical URL, the license,
-   the verification date, and the URL that supplied the license statement.
+5. **A source record.** Record the source name, the canonical URL, the license,
+   the verification date, and the URL that supplied the license statement. The
+   record lives at `source/<tier>/<name>.md` and does not install. ADR-0025
+   moved it there, and section 4 carries the layout.
 6. **A `LICENSE` file.** See section 2.3.
 
 ### 2.1 Source admission test
@@ -185,7 +187,7 @@ Quoting a rule in order to state and check it is ordinary citation.
 2026-08-06, and every row of the ASD matrix reads `unquoted`. Control 5 permits
 the quotation. It does not decide it, because the operator approved continued
 publication on 2026-08-04 on the stated condition that the skill reproduces no
-rule text. `SOURCE.md` beside the skill carries that condition. Writing in the
+rule text. The source record for the skill carries that condition. Writing in the
 column crosses it, so the operator reopens the decision or nobody fills it.
 
 **Amended 2026-07-27.** Controls 1 to 3 replace two earlier controls that banned
@@ -229,8 +231,11 @@ The `craft/` tier stays small in v1. Harnesses already supply general
 documentation and planning skills. The differentiator of this tier is anti-slop
 discipline.
 
-A `craft/` skill has no source, so it ships no `SOURCE.md` and no navigation map.
-It still has a grounding matrix, in which every row is an `E` row.
+A `craft/` skill has no standard behind it and no navigation map. It still
+carries a source record, which states that there is no source and what evidence
+stands behind the rules instead. It still has a grounding matrix, in which every
+row is an `E` row. Amended 2026-08-12: this paragraph said a craft skill ships no
+source record, and all four of them carried one.
 
 ### 3.5 Roadmap
 
@@ -246,7 +251,6 @@ stylewright/
   skills/
     standards/<name>/                       # installs verbatim
       SKILL.md
-      SOURCE.md
       LICENSE
       references/
       agents/openai.yaml
@@ -256,6 +260,9 @@ stylewright/
       references/
       agents/openai.yaml
   grounding/                                # repo only, never installs
+    standards/<name>.md
+    craft/<name>.md
+  source/                                   # repo only, never installs
     standards/<name>.md
     craft/<name>.md
   .claude-plugin/marketplace.json

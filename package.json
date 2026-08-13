@@ -36,13 +36,14 @@
     "src",
     "skills",
     "grounding",
+    "source",
     "resident",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "node --test",
-    "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md bench/README.md bench/samples/README.md bench/probes/README.md editorial/AUDITS.md docs/ skills/",
+    "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md bench/README.md bench/samples/README.md bench/probes/README.md editorial/AUDITS.md docs/ skills/ source/",
     "check:ground": "node bin/stylewright.mjs ground --check --all",
     "check:docs": "node scripts/check-docs-meta.mjs",
     "check:probes": "node bench/probe.mjs",

@@ -12,7 +12,8 @@ scope and correcting course are all real work, and a reader wants the edited
 result of that work rather than a transcript of it.
 
 This skill is pinned to one model build. The record of what it targets, and of
-when it expires, is in `SOURCE.md` beside this file.
+when it expires, lives in the stylewright repository at
+`source/craft/compressed-deliberation.md`. It is not installed with this skill.
 
 ## What this corrects
 
@@ -34,8 +35,9 @@ the whole stack you are running inside, and not at the model alone.
 
 Where the rules have been measured: single-turn replies, one prompt each, five
 runs. Not agentic sessions, and not files written to disk. The second is the
-case `SOURCE.md` records the vendor documenting most clearly and the one we have
-tested least, so apply the rules there on their reasoning, not on our evidence.
+case that record names as the one the vendor documents most clearly, and the one
+we have tested least, so apply the rules there on their reasoning, not on our
+evidence.
 
 ## The shape of a reply
 

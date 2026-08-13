@@ -1,4 +1,6 @@
-# Source record
+# Source record for simplified-technical-english
+
+This file stays in the repository. It does not install with the skill.
 
 - Source: ASD-STE100 Simplified Technical English, Issue 9, January 2025
 - URL: https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf

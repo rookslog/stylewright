@@ -12,14 +12,15 @@ The `Audited` cell of a `G` row says whether a person has read that row against
 the source. Every row starts at `unaudited`, and no run of the checker raises
 it. A person who checks a row writes the date and the row's digest in place of
 the word. Editing any other cell changes that digest, so the audit goes stale
-and the check says so.
+and the check says so. So does moving the source version this file declares,
+because an audit answers to one reading of the source.
 
 The `Source text` cell of a `G` row carries the words of the rule it cites, in
 quotation marks. Every row below reads `unquoted`, and that is the state the
 declaration below requires.
 
-**Quotation:** forbidden. `SOURCE.md` records that nobody has read the governing
-terms of the vendor pages these rows cite, so no sentence of one may be carried
+**Quotation:** forbidden. The source record states that nobody has read the
+governing terms of the vendor pages these rows cite, so no sentence of one may be carried
 here. Read those terms and record the check, then edit this line.
 
 This file stays in the repository. It does not install with the skill.
@@ -43,8 +44,8 @@ is *often* longer. A row that drops either word states a tendency as a rule of
 the model, which claims more than the source grants. That is this repository's
 worst defect in its quiet form, and both hedges are back.
 
-`SOURCE.md` beside the skill carries the URLs, the sections read, the read date,
-and the expiry conditions.
+The source record at `source/craft/proportionate-execution.md` carries the
+URLs, the sections read, the read date, and the expiry conditions.
 
 ## Why this skill governs conduct and not prose alone
 
@@ -66,8 +67,8 @@ for this skill. There is no control, no treatment, and no figure, so nothing
 here may be read as an effect that we observed.
 
 The bench cannot run one yet. Its runner drives a single prompt, and every rule
-below is about a session of many steps. `SOURCE.md` beside the skill records
-what a study would need, and ADR-0005 records that the gap was accepted
+below is about a session of many steps. The source record at
+`source/craft/proportionate-execution.md` names what a study would need, and ADR-0005 records that the gap was accepted
 knowingly.
 
 ## Three section titles are graded `E`, and two are not
@@ -92,6 +93,11 @@ a session default to more than the task needs, and that generalizes past the one
 model the sources document to any agent in a session. Its `Source location` cell
 says so, because the trace is where an ungrounded premise has to be visible.
 
+**Source version:** Anthropic's documentation of Claude Opus 5, model id
+`claude-opus-5`, as read up to the evidence cutoff of 2026-08-06. The target is
+a model build rather than a standard, so the build and the cutoff are what a
+reading of these pages is a reading of.
+
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|
 | G-01 | Claude Opus 5 tends to announce what it is about to do during agentic work. | What this corrects | User-facing progress updates | unquoted | A1, Prompting Claude Opus 5 | unaudited |
@@ -100,7 +106,7 @@ says so, because the trace is where an ungrounded premise has to be visible.
 | G-04 | It can widen a task past the request, taking on steps nobody asked for. | What this corrects | Task scope and over-verification | unquoted | A1, Prompting Claude Opus 5 | unaudited |
 | G-05 | It narrates a correction to its own earlier statement more often than earlier models did. | What this corrects | Self-correction | unquoted | A1, Prompting Claude Opus 5 | unaudited |
 | E-01 | Anthropic publishes these as behaviours of Claude Opus 5. They describe the model. They prescribe nothing, and no rule below inherits their authority. | What this corrects |  |  | Our own guidance, and it states what the G rows do not license |  |
-| E-02 | No measurement stands behind any rule below. The bench named in `SOURCE.md` cannot drive a multi-step session yet, so read every rule here as discipline we assert, and never as an effect we observed. | What this corrects |  |  | Our own guidance, and it instructs how to read the rules |  |
+| E-02 | No measurement stands behind any rule below. The bench named in that record cannot drive a multi-step session yet, so read every rule here as discipline we assert, and never as an effect we observed. | What this corrects |  |  | Our own guidance, and it instructs how to read the rules |  |
 | E-03 | Report a step when the reader can act on it | Report a step when the reader can act on it |  |  | Our own guidance, written as a section title |  |
 | E-04 | Report a discovery that changes what the reader would decide, and let a routine step pass unreported. | Report a step when the reader can act on it |  |  | Our own guidance |  |
 | E-05 | Report a finished task by what changed, and not by the order you worked in. | Report a step when the reader can act on it |  |  | Our own guidance |  |
@@ -130,7 +136,7 @@ says so, because the trace is where an ungrounded premise has to be visible.
 | N-01 | proportionate-execution | proportionate-execution |  |  | Section title, asserts no rule |  |
 | N-02 | Purpose | Purpose |  |  | Section title, asserts no rule |  |
 | N-03 | An agent in a session decides two things over and over. What to do next, and what to say about what it did. Both decisions default to more than the task needs, and this skill holds each one to the size of the thing it serves. | Purpose |  |  | Purpose framing, asserts no rule. The generalization past the documented model to any agent is ours, and no source grounds it |  |
-| N-04 | This skill is pinned to one model build. The record of what it targets, of what stands behind it, and of when it expires, is in `SOURCE.md` beside this file. | Purpose |  |  | Points at SOURCE.md, asserts no rule |  |
+| N-04 | This skill is pinned to one model build. The record of what it targets, of what stands behind it, and of when it expires, lives in the stylewright repository at `source/craft/proportionate-execution.md`. It is not installed with this skill. | Purpose |  |  | Points at the source record, asserts no rule |  |
 | N-05 | What this corrects | What this corrects |  |  | Section title, asserts no rule |  |
 | N-06 | Narration a reader uses to intervene | Narration a reader uses to intervene |  |  | Section title, asserts no rule |  |
 | N-07 | What this skill does not ask for | What this skill does not ask for |  |  | Section title, asserts no rule |  |
