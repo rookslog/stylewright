@@ -15,6 +15,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   join the development dependencies, and a test asserts that no module under
   `src/` or `bin/` imports either. ADR-0028.
 
+### Fixed
+
+- A matrix row splits on a pipe that an ODD run of backslashes precedes, which
+  is what a reader's renderer does. A one-character lookbehind read `x\\|` as
+  an escaped pipe, so the checker saw one cell where a reader sees two, and a
+  row ending that way read as unclosed. The new render test found it.
+
 ### Changed
 
 - `proportionate-execution` says how it differs from `de-slop`. Three of the

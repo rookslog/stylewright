@@ -160,9 +160,14 @@ test('where the reader sees a table, the checker reads its rows and no others', 
     const text = matrix(lines);
     const findings = checkSkill({ skillText: SKILL, matrixText: text, now: NOW });
     if (findings.some((f) => SHAPELESS.has(f.code))) continue;
-    const seen = new Set(renderedIds(text));
+    // With multiplicity. A set said `E-01` was seen, over a render that showed
+    // it once and a checker that read it twice, so a dropped row could hide
+    // behind a repeated identifier.
+    const seen = renderedIds(text);
     for (const id of readIds(text)) {
-      assert.ok(seen.has(id), `${what}: the checker read ${id}, which no reader sees as a row`);
+      const at = seen.indexOf(id);
+      assert.ok(at !== -1, `${what}: the checker read ${id}, which no reader sees as a row`);
+      seen.splice(at, 1);
     }
   }
 });
@@ -181,6 +186,25 @@ test('a reader sees no eighth cell', () => {
   assert.equal(readMatrix(text).rows[0].cells.length, MATRIX_COLUMNS.length + 1, 'the checker sees it, and reports it');
   const findings = checkSkill({ skillText: SKILL, matrixText: text, now: NOW });
   assert.ok(findings.some((f) => f.code === 'row-has-extra-cell' && f.level === 'error'));
+});
+
+test('a backslash escapes one character, so an odd run of them escapes a pipe', () => {
+  // A one-character lookbehind read `x\\|` as an escaped pipe. GFM reads the
+  // escaped BACKSLASH and then a cell boundary, so the checker saw one cell
+  // where a reader sees two. `closed` carried the same lookbehind and so the
+  // same defect, and a row ending in `\\|` read as unclosed.
+  const cells = (tail) => {
+    const text = matrix([HEADER, DELIMITER, `| E-01 | ${tail} | An anchor |  |  | Our own guidance |  |`]);
+    const [{ rows }] = renderTables(text);
+    return { seen: rows[0].map(cellText), read: readMatrix(text).rows[0].cells };
+  };
+  for (const tail of ['x', 'x\\|y', 'x\\\\', 'x\\\\\\|y', 'x\\n']) {
+    const { seen, read } = cells(tail);
+    assert.deepEqual(read, seen, `a cell ending ${JSON.stringify(tail)}`);
+  }
+  const ends = (row) => readMatrix(matrix([HEADER, DELIMITER, row])).rows[0].closed;
+  assert.equal(ends('| E-01 | a | b |  |  | c | d\\\\|'), true);
+  assert.equal(ends('| E-01 | a | b |  |  | c | d\\|'), false);
 });
 
 test('a reader sees the table end at a blank line, a heading, or a thematic break', () => {
@@ -234,12 +258,23 @@ test('two legal shapes render and are refused as house style', () => {
 });
 
 test('no shipped module imports the parser', async () => {
+  // Every module below each directory, not the ones sitting directly in it. A
+  // scan over names alone would let `src/format/x.js` import the parser and
+  // ship it, which is the whole thing this test exists to prevent.
+  const walk = async (at, seen = []) => {
+    for (const entry of await readdir(at, { withFileTypes: true })) {
+      const child = new URL(entry.name + (entry.isDirectory() ? '/' : ''), at);
+      if (entry.isDirectory()) await walk(child, seen);
+      else if (/\.m?js$/.test(entry.name)) seen.push(child);
+    }
+    return seen;
+  };
   for (const dir of ['../src/', '../bin/']) {
-    const at = new URL(dir, import.meta.url);
-    for (const name of await readdir(at)) {
-      if (!/\.m?js$/.test(name)) continue;
-      const text = await readFile(new URL(name, at), 'utf8');
-      assert.ok(!/micromark/.test(text), `${dir}${name} must not reach for a Markdown parser`);
+    const files = await walk(new URL(dir, import.meta.url));
+    assert.ok(files.length > 0, `${dir} carries modules to check`);
+    for (const file of files) {
+      const text = await readFile(file, 'utf8');
+      assert.ok(!/micromark/.test(text), `${file.pathname} must not reach for a Markdown parser`);
     }
   }
 });
