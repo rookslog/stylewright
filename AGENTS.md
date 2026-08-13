@@ -448,6 +448,28 @@ number published in `bench/README.md`.
   the harness's own skill-loading lines verbatim. `trace` is `null` or a
   list of strings, and a summary there is the defect: a summary of a
   trace is the author's word about the evidence. ADR-0024.
+- **The derivation reads that trace, and a disagreement blocks the
+  pass.** A trace naming the loaded file is better evidence than either
+  answer, so `trace_agrees` cannot be a note beside a pass. It blocks on
+  `false` alone. A record that kept no trace reads `null`, which is
+  every record written before 2026-08-07, and blocking on absence would
+  grade an old instrument by a new one. A trace that names no loading
+  reads as a disagreement, because a renamed harness line and a harness
+  that loaded nothing produce the same empty trace. Move
+  `TRACE_PATTERNS` and `LOADED_LINE` onto the new wording rather than
+  widening the reading until an empty trace passes. `managed_seen` is
+  read off the same line and blocks nothing, for the reason
+  `audit-coverage` blocks nothing. ADR-0024.
+- **Three invariants make a trace attributable to the arm it came
+  from**, and `runArms` holds all three. The debug path is derived under
+  the throwaway root and a path outside it is refused. The file is read
+  and removed on every arm, not on the first alone. One flag set is
+  built above the loop, because a record carries one `flags` array and
+  two sets would be true of neither arm. Each was prose until issue #95,
+  and each had a mutation that produced a well-formed record deriving
+  PASS with its evidence misattributed. The sequence sits outside `main`
+  so a test can reach it without spawning a harness, which is the shape
+  the plant's `afterWrite` injection already uses. Do not fold it back.
 - The probe plants its nonce in the skill's frontmatter description, so it
   measures the attachment surface and not invocation. Skills reach the
   model as names and descriptions, and a body loads when the model invokes

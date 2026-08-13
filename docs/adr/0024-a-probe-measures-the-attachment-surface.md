@@ -2,7 +2,7 @@
 type: adr
 status: accepted
 decided: 2026-08-07
-issues: [21, 43]
+issues: [21, 43, 94, 95]
 ---
 
 # ADR-0024 — A probe arm enables the user source, and plants in the description
@@ -156,15 +156,68 @@ the file removed between them. Two paths would put a different value in each
 arm's invocation, and a record carries one flag set, which would then be true of
 neither arm.
 
-Those three invariants are prose here and no test holds them, because the arm
-sequence lives inside a function that spawns a live harness. Issue #95 carries
-the extraction that makes them reachable, with the three surviving mutations
-named. The `--debug-file` VALUE is the one part already enforced.
+Those three invariants were prose here and no test held them, because the arm
+sequence lived inside a function that spawns a live harness. The section below
+records the extraction that closed that, on issue #95.
 
-The derivation does not read the trace. `deriveOutcome` reads the answers and
-the flags, so the better evidence is retained and not consulted, and issue #94
-carries that work. A record whose control trace says `Loaded 1 unique skills`
-derives PASS today on the strength of its answers alone.
+The derivation did not read the trace either. The section below records the
+reading that closed that, on issue #94.
+
+## Amended 2026-08-13 — the trace is read, and a disagreement blocks
+
+Two follow-through items above became one pull request, because both make a
+retained trace count as evidence rather than as an attachment.
+
+**The derivation reads the trace.** `deriveOutcome` gains `trace_agrees`. It
+parses `Loaded (\d+) unique skills` from the retained lines, and the reading
+agrees when the installed arm loaded at least one skill and the control loaded
+zero. Every such line is read rather than the first, because the harness repeats
+the line per session and a run that loaded one skill once and none the next time
+has corroborated nothing.
+
+**A disagreement blocks `passes`, and this is the decision the issue left
+open.** The alternative was to report it beside the verdict as a note. Section
+4.1 calls a trace naming the loaded file better evidence than either answer, and
+better evidence that contradicts the answers cannot sit beside a pass without
+making the word meaningless. The concrete case is the one that motivated the
+issue: a control whose trace says `Loaded 1 unique skills` while its answer says
+nothing derived PASS, and the contradiction sat in the same file.
+
+**Absence never blocks.** `trace_agrees` is `null` where either arm carries no
+trace, and only `false` blocks. Every record written before 2026-08-07 carries
+no trace, and so would a record from a harness that offers none. Blocking on
+absence would grade an old instrument by a new one and would refuse a probe for
+what nobody could have retained.
+
+**Measured effect on the committed records: none.** Two carry no trace and
+derive `null`, so their verdicts stand. The third carries a trace that agrees.
+The blocking reading therefore costs nothing today, and it is written down now
+rather than the first time it would change an answer.
+
+**The managed count is read off the same line, and it blocks nothing.** A probe
+redirects `HOME`, and the harness consults a machine-global managed skills path
+that `HOME` does not move, which is why `environment_class` names the home and
+never the machine. `managed_seen` is the largest count either trace states.
+Whether a managed skill reaching an arm spoils that arm is a judgment about what
+stood in that path, and a record carries no way to ask, so the derivation owes a
+reader the number and not a verdict. `check:probes` prints it on every line, for
+the reason `ground --check` prints its own counts: a note nothing reads is a
+comment.
+
+**What would reopen the blocking half.** A harness that renames its
+skill-loading line. The collector's selector would retain nothing, the reading
+would come out `false` rather than `null`, and every probe would fail for a
+wording change. The exit is to move `TRACE_PATTERNS` and `LOADED_LINE` onto the
+new wording. It is not to widen the reading until a trace naming no loading
+passes, because that is the state a broken selector and a harness loading
+nothing both produce.
+
+**The arm sequence is extracted.** `runArms` in `bench/collect-probe.mjs` holds
+the three invariants above, and `main` calls it. It builds one flag set above
+the loop, derives the debug path under the throwaway root, and reads then
+removes the file on every arm rather than on the first alone. A caller-supplied
+path outside the root is refused. `test/probe.test.js` holds each invariant, and
+each of the three mutations issue #95 named now fails the suite.
 
 ## Consequences
 

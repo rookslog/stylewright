@@ -15,13 +15,13 @@ import path from 'node:path';
 
 import {
   TUPLE, ENV_CLASSES, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory,
-  describe, redact, summarise, traceProblems,
+  describe, redact, summarise, traceProblems, loadCounts, traceAgrees, managedSeen,
   REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG, flagShapeProblems,
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
   parsePathway, plantFlags, plantInDescription, plantNonce, plantedSentence, readRun, recordName,
-  servingBuild, skillTraceLines, readTrace, TRACE_LINE_LIMIT,
+  servingBuild, skillTraceLines, readTrace, TRACE_LINE_LIMIT, debugPath, runArms,
   treeDigest, tupleModel, writeRecord, ASK, AUTH_ROUTES,
 } from '../bench/collect-probe.mjs';
 
@@ -147,6 +147,10 @@ test('a well-formed record passes and derives a pass', () => {
     discovered: true,
     control_clean: true,
     isolated: true,
+    // No trace, so no reading. Absence is a state, and it is the state every
+    // record written before 2026-08-07 carries.
+    trace_agrees: null,
+    managed_seen: null,
     passes: true,
   });
 });
@@ -1049,15 +1053,45 @@ test('a description shape the plant would corrupt is refused, one shape at a tim
 // The README spells the flag set out for a reader. `bench/probe.mjs` claims to
 // hold one copy of it, so the spelled-out one is held to the constants rather
 // than trusted to stay in step by hand.
-test('the probes README spells the flag set the constants define', async () => {
+//
+// `includes` was the whole check, and it asks whether the file carries the
+// right spelling SOMEWHERE. A second copy that had gone stale sat beside a
+// correct one and the check stayed green, which is the residue MINOR-6 left.
+// So the file is asked how many arm invocations it spells, and the answer is
+// one. A line counts as one when it names the two flags that carry no value,
+// which is a shape no prose sentence about a single flag can reach.
+const armInvocations = (readme) => readme.split('\n')
+  .filter((line) => line.includes('-p ')
+    && line.includes('--strict-mcp-config') && line.includes('--output-format'));
+
+test('the probes README spells the flag set the constants define, exactly once', async () => {
   const readme = await fs.readFile(
     new URL('../bench/probes/README.md', import.meta.url), 'utf8');
   const expected = REQUIRED_FLAGS.flatMap((flag) => {
     if (!FLAGS_TAKING_A_VALUE.includes(flag)) return [flag];
     return [flag, FIXED_VALUES[flag] ?? `<${flag === '--model' ? 'alias' : 'value'}>`];
   }).join(' ');
-  assert.ok(readme.includes(expected),
+  const found = armInvocations(readme);
+  assert.equal(found.length, 1,
+    `the README spells a probe arm's invocation once, and it spells ${found.length}`);
+  assert.equal(found[0].trim(), expected,
     `the README must spell the flag set as: ${expected}`);
+});
+
+// The block omits the trace flag, and that omission is a claim: `--debug-file`
+// is allowed and never required, so a record collected without it is a probe
+// like any other. Nothing held the block to it, so the flag could drift into
+// the block and read as required to every reader of this file.
+test('the README block omits the trace flag, and the prose beside it does not', async () => {
+  const readme = await fs.readFile(
+    new URL('../bench/probes/README.md', import.meta.url), 'utf8');
+  const [block] = armInvocations(readme);
+  assert.equal(block.includes(TRACE_FLAG), false,
+    `${TRACE_FLAG} is allowed and never required, so the required set omits it`);
+  // Omitted from the block and named in the file, or a reader learns nothing
+  // about the one flag an arm may add.
+  assert.ok(readme.includes(TRACE_FLAG),
+    `the README names ${TRACE_FLAG} as the one flag an arm may add`);
 });
 
 // The trace flag's value is the one place a probe arm could reach into a real
@@ -1079,4 +1113,207 @@ test('a trace path inside a .claude directory is refused, and never quoted back'
   // The VALUE reading owns this, so such a record is a failed probe and not a
   // broken file, the way every other wrong value is.
   assert.deepEqual(flagShapeProblems(inside('/Users/someone/.claude/debug.log')), []);
+});
+
+// The trace, consulted. Section 4.1 calls a trace naming the loaded file better
+// evidence than either answer, and until issue #94 the derivation read the
+// answers and the flags alone. A record whose control trace said `Loaded 1
+// unique skills` derived PASS on the strength of an answer that said nothing.
+const traced = (installed, control) => {
+  const r = record();
+  r.installed.trace = installed;
+  r.control.trace = control;
+  return r;
+};
+const LOADED_ONE = '2026-08-07T07:21:09Z [DEBUG] Loaded 1 unique skills '
+  + '(1 unconditional, 0 conditional, managed: 0, user: 1, project: 0, additional: 0)';
+const LOADED_NONE = '2026-08-07T07:21:13Z [DEBUG] Loaded 0 unique skills '
+  + '(0 unconditional, 0 conditional, managed: 0, user: 0, project: 0, additional: 0)';
+
+test('the counts come off the harness line, and both come off it in one pass', () => {
+  assert.deepEqual(loadCounts([LOADED_ONE]), { loaded: [1], managed: [0] });
+  // The `Loading skills from:` line names the managed PATH and no count, so
+  // nothing is read off it.
+  assert.deepEqual(loadCounts(['Loading skills from: managed=/Library/x, user=/tmp/y']),
+    { loaded: [], managed: [] });
+  // A trace that is present and names no loading is an empty reading, and a
+  // trace that is absent is no reading at all.
+  assert.deepEqual(loadCounts([]), { loaded: [], managed: [] });
+  assert.equal(loadCounts(null), null);
+  assert.equal(loadCounts(undefined), null);
+  // A malformed trace is a broken record, and `checkRecord` says so. Reading it
+  // here as a failed probe would answer the wrong question.
+  assert.equal(loadCounts('Loaded 1 unique skills'), null);
+});
+
+test('a trace agrees when the installed arm loaded a skill and the control loaded none', () => {
+  assert.equal(traceAgrees(traced([LOADED_ONE], [LOADED_NONE])), true);
+  // The reading issue #94 names: the control's own trace contradicts the
+  // control's silent answer, and the record used to derive PASS anyway.
+  assert.equal(traceAgrees(traced([LOADED_ONE], [LOADED_ONE])), false);
+  assert.equal(traceAgrees(traced([LOADED_NONE], [LOADED_NONE])), false);
+});
+
+// Absence is a state, never a disagreement. Every record written before
+// 2026-08-07 carries no trace, and grading those by an instrument they predate
+// would fail them for what nobody could have retained.
+test('a null trace reads as null, on either arm, and never as false', () => {
+  assert.equal(traceAgrees(record()), null);
+  assert.equal(traceAgrees(traced([LOADED_ONE], null)), null);
+  assert.equal(traceAgrees(traced(null, [LOADED_NONE])), null);
+  assert.equal(deriveOutcome(record()).trace_agrees, null);
+  assert.equal(deriveOutcome(record()).passes, true);
+});
+
+// The harness repeats the line per session. A run that loaded one skill once
+// and none the next time has corroborated nothing, so every line is read.
+test('every loaded line is read, not the first', () => {
+  assert.equal(traceAgrees(traced([LOADED_ONE, LOADED_NONE], [LOADED_NONE])), false);
+  assert.equal(traceAgrees(traced([LOADED_ONE], [LOADED_NONE, LOADED_ONE])), false);
+  assert.equal(traceAgrees(traced([LOADED_ONE, LOADED_ONE], [LOADED_NONE, LOADED_NONE])), true);
+});
+
+// A present trace naming no loading reads as a disagreement, deliberately. It
+// is what a renamed harness line produces, and the exit is to move the pattern
+// rather than to widen the reading until an empty trace passes.
+test('a trace that names no loading corroborates nothing', () => {
+  assert.equal(traceAgrees(traced([], [])), false);
+  assert.equal(traceAgrees(traced(['connecting to the transport'], [LOADED_NONE])), false);
+});
+
+// The decision this pass makes. Better evidence that contradicts the answers
+// cannot sit beside a pass as a note. ADR-0024 carries the amendment.
+test('a disagreeing trace blocks the pass, and a null one does not', () => {
+  const contradicted = traced([LOADED_ONE], [LOADED_ONE]);
+  const outcome = deriveOutcome(contradicted);
+  assert.equal(outcome.discovered, true, 'the answers still read as a discovery');
+  assert.equal(outcome.control_clean, true, 'and the control answer is still clean');
+  assert.equal(outcome.isolated, true);
+  assert.equal(outcome.trace_agrees, false);
+  assert.equal(outcome.passes, false, 'the trace is the better evidence, so it blocks');
+  assert.match(describe('probe.json', contradicted), /derives FAIL/);
+});
+
+// A redirected home does not move the machine-global managed skills path, so a
+// non-zero count is the one thing in a record that would say something reached
+// an arm from outside the home. Nothing looked until now.
+test('the managed count is read, reported, and blocks nothing', () => {
+  assert.equal(managedSeen(record()), null);
+  assert.equal(managedSeen(traced([LOADED_ONE], [LOADED_NONE])), 0);
+  const reached = LOADED_ONE.replace('managed: 0', 'managed: 2');
+  const seen = traced([reached], [LOADED_NONE]);
+  assert.equal(managedSeen(seen), 2);
+  assert.equal(deriveOutcome(seen).managed_seen, 2);
+  // A note, like `audit-coverage` beside a matrix. Whether a managed skill
+  // spoils the arm is a judgment a record carries no way to ask.
+  assert.equal(deriveOutcome(seen).passes, true);
+  assert.match(describe('probe.json', seen), /managed_seen=2/);
+});
+
+test('the derived line carries both trace readings, including their absence', () => {
+  const line = describe('probe.json', record());
+  assert.match(line, /trace_agrees=null/);
+  assert.match(line, /managed_seen=null/);
+});
+
+// The three invariants ADR-0024 states as prose, and issue #95 reports as
+// untested. Each one had a surviving mutation that produced a well-formed
+// record deriving PASS with its evidence misattributed.
+const twoHomes = (root) => ({
+  installed: { home: path.join(root, 'installed', 'home'), cwd: path.join(root, 'installed') },
+  control: { home: path.join(root, 'control', 'home'), cwd: path.join(root, 'control') },
+});
+
+/**
+ * A harness that answers and writes a debug log, without spawning anything.
+ * `logs` names what each call writes into the debug file, in order, and a
+ * `null` entry writes nothing at all.
+ */
+const fakeHarness = (logs) => {
+  const calls = [];
+  let at = 0;
+  const run = async ({ flags, home, cwd }) => {
+    calls.push({ flags, home, cwd });
+    const file = flags[flags.indexOf(TRACE_FLAG) + 1];
+    const text = logs[at];
+    at += 1;
+    if (text !== null) await fs.writeFile(file, text);
+    return { answer: 'NONE', model_id: 'build', is_error: false, stderr: '', home };
+  };
+  return { run, calls };
+};
+
+test('the debug path lands under the throwaway root, and nowhere else', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-arms-'));
+  assert.equal(debugPath(root), path.join(root, 'harness-debug.log'));
+  const { run } = fakeHarness([LOADED_ONE, LOADED_NONE]);
+  const ran = await runArms({
+    root, harness: 'claude', model: 'opus', ask: ASK, homes: twoHomes(root), run,
+  });
+  assert.equal(ran.debugFile, debugPath(root));
+  // The flags the record commits are the flags the arms ran, so the path a
+  // reader audits is the path the trace came from.
+  assert.equal(ran.flags[ran.flags.indexOf(TRACE_FLAG) + 1], debugPath(root));
+  // A path outside the root writes a harness trace into a tree the probe
+  // neither built nor cleans up, and the record would still derive PASS.
+  await assert.rejects(
+    runArms({
+      root, harness: 'claude', model: 'opus', ask: ASK, homes: twoHomes(root), run,
+      debugFile: path.join(os.tmpdir(), 'sw-elsewhere.log'),
+    }),
+    /A harness trace is written under/);
+});
+
+// Skip the removal and the control reads the installed arm's lines, so the
+// record shows a skill loaded on both arms and derives a stronger pass than the
+// run earned. Under the derivation this pass adds, it derives FAIL instead.
+test('the debug file goes between the arms, so no trace outlives its arm', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-arms-'));
+  // The installed arm writes a log. The control writes none, so whatever its
+  // trace carries came from the file the first arm left behind.
+  const { run } = fakeHarness([LOADED_ONE, null]);
+  const ran = await runArms({
+    root, harness: 'claude', model: 'opus', ask: ASK, homes: twoHomes(root), run,
+  });
+  assert.deepEqual(ran.installed.trace, [LOADED_ONE]);
+  assert.equal(ran.control.trace, null, 'the control inherited the installed arm\'s trace');
+  // And the file is gone when the run ends, on the last arm as on the first.
+  assert.equal(await readTrace(debugPath(root)), null);
+});
+
+test('both arms run one flag set, so the record\'s flags are true of each', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-arms-'));
+  const homes = twoHomes(root);
+  const { run, calls } = fakeHarness([LOADED_ONE, LOADED_NONE]);
+  const ran = await runArms({ root, harness: 'claude', model: 'opus', ask: ASK, homes, run });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].flags, calls[1].flags, 'a second flag set is true of neither arm');
+  assert.deepEqual(ran.flags, calls[0].flags);
+  // The homes still differ, which is the one variable the probe changes.
+  assert.equal(calls[0].home, homes.installed.home);
+  assert.equal(calls[1].home, homes.control.home);
+  // And the set is a probe arm's, so an arm sequence cannot open a surface the
+  // acceptance test closes.
+  assert.deepEqual(isolationProblems(ran.flags), []);
+});
+
+// The record these arms produce is the one the derivation reads, so the
+// sequence and the reading are held together rather than each against a fixture.
+test('the arms produce a record whose trace agrees with the run', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-arms-'));
+  const { run } = fakeHarness([LOADED_ONE, LOADED_NONE]);
+  const ran = await runArms({
+    root, harness: 'claude', model: 'opus', ask: ASK, homes: twoHomes(root), run,
+  });
+  const built = buildRecord({
+    date: '2026-08-13', skill: 'de-slop', nonce: NONCE, pathway: 'claude:user',
+    flags: ran.flags, route: 'api-key', build: '2.1.222',
+    installedArm: { ...ran.installed, answer: NONCE }, controlArm: ran.control,
+    treeDigest: 'abc123',
+  });
+  assert.deepEqual(checkRecord(built), []);
+  const outcome = deriveOutcome(built);
+  assert.equal(outcome.trace_agrees, true);
+  assert.equal(outcome.managed_seen, 0);
+  assert.equal(outcome.passes, true);
 });

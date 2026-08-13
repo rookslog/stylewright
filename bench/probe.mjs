@@ -397,6 +397,98 @@ export function traceProblems(trace) {
 }
 
 /**
+ * The two numbers a harness states about skill loading, and where they come
+ * from.
+ *
+ * ONE line carries both. The harness writes `Loaded 1 unique skills (1
+ * unconditional, 0 conditional, managed: 0, user: 1, project: 0, …)`, so the
+ * total and the managed share a line and are read in one pass. The `Loading
+ * skills from:` line names the managed PATH and no count, so nothing is read
+ * off it.
+ *
+ * Why the managed count is read at all. A probe redirects `HOME`, and the
+ * harness consults a machine-global managed skills path that `HOME` does not
+ * move — which is why `environment_class` names the home and never the machine.
+ * A non-zero managed count is the one thing in a record that would say
+ * something reached an arm from outside the redirected home, and until now
+ * nothing looked.
+ */
+export const LOADED_LINE = /Loaded\s+(\d+)\s+unique skills/i;
+export const MANAGED_COUNT = /\bmanaged:\s*(\d+)/i;
+
+/**
+ * The counts one arm's trace states, or `null` where there is no trace to read.
+ *
+ * `null` in, `null` out. Absence is a state: every record written before
+ * 2026-08-07 carries no trace, and so would a record from a harness that offers
+ * none. A malformed trace reads as absent here too, because `checkRecord`
+ * already refuses that record and a second refusal from this side would say the
+ * probe failed rather than that the file is broken.
+ *
+ * A trace that IS present and names no loading returns empty lists rather than
+ * `null`. The two are different readings, and the caller decides what each one
+ * is worth.
+ */
+export function loadCounts(trace) {
+  if (trace === null || trace === undefined) return null;
+  if (traceProblems(trace).length) return null;
+  const loaded = [];
+  const managed = [];
+  for (const line of trace) {
+    const found = LOADED_LINE.exec(line);
+    if (!found) continue;
+    loaded.push(Number(found[1]));
+    const from = MANAGED_COUNT.exec(line);
+    if (from) managed.push(Number(from[1]));
+  }
+  return { loaded, managed };
+}
+
+/**
+ * Does the trace agree with what the answers claim?
+ *
+ * The reading is the one section 4.1 asks for: the installed arm loaded a
+ * skill and the control loaded none. It is `null` where either arm carries no
+ * trace, because a reading needs both sides and absence is not disagreement.
+ *
+ * Every `Loaded` line is read, not the first. The harness repeats the line per
+ * session, and a run whose installed arm loaded one skill once and none the
+ * next time has not corroborated anything, so the installed side asks that
+ * every line load at least one and the control side asks that every line load
+ * zero.
+ *
+ * A present trace naming no loading at all reads as a disagreement, and that is
+ * the deliberate direction. It happens when the harness renames the line, and
+ * then the collector's own selector kept nothing either, so the record's
+ * evidence is unaccountable rather than merely thin. The exit is to move
+ * `TRACE_PATTERNS` and `LOADED_LINE` onto the new wording, never to widen this
+ * reading until an empty trace passes.
+ */
+export function traceAgrees(record) {
+  const installed = loadCounts(record?.installed?.trace);
+  const control = loadCounts(record?.control?.trace);
+  if (!installed || !control) return null;
+  const loadedSome = installed.loaded.length > 0 && installed.loaded.every((n) => n >= 1);
+  const loadedNone = control.loaded.length > 0 && control.loaded.every((n) => n === 0);
+  return loadedSome && loadedNone;
+}
+
+/**
+ * The largest managed count either arm's trace states, or `null` where no trace
+ * states one.
+ *
+ * It is a NOTE and it blocks nothing, for the reason `ground --check` prints
+ * its counts without failing on them: whether a managed skill reaching an arm
+ * spoils that arm is a judgment about what stood in that path, and a record
+ * carries no way to ask. What the derivation owes a reader is the number, on
+ * the line, so the question can be asked at all. `describe` prints it.
+ */
+export function managedSeen(record) {
+  const counts = ARMS.flatMap((arm) => loadCounts(record?.[arm]?.trace)?.managed ?? []);
+  return counts.length ? Math.max(...counts) : null;
+}
+
+/**
  * Everything wrong with one record. It returns a list rather than throwing, so
  * a run reports every record in one pass.
  */
@@ -556,12 +648,18 @@ export function checkRecord(record, name = 'record') {
  *
  * `discovered` is the evidence the installed text reached the context.
  * `control_clean` is the empty-home control that catches a probe passing for
- * the wrong reason. `isolated` is section 4.2's acceptance test. A probe passes
- * only on all three, and a caller that wants one word reads `passes`.
+ * the wrong reason. `isolated` is section 4.2's acceptance test. `trace_agrees`
+ * is the harness's own account of the same run, and a caller that wants one
+ * word reads `passes`.
  *
- * All three read the ANSWERS and the flags, and none reads the trace, so the
- * better evidence a record now retains is not consulted here. Issue #94 carries
- * that work, and the gap is stated rather than left to be discovered.
+ * `trace_agrees` BLOCKS. Section 4.1 calls a trace naming the loaded file
+ * better evidence than either answer, and evidence that is better and
+ * contradicted cannot be a note beside a pass. It blocks on `false` alone: a
+ * `null` reading is a record with no trace to read, which is every record
+ * written before 2026-08-07, and refusing those would grade an old instrument
+ * by a new one. ADR-0024 records the decision and what would reopen it.
+ *
+ * `managed_seen` is the number and not a verdict, so it blocks nothing.
  */
 export function deriveOutcome(record) {
   const nonce = record?.nonce ?? '';
@@ -576,13 +674,16 @@ export function deriveOutcome(record) {
   const controlClean = controlServed && Boolean(nonce)
     && !(record?.control?.answer ?? '').includes(nonce);
   const isolated = isolationProblems(record?.flags).length === 0;
+  const agrees = traceAgrees(record);
   return {
     installed_served: installedServed,
     control_served: controlServed,
     discovered,
     control_clean: controlClean,
     isolated,
-    passes: discovered && controlClean && isolated,
+    trace_agrees: agrees,
+    managed_seen: managedSeen(record),
+    passes: discovered && controlClean && isolated && agrees !== false,
   };
 }
 
@@ -602,10 +703,15 @@ export function describe(name, record) {
   // empty answer, and a line that showed only the second would hide the first.
   // The name and the derived flags are this module's own words, so they carry
   // nothing to redact and stay outside the question.
+  // `trace_agrees` and `managed_seen` print their `null` verbatim, because
+  // `null` is a reading here and not a missing value: it says the record kept
+  // no trace to read. Printing a dash would spell it the way an absent tuple
+  // element is spelled, and those are different states.
   return `${name}: ${o.passes ? 'derives PASS' : 'derives FAIL'} `
     + `(installed_served=${o.installed_served} discovered=${o.discovered} `
     + `control_served=${o.control_served} control_clean=${o.control_clean} `
-    + `isolated=${o.isolated}) ${tuple}`;
+    + `isolated=${o.isolated} trace_agrees=${o.trace_agrees} `
+    + `managed_seen=${o.managed_seen}) ${tuple}`;
 }
 
 /** Reads every record under `dir`. A missing directory holds no records. */

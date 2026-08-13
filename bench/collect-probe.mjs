@@ -73,7 +73,7 @@ import { fileURLToPath } from 'node:url';
 import { installSkills } from '../src/install.js';
 import { resolveTarget, PLATFORMS, SCOPES } from '../src/targets.js';
 import { destinationState, ensureDir, isBelow, walk } from '../src/tree.js';
-import { armAnswered, TRACE_FLAG } from './probe.mjs';
+import { armAnswered, isolationProblems, TRACE_FLAG } from './probe.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -677,6 +677,71 @@ export function runArm({ harness, flags, cwd, home, ask }) {
   });
 }
 
+/**
+ * Where an arm's debug log goes: one file, under the throwaway root.
+ *
+ * Derived rather than supplied, because the containment is the invariant. A
+ * path anywhere else writes a harness trace outside the tree the probe built
+ * and cleans up, and the record would still derive PASS with nothing in it
+ * showing where the file went.
+ */
+export function debugPath(root) {
+  return path.join(root, 'harness-debug.log');
+}
+
+/**
+ * Both arms, in sequence, through ONE debug path.
+ *
+ * Extracted from `main` so the three invariants ADR-0024 states as prose become
+ * reachable by a test. `main` spawned a live harness, so nothing short of two
+ * paid calls could observe any of them, and issue #95 names the three mutations
+ * that survived because of it. The injection is the same shape as the plant's
+ * `afterWrite`: production passes nothing, and a test passes a fake.
+ *
+ * The three, and what each one costs when it breaks:
+ *
+ * 1. **The debug path is contained.** It comes from `debugPath(root)`, and a
+ *    caller-supplied one is refused unless it lands under the same root. A
+ *    trace written elsewhere reaches a tree the probe neither built nor cleans
+ *    up, and `isolationProblems` refuses only the `.claude` segment, which is
+ *    the narrower guarantee.
+ * 2. **The file goes between the arms.** Read the trace, then remove it, on
+ *    every arm and not on the first alone. Skip it and the control's trace
+ *    carries the installed arm's lines, so a record shows a skill loaded on
+ *    both arms and reads as a stronger pass than it is.
+ * 3. **Both arms run one flag set.** It is built once, above the loop. Give
+ *    each arm its own and the record's single `flags` array is true of neither.
+ *
+ * Removing the file after the CONTROL as well is what makes the loop one path
+ * rather than two steps that happen to agree. The root is a throwaway, so the
+ * last removal costs nothing, and a mutation cannot skip one arm's removal
+ * without leaving the loop.
+ */
+export async function runArms({
+  root, harness, model, ask, homes, debugFile = debugPath(root),
+  run = runArm,
+  read = readTrace,
+  remove = (file) => fs.rm(file, { force: true }),
+}) {
+  if (!isBelow(root, debugFile)) {
+    throw new Error(`A harness trace is written under ${root}, not at ${debugFile}.`);
+  }
+  const flags = armFlags(model, debugFile);
+  const problems = isolationProblems(flags);
+  if (problems.length) {
+    throw new Error(`These arms would not run a probe arm's flags. ${problems.join(' ')}`);
+  }
+  const arms = {};
+  for (const name of ['installed', 'control']) {
+    const { home, cwd } = homes[name];
+    const arm = await run({ harness, flags, cwd, home, ask });
+    arm.trace = await read(debugFile);
+    await remove(debugFile);
+    arms[name] = arm;
+  }
+  return { flags, debugFile, installed: arms.installed, control: arms.control };
+}
+
 /** The harness build, as `bench/run.sh` reads it: the first field of --version. */
 export function harnessBuild(harness) {
   return new Promise((resolve) => {
@@ -832,13 +897,10 @@ async function main(argv) {
   await plantNonce(skillDir, nonce, { baseDir: arms.installed.home });
   const digest = await treeDigest(skillDir);
 
-  // ONE debug path, and the arms run one after the other through it. Two paths
-  // would put a different `--debug-file` value in each arm's invocation, and
-  // the record carries ONE flag set — which would then be true of neither arm.
-  // The trace is read and the file removed before the next arm starts, so
-  // attribution rests on the sequencing below and not on a guess about which
-  // lines came from where.
-  const debugFile = path.join(root, 'harness-debug.log');
+  // ONE debug path, and the arms run one after the other through it. `runArms`
+  // owns the sequence, and the three invariants that make a trace attributable
+  // to the arm it came from live there with a test on each.
+  const debugFile = debugPath(root);
   const flags = armFlags(opts.model, debugFile);
   if (opts.dryRun) {
     process.stdout.write(`installed tree: ${skillDir}\n`);
@@ -852,19 +914,13 @@ async function main(argv) {
   }
 
   const build = await harnessBuild(harness);
-  const installedArm = await runArm({
-    harness, flags, cwd: arms.installed.cwd, home: arms.installed.home, ask: ASK,
+  const ran = await runArms({
+    root, harness, model: opts.model, ask: ASK, homes: arms, debugFile,
   });
-  installedArm.trace = await readTrace(debugFile);
-  await fs.rm(debugFile, { force: true });
-  const controlArm = await runArm({
-    harness, flags, cwd: arms.control.cwd, home: arms.control.home, ask: ASK,
-  });
-  controlArm.trace = await readTrace(debugFile);
 
   const record = buildRecord({
-    date, skill: opts.skill, nonce, pathway: opts.pathway, flags, route, build,
-    installedArm, controlArm, treeDigest: digest,
+    date, skill: opts.skill, nonce, pathway: opts.pathway, flags: ran.flags, route, build,
+    installedArm: ran.installed, controlArm: ran.control, treeDigest: digest,
   });
 
   // One directory, always. A record written anywhere else is not committed, and

@@ -37,9 +37,10 @@ nothing else.
 
 One thing a redirected home does not control. The harness also consults a
 machine-global managed skills path, which `HOME` does not move, so the
-environment class names the home and never the machine. The `d80e11b7` trace
-shows `managed: 0` on both arms, which is a reading of that one run rather than
-a property of the design.
+environment class names the home and never the machine. The check reads that
+count off each trace and prints it as `managed_seen`. The `d80e11b7` trace shows
+`managed: 0` on both arms, which is a reading of that one run rather than a
+property of the design.
 
 `bench/run.sh` keeps `''`, and the difference is the home. Its control runs in
 the operator's real home, where `user` would load their CLAUDE.md and their
@@ -106,10 +107,11 @@ and prints what it derived. The check refuses a record that states an outcome
 of its own, because a record that grades itself is the author's summary, and a
 reader is owed the evidence instead.
 
-A probe derives a pass when both arms answered and three things then hold. The
+A probe derives a pass when both arms answered and four things then hold. The
 installed arm repeated the nonce. The empty-home control answered and did not
-repeat it, which catches a probe passing for the wrong reason. And the flags
-were a probe arm's.
+repeat it, which catches a probe passing for the wrong reason. The flags were a
+probe arm's. And the harness trace, where the record kept one, agrees with what
+the answers claim.
 
 `armAnswered` in `bench/probe.mjs` defines what answering means, and every
 check reads it from there. Saying only that the control did not repeat the nonce
@@ -138,9 +140,36 @@ collector, and an empty list says a log was written and named no skill loading.
 Every record collected before 2026-08-07 carries `null`, and so would a record
 from a harness that offers no trace at all.
 
-The derivation reads the answers and not the trace, so the better evidence is
-retained and not consulted. That gap is named here rather than closed, and
-issue #94 carries the work that closes it.
+## The derivation reads the trace, and a disagreement blocks
+
+The check parses `Loaded 1 unique skills` from the retained lines and prints
+what it read as `trace_agrees`. The reading agrees when the installed arm loaded
+at least one skill and the control loaded zero. It reads every such line rather
+than the first, because the harness repeats the line per session and a run that
+loaded one skill once and none the next time corroborates nothing.
+
+A disagreement blocks the pass. Section 4.1 calls a trace naming the loaded file
+better evidence than either answer, and better evidence that contradicts the
+answers cannot sit beside a pass as a note. The case that motivated this: a
+control whose trace says `Loaded 1 unique skills` while its answer stays silent
+derived a pass, and the contradiction sat in the same file.
+
+Absence never blocks. A record that kept no trace reads `null`, and only `false`
+blocks. Every record collected before 2026-08-07 carries no trace, and refusing
+those would grade an old instrument by a new one.
+
+A trace that a record kept and that names no loading reads as a disagreement.
+That is the state a renamed harness line produces, and the answer is to move the
+patterns in `bench/collect-probe.mjs` and `bench/probe.mjs` onto the new
+wording. Widening the reading until an empty trace passes would let a broken
+selector read as a clean run.
+
+The check also prints `managed_seen`, which is the largest managed count either
+trace states. It blocks nothing. A managed skill that reached an arm came from
+the machine and not from the redirected home, and whether that spoils the arm
+depends on what stood in that path, which a record carries no way to ask. The
+number is what a reader needs to ask the question at all. ADR-0024 records both
+decisions.
 
 ## The records here, and what each one is
 

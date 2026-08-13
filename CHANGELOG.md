@@ -49,6 +49,33 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   attack came from that same reading. `micromark` and its GFM table extension
   join the development dependencies, and a test asserts that no module under
   `src/` or `bin/` imports either. ADR-0028.
+- `npm run check:probes` reads the harness trace a record retains, and prints
+  `trace_agrees` and `managed_seen` beside every other derived flag. The
+  reading parses `Loaded 1 unique skills` from the retained lines, and it
+  agrees when the installed arm loaded at least one skill and the control
+  loaded zero. It reads every such line rather than the first, because the
+  harness repeats the line per session. A disagreement blocks the pass,
+  because a trace naming the loaded file is better evidence than either answer
+  and better evidence that contradicts them cannot be a note. A record that
+  kept no trace reads `null` and blocks nothing, which is every record written
+  before 2026-08-07. `managed_seen` is the largest managed count either trace
+  states, and it blocks nothing: a redirected home does not move the
+  machine-global managed skills path, and whether a skill that reached an arm
+  from there spoils the arm is a judgment a record cannot answer. The
+  derivation read the answers and the flags alone until now, so a control
+  whose trace said `Loaded 1 unique skills` derived a pass on the strength of
+  an answer that said nothing. ADR-0024 records the decision and what would
+  reopen it. Issue #94.
+- The probe's arm sequence moved out of `main`, into `runArms`, and three
+  invariants ADR-0024 states as prose now have a test each. The debug path is
+  derived under the throwaway root and a path outside it is refused. The trace
+  file is read and removed on every arm rather than on the first alone, so no
+  arm inherits the arm before it. One flag set is built above the loop, because
+  a record carries one `flags` array and two sets would be true of neither arm.
+  Each invariant had a surviving mutation that produced a well-formed record
+  deriving PASS with its evidence misattributed, and each mutation now fails
+  the suite. The extraction is what made them reachable, because `main` spawns
+  a live harness. Issue #95.
 
 ### Changed
 
@@ -84,6 +111,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is what a reader's renderer does. A one-character lookbehind read `x\\|` as
   an escaped pipe, so the checker saw one cell where a reader sees two, and a
   row ending that way read as unclosed. The new render test found it.
+- The test that holds `bench/probes/README.md` to the probe's flag constants
+  asks how many arm invocations the file spells, and the answer is one. It
+  asked whether the right spelling appeared somewhere, so a second copy that
+  had gone stale sat beside a correct one and the check stayed green. A second
+  test holds the block to what it deliberately omits, because the absence of
+  `--debug-file` there is the claim that the flag is allowed and never
+  required. Issue #95.
 
 ## 0.3.0 — 2026-08-07
 
