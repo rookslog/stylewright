@@ -58,6 +58,30 @@ test('a setext underline indented four columns is not one', () => {
   assert.deepEqual(sections('Rules\n---\n\nAlways.').map((s) => s.heading), ['Rules']);
 });
 
+test('a setext heading survives a CRLF checkout', () => {
+  // The column rule that refused a tab-indented underline named the space and
+  // the tab, and `\s` had been carrying the carriage return. So `sections`
+  // stopped reading any setext heading on a CRLF checkout, every unit below
+  // one re-anchored to the preamble, and no refusal fired. That is the anchor
+  // drift the setext rule exists to prevent, through the fix for another one.
+  const lf = 'Rules\n---\n\nAlways preserve safety.\n';
+  assert.deepEqual(sections(lf).map((s) => s.heading), ['Rules']);
+  assert.deepEqual(sections(lf.replace(/\n/g, '\r\n')).map((s) => s.heading), ['Rules']);
+  assert.deepEqual(sections('Rules\r\n===\r\n\r\nAlways.\r\n').map((s) => s.heading), ['Rules']);
+  // The tab-indented underline is still no underline, on either checkout.
+  assert.deepEqual(sections('Rules\r\n\t---\r\n\r\nAlways.\r\n').map((s) => s.heading), []);
+});
+
+test('the line above an underline is asked the same question the same way', () => {
+  // It is excluded for being an underline ITSELF. Widening the pattern to any
+  // run of spaces without widening this test made an indented run of dashes
+  // count as one, and the section vanished where both parsers see a heading.
+  assert.deepEqual(sections('Prose\n    ====\n---\n\nAlways.\n').map((s) => s.heading), ['====']);
+  // A real underline above one still excludes it, so `Rules` over `===` over
+  // `---` makes one heading and not two.
+  assert.deepEqual(sections('Rules\n===\n---\n\nAlways.\n').map((s) => s.heading), ['Rules']);
+});
+
 test('parses ATX sections with bounds', () => {
   const got = sections('# A\nbody a\n## B\nbody b\n');
   assert.equal(got.length, 2);

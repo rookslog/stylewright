@@ -1231,9 +1231,14 @@ test('an ordered marker that cannot interrupt a paragraph opens no list', () => 
   assert.match(refused('Prose\n1. item\n\n    const x = 1;'),
     /a paragraph indented under a list item/);
   // A list already open needs no interruption, so the marker opens an item
-  // whatever it counts from. Indented under one, a reader resolves a sibling
-  // from lazy continuation by the width of the open marker, and this check
-  // holds no such state, so doubt reads as the strict case and refuses.
+  // whatever it counts from. Indented under one, the WIDTH of the open marker
+  // decides, and both parsers split these two the same way: under `- ` the
+  // indented marker sits at the content indent, inside the item, where it must
+  // interrupt and cannot, so a reader sees one item. Under `1. ` the content
+  // indent is one column deeper, so the same indent lands at list level and a
+  // reader sees a sibling. This check holds no marker width, so it refuses
+  // both. The first is a false refusal the author writes around, and it is the
+  // strict half of a case where the other half would merge two items.
   assert.match(refused('- Context.\n  2. item'), /a list item that does not begin at column 0/);
   assert.match(refused('1. First.\n  2. Second.'), /a list item that does not begin at column 0/);
   // The walk and the grammar ask one question, so neither reads as an item a

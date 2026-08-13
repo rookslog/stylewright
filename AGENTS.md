@@ -260,7 +260,8 @@ forms fails as `unmodelled-construct`, with the line and what to write instead.
 
 A continuation line states what it may BEGIN with, and that is the third form
 read the same way round as the rest. It carries a letter, a digit or ordinary
-sentence punctuation, and every other lead is refused. It used to be admitted
+sentence punctuation, and a backtick or a tilde where the walk's own fence test
+says the line opens no fence. Every other lead is refused. It used to be admitted
 whenever prose was open, and `shapeOf` then called anything it did not
 recognise a paragraph, so the path was a rejection list under a positive
 heading and an HTML block reached a list item as the item's own words. One pipe
@@ -300,6 +301,15 @@ a thematic break, and an ordered marker indented under an item can be the
 list's next item rather than lazy continuation, which a reader resolves by the
 width of the open marker. Answer a divergence there by reading the render, and
 never by writing the comment that explains it away.
+
+Read that render the right way round. A TIGHT list drops the `<p>` around an
+item's paragraph, so `- Context.` over an indented `<script>` renders the same
+whether the HTML interrupted the paragraph or sits in it as inline markup. A
+substring of the page settles nothing there, and one review round drew both
+conclusions from it. Force the list loose with a second item, and the item's
+own content is then a fact: one paragraph and nothing else is prose, and
+anything else is a container. `readsAsProse` in the render test is that
+property, and a new shape belongs under it rather than beside it.
 
 ### A skill that substitutes for its source
 

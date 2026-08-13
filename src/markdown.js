@@ -55,8 +55,17 @@ function maskFrontMatter(lines) {
  * pattern that counted whitespace CHARACTERS read a tab as one column: `Rules`
  * over a tab and three dashes became a heading here while a Markdown reader
  * kept both lines as one paragraph, and every anchor below it moved.
+ *
+ * The carriage return is named because naming the space and the tab dropped
+ * it. `\s` had carried it, so the first version of the column rule silently
+ * stopped reading a setext heading on a CRLF checkout: `sections` returned
+ * nothing, every unit below the heading re-anchored to the preamble, and no
+ * refusal fired. That is the anchor drift this rule exists to prevent,
+ * reintroduced by the fix for a different one. The split models `\n` alone, so
+ * a trailing `\r` is the line's last byte and not part of the line a reader
+ * sees, which is the reading `readMarked` in `ground.js` already takes.
  */
-const SETEXT = /^[ \t]*(=+|-+)[ \t]*$/;
+const SETEXT = /^[ \t]*(=+|-+)[ \t]*\r?$/;
 
 /**
  * The column an offset in the line sits at, where a tab advances to the next
@@ -127,7 +136,13 @@ export function sections(text) {
     // obeys, so a tab counts for what it is worth to a reader.
     const under = isIndented(line) ? null : SETEXT.exec(line);
     const above = i > 0 ? lines[i - 1] : '';
-    if (under && above.trim() && !SETEXT.test(above) && !/^\s*[-*+|>]|^\s*\d+[.)]/.test(above)
+    // The line above is excluded for being an underline ITSELF, so it is asked
+    // the same question the same way. Widening the pattern to any run of
+    // spaces without widening this test made an indented run of dashes count
+    // as an underline here, and `Prose` over four spaces and `====` over `---`
+    // then opened no section at all where both readers see one heading.
+    const aboveUnderlines = !isIndented(above) && SETEXT.test(above);
+    if (under && above.trim() && !aboveUnderlines && !/^\s*[-*+|>]|^\s*\d+[.)]/.test(above)
       && !/^(#{1,6})\s/.test(above)) {
       // `startLine` is the underline, because the body begins after it.
       // `firstLine` is the text above, because the PREVIOUS section ends

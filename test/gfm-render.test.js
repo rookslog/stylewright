@@ -298,19 +298,55 @@ const skillWith = (text) => `---\nname: demo\ndescription: A demo skill.\n---\n\
 const refusalsFor = (text) => unmodelled(skillWith(text)).map((r) => r.shape);
 const unitsFor = (text) => contentUnits(skillWith(text)).map((u) => u.text);
 
+/**
+ * A list item, forced LOOSE, so the render says where the blocks are.
+ *
+ * A tight list drops the `<p>` around an item's paragraph, so the render of
+ * `- Context.` over `  <script>` looks the same whether the HTML interrupted
+ * that paragraph or sits inside it as inline markup. The first version of the
+ * test below asserted that the output CONTAINS `<script>`, which is true
+ * either way, so two of its rows could not fail for the reason the test names.
+ * A second item makes the list loose and the paragraphs get their tags back.
+ */
+const loose = (text) => `${text}\n\n- Second item.`;
+
+/** The block-level tags a reader gets, in order, with inline markup dropped. */
+const INLINE = new Set(['a', 'code', 'em', 'strong', 'del', 'img', 'br', 'span', 'sup', 'sub']);
+const blockTags = (text) => (renderBlocks(loose(text)).match(/<\/?[a-zA-Z!][^>\s]*/g) ?? [])
+  .filter((t) => !INLINE.has(t.replace(/^<\/?/, '').toLowerCase()));
+
+/**
+ * Whether a reader sees ONE list item holding ONE paragraph and nothing else.
+ *
+ * That is the whole question the continuation grammar asks, put to the parser
+ * as one property rather than a verdict per shape. A container opened on the
+ * continuation line shows up as a second block inside the item, or as the
+ * item's paragraph turning into something that is not a paragraph, or as a
+ * second item. Two is the item count a prose continuation gives, because
+ * `loose` appends one.
+ */
+const readsAsProse = (text) => {
+  const tags = blockTags(text);
+  const inside = tags.slice(tags.indexOf('<li') + 1, tags.indexOf('</li'));
+  return tags.filter((t) => t === '<li').length === 2
+    && inside.length === 2 && inside[0] === '<p' && inside[1] === '</p';
+};
+
 test('a container a reader sees on a continuation line is refused', () => {
-  // The left column is what the parser puts in the render, so each row is a
-  // fact about a reader rather than a reading of the specification.
-  for (const [text, seen] of [
-    ['- Context.\n  <script>\n  Always preserve safety.\n  </script>', '<script>'],
-    ['- Context.\n  <!-- Always preserve safety. -->', '<!--'],
-    ['- Context.\n  ---\n  Always preserve safety.', '<h2>'],
-    ['- Context.\n  | a | b |\n  |---|---|', '<table>'],
-    ['-     Always preserve safety.', '<pre>'],
-    ['- First.\n-\n  Always preserve safety.', '<li>Always preserve safety.</li>'],
+  // Every row is one fact from the parser: the item does NOT read as one
+  // paragraph, so something opened. A substring of the whole render is not
+  // that fact, and `<script>` appears in the tight render either way.
+  for (const text of [
+    '- Context.\n  <script>\n  Always preserve safety.\n  </script>',
+    '- Context.\n  <!-- Always preserve safety. -->',
+    '- Context.\n  ---\n  Always preserve safety.',
+    '- Context.\n  | a | b |\n  |---|---|',
+    '-     Always preserve safety.',
+    '- First.\n-\n  Always preserve safety.',
+    '- Context.\n  ```js\n  code\n  ```',
   ]) {
-    assert.ok(renderBlocks(text).includes(seen),
-      `a reader sees ${seen} in ${JSON.stringify(text)}`);
+    assert.equal(readsAsProse(text), false,
+      `a reader sees more than one paragraph in ${JSON.stringify(text)}: ${blockTags(text).join(' ')}`);
     assert.ok(refusalsFor(text).length > 0, `the check refuses ${JSON.stringify(text)}`);
   }
 });
@@ -319,21 +355,23 @@ test('prose a reader keeps whole is not refused, and reaches one unit', () => {
   // The other direction, which is the one the shipped catalogue cannot
   // measure: no skill here writes an indented line at all, so nothing but
   // this says the grammar admits the prose a reader admits.
+  //
+  // The code span is the row that changed the rule. A fenced block is the only
+  // block a backtick or a tilde opens and it needs three of them, so the
+  // grammar asks the walk's own fence test rather than refusing the character.
+  // Refusing it outright cost 166 false refusals across 574 real skill files,
+  // every one of this shape. ADR-0029 carries the measurement.
   for (const text of [
     '- Do not use a semicolon,\n  because it joins two ideas.',
     '- Context.\n  "Always preserve safety."',
     '- Context.\n  a | b are columns.',
+    '- Context.\n  `stylewright doctor` reports it.',
+    '- Context.\n  ~~struck~~ words here.',
     '-    Always preserve safety.',
     '-\tAlways preserve safety.',
-    'Prose\n  2. item',
   ]) {
-    const html = renderBlocks(text);
-    for (const container of ['<pre>', '<hr', '<h2>', '<table>', '<blockquote>']) {
-      assert.ok(!html.includes(container),
-        `a reader sees no ${container} in ${JSON.stringify(text)}`);
-    }
-    assert.equal((html.match(/<li>/g) ?? []).length <= 1, true,
-      `a reader sees one item at most in ${JSON.stringify(text)}`);
+    assert.equal(readsAsProse(text), true,
+      `a reader sees one paragraph in ${JSON.stringify(text)}: ${blockTags(text).join(' ')}`);
     assert.deepEqual(refusalsFor(text), [], `the check admits ${JSON.stringify(text)}`);
   }
 });
@@ -346,4 +384,24 @@ test('an ordered marker opens a list here where it opens one for a reader', () =
   assert.ok(unitsFor('Prose\n2. item').includes('Prose 2. item'));
   assert.ok(renderBlocks('1. First.\n2. Second.').includes('<li>Second.</li>'));
   assert.ok(unitsFor('1. First.\n2. Second.').includes('Second.'));
+});
+
+test('the one shape the oracle and the check disagree about is pinned', () => {
+  // `01.` counts from one, so a list may interrupt the paragraph above it and
+  // this check opens one. `micromark` is the outlier: it keeps the line in the
+  // paragraph. pandoc 3.10 and the CommonMark rule that an interrupting list
+  // must start at 1 both back the split, so the check is not changed to match
+  // the oracle here.
+  //
+  // The disagreement lived in ADR prose alone, where an upgrade moving it
+  // either way would go unnoticed. It is a test now, so it fails instead.
+  assert.ok(!renderBlocks('Prose\n01. item').includes('<ol'),
+    'micromark still keeps `01.` inside the paragraph');
+  assert.ok(unitsFor('Prose\n01. item').includes('item'),
+    'the check still opens a list for `01.`');
+  // The two the parsers agree on, where the check follows the render.
+  assert.ok(renderBlocks('Prose\n1. item').includes('<ol'));
+  assert.ok(unitsFor('Prose\n1. item').includes('item'));
+  assert.ok(!renderBlocks('Prose\n2. item').includes('<ol'));
+  assert.ok(unitsFor('Prose\n2. item').includes('Prose 2. item'));
 });

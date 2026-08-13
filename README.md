@@ -379,9 +379,10 @@ own. It refuses every other line and names it, rather than reading a blockquote
 or a nested construct as the wrong unit.
 
 A continuation line states what it may begin with. It carries a letter, a
-digit, or ordinary sentence punctuation. Any other lead is refused, because a
-lead character alone cannot say whether the line opens a container. Write such
-a line so it begins with a word, or write the construct at column 0.
+digit, or ordinary sentence punctuation. It also carries a backtick or a tilde,
+where the line opens no fenced block. Any other lead is refused, because a lead
+character alone cannot say whether the line opens a container. Write such a
+line so it begins with a word, or write the construct at column 0.
 
 Three constructs are refused at column 0 as well, because the check reads none
 of them:

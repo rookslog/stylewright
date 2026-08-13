@@ -89,9 +89,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   one read as a table row, and every table row was admitted. A line now carries
   a letter, a digit or ordinary sentence punctuation, and the refusal names
   what the check cannot say, which is which container the line opens. The cost
-  is a false refusal an author writes around. ADR-0029 records the inversion,
-  and it records what it does not reach: a line at column 0 is still admitted
-  whatever it is, which issue #111 carries. Issue #69.
+  is a false refusal an author writes around. A backtick and a tilde are
+  admitted where the walk's own fence test says the line opens no fence, and
+  refusing them cost 166 false refusals across 574 real skill files, none of
+  which opened a block. ADR-0029 records the inversion, the measurement, and
+  what it does not reach: a line at column 0 is still admitted whatever it is,
+  which issue #111 carries. Issue #69.
 - A list marker padded five columns or more holds an indented code block, and
   the check refuses the item rather than reading the code as the item's prose.
   The padding is measured in columns, so a tab after the marker is worth what
@@ -101,6 +104,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   interrupt the paragraph. `Prose` over `2. item` split one paragraph into two
   units and left a list open across the blank line below, so a standalone code
   block after it was refused for sitting under a list nobody wrote. Issue #70.
+- A setext underline reads a trailing carriage return, so a CRLF checkout still
+  carries its setext headings. The column rule that fixed the tab-indented
+  underline named the space and the tab and dropped the `\r` that `\s` had
+  carried, which stopped `sections` reading any setext heading on such a
+  checkout: every unit below one re-anchored to the preamble with no refusal,
+  and a procedural section stopped counting as procedural for `lint`.
 - A setext underline is validated with the shared column rule, so an underline
   indented four columns is no underline. `Rules` over a tab and three dashes
   made a heading here while a reader keeps both lines as one paragraph, and

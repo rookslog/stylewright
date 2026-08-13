@@ -814,11 +814,33 @@ export const AT_COLUMN_ZERO = {
  * character cannot tell them apart, and doubt reads as the strict case
  * everywhere else in this check, so both are refused.
  *
- * `-`, `*`, `_`, `` ` ``, `~`, `=`, `+`, `#` and `|` are absent for the same
- * reason one step down: each opens a container under one reading of the rest
- * of the line and emphasis, a code span or plain prose under another.
+ * `-`, `*`, `_`, `=`, `+`, `#` and `|` are absent for the same reason one step
+ * down: each opens a container under one reading of the rest of the line and
+ * emphasis, a code span or plain prose under another.
  */
 const CONTINUES_PROSE = /^[\p{L}\p{N}.,;:!?'"()[\]{}/\\@$%^&‘’“”–—…]/u;
+
+/**
+ * The two characters a fence is built from.
+ *
+ * They are the one pair this rule can admit without stating a second reading
+ * of anything. A fenced block is the only block either character opens, and
+ * the walk already tests every line for one, so `opensFence` is that test's
+ * answer rather than a new claim about the character. Fewer than three of
+ * either opens a code span, which is inline and opens no block at all.
+ *
+ * The first version refused both outright, and that was measured wrong. Across
+ * 574 real skill files the rule added 223 refusals, and 166 of them were a
+ * wrapped line beginning with a code span — `` `stylewright doctor` reports
+ * it.`` and its kind, which is this repository's own register. None of the 223
+ * opened a block, by a render taken with the lead changed and every other byte
+ * held. ADR-0029 carries the measurement.
+ */
+const FENCE_LEAD = /^[`~]/;
+
+/** Whether a continuation line carries the prose of the line above it. */
+const continuesProse = (t, opensFence) => CONTINUES_PROSE.test(t)
+  || (FENCE_LEAD.test(t) && !opensFence);
 
 /**
  * What a refused continuation line is called.
@@ -905,7 +927,7 @@ function outsideGrammar(line, {
   if (openText && !startsBlock) {
     const t = line.trimStart();
     if (opensTable) return 'a table row that does not begin at column 0';
-    if (!CONTINUES_PROSE.test(t)) return CONTINUATION_OPENS(shape);
+    if (!continuesProse(t, opensFence)) return CONTINUATION_OPENS(shape);
     // A digit opens no container, and a digit with a marker's punctuation
     // after it opens a list wherever a reader would let one interrupt.
     if (opensListHere(t, { textOpen: openText, listOpen })) {
