@@ -713,6 +713,10 @@ const PREAMBLE = '(before the first heading)';
 const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
 const PIPE = /(?<!\\)\|/;
 const DELIMITER = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
+// What tells a delimiter row from a setext underline when neither carries a
+// pipe. `:-` makes a one-column table of the line above it and `---` makes a
+// heading of it, and the colon is the whole difference.
+const COLON = /:/;
 const LEAD = /^[ \t]+/;
 // A marker with nothing after it is an empty list item, and a child block under
 // it belongs to that item. Wanting content after the marker left the list shut,
@@ -993,7 +997,23 @@ function unitsIn(body, anchor, refuse = () => {}) {
     const startsBlock = afterBlank;
     if (line.trim()) afterBlank = false;
     const inTable = block?.kind === 'table';
-    const opensTable = !inTable && PIPE.test(line) && DELIMITER.test(lines[i + 1] ?? '');
+    const next = lines[i + 1] ?? '';
+    const opensTable = !inTable && PIPE.test(line) && DELIMITER.test(next);
+    // A delimiter row under a line of prose makes a table of both, and GFM asks
+    // for no pipe at all when that table has one column. This walk reads a
+    // table THROUGH its pipes, in the header and in every row, so a table
+    // without one is outside what it models and it says so rather than reading
+    // a reader's table as the paragraph's own words. `Prose here.` over `:-`
+    // was one prose unit at column 0 and under a list item alike.
+    //
+    // A colon or a pipe in the delimiter is what stops the line being a setext
+    // underline, which is what `---` under prose is instead. Both readers agree
+    // on the split, and the render test holds the whole class rather than the
+    // one shape that was reported.
+    if (!inTable && line.trim() && !PIPE.test(line) && DELIMITER.test(next)
+      && (COLON.test(next) || PIPE.test(next))) {
+      refuse(i + 1, 'a table whose header carries no pipe');
+    }
     const outside = outsideGrammar(line, {
       startsBlock,
       openText: Boolean(item) || para.length > 0,
@@ -1141,6 +1161,9 @@ function remedyFor(shape) {
   if (shape === 'a heading with no text') return 'Give the heading its text, or delete the line.';
   if (shape === 'a list item with no content') return 'Give the item its words, or delete the marker.';
   if (shape === 'a table inside a list item') return 'Move the table out of the list.';
+  if (shape === 'a table whose header carries no pipe') {
+    return 'Write the header and the delimiter with pipes, or take the colon out of the dashes.';
+  }
   if (shape === 'a code block inside a list item') {
     return 'Leave four columns at most after the marker, or fence the code below the list.';
   }

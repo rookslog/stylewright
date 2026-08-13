@@ -1261,6 +1261,25 @@ test('an empty marker under an item is a sibling, and under a paragraph it is pr
   assert.match(refused('- Do first.\n  -'), /a list item that does not begin at column 0/);
 });
 
+test('a table with no pipe in it is refused, at column 0 and under an item', () => {
+  // GFM asks for no pipe when a table has one column, and the walk reads a
+  // table through its pipes. So `Prose here.` over `:-` reached one prose unit
+  // with no refusal, and a table's contents could be grounded as the
+  // paragraph's own words. The colon is what stops the line being a setext
+  // underline, which is what `---` there is instead.
+  assert.match(refused('Prose here.\n:-'), /a table whose header carries no pipe/);
+  assert.match(refused('- Context.\n  :-'), /a table whose header carries no pipe/);
+  assert.match(refused('Prose here.\n-|'), /a table whose header carries no pipe/);
+  assert.equal(refused('Prose here.\n---'), '');
+  assert.equal(refused('Prose here.\n\n:-'), '');
+  // The refusal names the delimiter, which is the line the author edits, and
+  // it carries a remedy that reaches both spellings.
+  const message = check({
+    skillText: `${SKILL}\n## Later\n\nProse here.\n:-\n`, matrixText: MATRIX,
+  }).find((f) => f.code === 'unmodelled-construct').message;
+  assert.match(message, /take the colon out of the dashes/);
+});
+
 test('a table may not begin on a list-marker line', () => {
   // `- A | B` over `--- | ---` became one table designator, so the item's own
   // words went into a digest and no row had to quote them.

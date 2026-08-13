@@ -95,6 +95,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which opened a block. ADR-0029 records the inversion, the measurement, and
   what it does not reach: a line at column 0 is still admitted whatever it is,
   which issue #111 carries. Issue #69.
+- A table with no pipe in it is refused rather than read as prose. GFM asks for
+  no pipe at all when a table has one column, so `Prose here.` over `:-` is a
+  table to a reader, and so are `:-:`, `-:`, `-|` and `|-`. The walk reads a
+  table through its pipes, so it produced one prose unit and no refusal, and a
+  table's contents could be grounded as the paragraph's own words. A colon or a
+  pipe in the delimiter is what stops the line being a setext underline, so
+  `---` under prose is still the heading both parsers say it is.
 - A list marker padded five columns or more holds an indented code block, and
   the check refuses the item rather than reading the code as the item's prose.
   The padding is measured in columns, so a tab after the marker is worth what

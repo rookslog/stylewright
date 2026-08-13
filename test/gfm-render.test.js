@@ -405,3 +405,35 @@ test('the one shape the oracle and the check disagree about is pinned', () => {
   assert.ok(!renderBlocks('Prose\n2. item').includes('<ol'));
   assert.ok(unitsFor('Prose\n2. item').includes('Prose 2. item'));
 });
+
+test('a table a reader sees without a pipe is refused, and a heading is not', () => {
+  // Codex reported one shape, `- Context.` over `:-`. The class is wider. GFM
+  // asks for no pipe at all when a table has one column, so a delimiter row
+  // that a setext underline does not claim first makes a table of the line
+  // above it, at column 0 as well as under a list item. The walk reads a table
+  // through its pipes, so it reads none of these, and it refuses them.
+  for (const text of [
+    'Prose here.\n:-',
+    'Prose here.\n:-:',
+    'Prose here.\n-:',
+    'Prose here.\n:---:',
+    'Prose here.\n-|',
+    'Prose here.\n|-',
+    '- Context.\n  :-',
+    '- Context.\n  :-\n  Always preserve safety.',
+  ]) {
+    assert.match(renderBlocks(text), /<table>/, `a reader sees a table in ${JSON.stringify(text)}`);
+    assert.ok(refusalsFor(text).some((s) => /no pipe/.test(s)),
+      `the check refuses ${JSON.stringify(text)}: ${JSON.stringify(refusalsFor(text))}`);
+  }
+  // The other side of that line, and the reason the colon is what decides. A
+  // delimiter carrying neither a colon nor a pipe IS a setext underline, and
+  // refusing these would refuse a heading this repository writes everywhere.
+  for (const text of ['Prose here.\n---', 'Prose here.\n-', 'Prose here.\n--']) {
+    assert.doesNotMatch(renderBlocks(text), /<table>/);
+    assert.deepEqual(refusalsFor(text), [], `the check admits ${JSON.stringify(text)}`);
+  }
+  // A delimiter with no header above it is no table to either reader.
+  assert.doesNotMatch(renderBlocks('Prose here.\n\n:-'), /<table>/);
+  assert.deepEqual(refusalsFor('Prose here.\n\n:-'), []);
+});

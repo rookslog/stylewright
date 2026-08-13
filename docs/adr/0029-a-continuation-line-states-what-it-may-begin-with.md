@@ -81,6 +81,28 @@ decision does not touch it, because inverting that form is a different change
 with a different blast radius — it governs every line at column 0 and not only
 the ones under open prose. Issue 111 carries it, with the shapes measured here.
 
+**A table with no pipe is refused rather than read.** GFM asks for no pipe at
+all when a table has one column, so `Prose here.` over `:-` is a table to a
+reader, and so are `:-:`, `-:`, `:---:`, `-|` and `|-`. The walk reads a table
+through its pipes, in the header and in every row, so it read one prose unit
+and said nothing. That is pre-existing on `main` and independent of this
+grammar: the column-0 shapes never reach the continuation form at all, and the
+colon was admitted as sentence punctuation before the fence test widened
+anything.
+
+Two exits were open. Teaching the walk to READ such a table needs a second
+row-recognition rule, a decision about where a pipeless table ends, and it
+collides with the delimiter cell-count divergence issue 117 already carries, so
+it is a redesign of the table reader rather than a fix. Removing the colon from
+the admitted class closes the one shape that was reported and leaves the six at
+column 0 open, which is a mask.
+
+So the check refuses, by this ADR's own rule and ADR-0016's before it: a
+construct the walk cannot model is named rather than read. One predicate covers
+every shape at every indent. A colon or a pipe in the delimiter is what stops
+the line being a setext underline, and `---` under prose stays the heading both
+parsers say it is.
+
 It reaches none of the matrix reader either. Issue 115 reports a matrix row
 without a leading pipe passing every gate at once, and issues 116 and 117
 report the constructs the skill walk still reads differently from a reader.

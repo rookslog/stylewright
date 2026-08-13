@@ -272,6 +272,16 @@ column 0 is still admitted by the second form whatever it is, so `Prose here.`
 over `<script>` is one unit and no refusal. Issue 111 carries that, and a rule
 naming `<` is not the answer to it.
 
+A table is read through its pipes, so a table with none is refused. GFM asks
+for no pipe at all when a table has one column, and `Prose here.` over `:-` is
+one to a reader at column 0 and under a list item alike. The walk read one
+prose unit there and said nothing, so a table's contents could be grounded as
+the paragraph's own words. A colon or a pipe in the delimiter is what stops the
+line being a setext underline, which is what `---` under prose is instead, and
+that is the whole test. Refusing rather than reading is ADR-0016's rule
+applied: this walk does not model a pipeless table, so it names the line. The
+render test holds the class rather than the shape that was reported.
+
 An empty marker is two states and not one. Under an open PARAGRAPH it is that
 paragraph's words, because an empty item interrupts no paragraph. Under an open
 ITEM at column 0 a reader sees the next item of the list, so it is refused
