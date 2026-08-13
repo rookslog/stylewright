@@ -12,13 +12,16 @@ import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { PLATFORMS, SCOPES } from '../src/targets.js';
 
 import {
   TUPLE, ENV_CLASSES, armAnswered, checkRecord, deriveOutcome, isolationProblems, checkDirectory,
   describe, redact, summarise, traceProblems, loadCounts, traceAgrees, traceReading,
   managedSeen, sourceCount, TRACE_LINE_LIMIT,
   REQUIRED_FLAGS, FIXED_VALUES, FLAGS_TAKING_A_VALUE, TRACE_FLAG, flagShapeProblems, flagsSeen,
-  TRACE_PATH_REFUSED,
+  TRACE_PATH_REFUSED, pathwayProblems, traceUnrequested,
 } from '../bench/probe.mjs';
 import {
   armEnv, armFlags, authRoute, buildRecord, chainProblems, openFailure, parseArgs, unmodelledCredentials,
@@ -1519,8 +1522,7 @@ test('an unreadable record stays in the census rather than leaving it', async ()
 test('a pathway the collector would refuse is refused here too', () => {
   for (const pathway of ['claude:usr', 'claude:user ', 'nonsense', 'claude:user:extra']) {
     const identity = { ...record().identity, pathway };
-    assert.match(checkRecord(record({ identity })).join(' '), /identity.pathway is <platform>:<scope>/,
-      `${pathway} must be refused`);
+    assert.ok(checkRecord(record({ identity })).length, `${pathway} must be refused`);
   }
   assert.deepEqual(checkRecord(record()), []);
 });
@@ -1598,4 +1600,78 @@ test('a .claude segment is refused in any case, because a filesystem folds it', 
   if (!folds) return t.skip('this filesystem is case-sensitive, so .CLAUDE is another directory');
   assert.ok(TRACE_PATH_REFUSED.test('.CLAUDE/t.log'),
     'this filesystem resolves .CLAUDE to .claude, so the guard must refuse both');
+});
+
+// Round-3 findings. Each is a record or a run this repository could not have
+// produced, treated as one it could.
+
+// Validating the two halves separately admitted three combinations the
+// collector refuses: `cowork` and `agents` carry no project directory, and no
+// runner here drives Codex. The combination is the unit.
+test('a pathway the collector cannot run is refused, combination by combination', () => {
+  for (const pathway of ['cowork:project', 'agents:project', 'codex:user',
+    'codex:project', 'claude:usr', 'nonsense', 'claude:user:extra']) {
+    assert.ok(pathwayProblems(pathway).length, `${pathway} must be refused`);
+    const identity = { ...record().identity, pathway };
+    assert.ok(checkRecord(record({ identity })).length, `${pathway} must fail checkRecord`);
+  }
+  // Every combination the collector CAN run stays readable.
+  for (const pathway of ['claude:user', 'claude:project', 'cowork:user', 'agents:user']) {
+    assert.deepEqual(pathwayProblems(pathway), [], `${pathway} must be admitted`);
+  }
+  // The refusals say which rule refused them, because "not a pathway" over a
+  // spelling the operator knows is a message that teaches nothing.
+  assert.match(pathwayProblems('cowork:project').join(' '), /does not support the "project" scope/);
+  assert.match(pathwayProblems('codex:user').join(' '), /needs its own runner/);
+});
+
+// `pathwayProblems` asks what `parsePathway` asks. The two live in different
+// modules, so the agreement is asserted rather than assumed.
+test('the record check and the collector agree on every pathway', () => {
+  for (const platform of [...PLATFORMS, 'emacs']) {
+    for (const scope of [...SCOPES, 'sideways']) {
+      const pathway = `${platform}:${scope}`;
+      const writerRefuses = (() => {
+        try { parsePathway(pathway); return false; } catch { return true; }
+      })();
+      assert.equal(pathwayProblems(pathway).length > 0, writerRefuses,
+        `${pathway}: the checker and the collector must agree`);
+    }
+  }
+});
+
+// A count published from lines the recorded invocation could not have produced.
+// `traceReading` withheld the verdict and `managedSeen` read the same lines
+// anyway, so a record could print `trace_withheld=unrequested managed_seen=7`.
+test('a managed count is withheld from a trace the invocation never asked for', () => {
+  const managed = (n) => `[DEBUG] Loaded 1 unique skills (managed: ${n}, user: 1, project: 0)`;
+  const unasked = record();
+  unasked.installed.trace = [managed(7)];
+  unasked.control.trace = ['[DEBUG] Loaded 0 unique skills (managed: 7, user: 0, project: 0)'];
+  assert.equal(unasked.flags.includes(TRACE_FLAG), false, 'the fixture asks for no trace');
+  assert.equal(traceUnrequested(unasked), true);
+  assert.equal(deriveOutcome(unasked).trace_withheld, 'unrequested');
+  assert.equal(deriveOutcome(unasked).managed_seen, null, 'the count rides on the same bytes');
+  assert.match(describe('probe.json', unasked), /managed_seen=null/);
+
+  // The truncated case is different and still reads: those bytes ARE evidence,
+  // and the bound can only hide a larger count, so the number is a floor.
+  const cut = traced(Array.from({ length: TRACE_LINE_LIMIT }, () => managed(7)), [LOADED_NONE]);
+  assert.equal(deriveOutcome(cut).trace_withheld, 'truncated');
+  assert.equal(deriveOutcome(cut).managed_seen, 7);
+});
+
+// The census printed its per-record line and never its total, because every
+// branch that counts a record `unread` also files a problem and the command
+// exited first. The denominator was invisible on the one run it was built for.
+test('the census total prints on a run that exits non-zero', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-cli-'));
+  await fs.writeFile(path.join(dir, 'a-good.json'), JSON.stringify(record()));
+  await fs.writeFile(path.join(dir, 'b-torn.json'), '{ not json');
+  const cli = fileURLToPath(new URL('../bench/probe.mjs', import.meta.url));
+  const run = spawnSync(process.execPath, [cli, dir], { encoding: 'utf8' });
+  assert.equal(run.status, 1, 'an unreadable record still fails the check');
+  assert.match(run.stdout, /b-torn\.json: derives NOTHING/, 'the record is named');
+  assert.match(run.stdout, /2 checked: 1 derives PASS, 1 unread/, 'and the denominator prints');
+  assert.match(run.stderr, /b-torn\.json: not readable as JSON/);
 });

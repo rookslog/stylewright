@@ -494,12 +494,29 @@ number published in `bench/README.md`.
   to the corpus fails this test once, and a person adds its row after
   reading what the check derived.
 - **`checkRecord` asks of a record what the collector could have
-  produced.** `identity.pathway` parses as `<platform>:<scope>` with both
-  halves known, because the trace reading is keyed on it and a typo
-  otherwise reported the RECORD's defect as the HARNESS's `unscoped`. A
-  trace beside a flag set carrying no `--debug-file` withholds as
-  `unrequested`. The `.claude` refusal anchors at a segment boundary, so
-  a relative `.claude/trace.log` is refused as well.
+  produced.** `identity.pathway` is validated as a COMBINATION, through
+  `targetProblems` and `HARNESS_FOR`, because the halves read separately
+  admitted `cowork:project`, `agents:project` and `codex:user` — three
+  pathways no run of this collector could have written. That is not the
+  wrong-flags rule loosening: a wrong-flag record is a run that HAPPENED
+  and must stay readable, and a pathway no runner drives is a file this
+  tool could not have produced. A trace beside a flag set carrying no
+  `--debug-file` withholds as `unrequested`, and `managed_seen` withholds
+  on the same condition, because the question there is not whether the
+  count is a floor but whether the bytes are evidence at all. The
+  `.claude` refusal anchors at a segment boundary and ignores case.
+- **One table decides which pathways exist.** `targetProblems` in
+  `src/targets.js` holds the platform and scope rules, and
+  `resolveTarget`, `parsePathway` and `pathwayProblems` all read it. They
+  disagreed while each carried its own copy, so a record could be well
+  formed here and refused at install. A test asserts the checker and the
+  collector agree over every combination.
+- **The census prints its total before the exit status is decided.**
+  Every branch that counts a record `unread` also files a problem, so
+  exiting first made the denominator unreachable from the command line —
+  the individual `derives NOTHING` line printed and the total naming the
+  unread count never did. That is the census defect one step out, on the
+  one run the census exists for.
 - **Three invariants make a trace attributable to the arm it came
   from**, and `runArms` holds all three. The debug path is derived under
   the throwaway root and a path outside it is refused. The file is read

@@ -84,14 +84,23 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   derived tuple, so an edit to the reading or its constants fails the suite
   rather than silently re-grading append-only evidence.
 - `checkRecord` asks of a record what the collector could have produced.
-  `identity.pathway` parses as `<platform>:<scope>` with both halves known,
-  because the trace reading is keyed on it and a typo reported the record's own
-  defect as the harness's. A record carrying a trace whose flag set never asked
-  for one withholds as `unrequested`. The `.claude` refusal on the trace path
-  anchors at a segment boundary and ignores case, so a relative
-  `.claude/trace.log` and a shouted `.CLAUDE/trace.log` are both refused. The
-  filesystems this tool runs on fold case, so those two spellings name one
-  directory, and the guard's promise is about the directory.
+  `identity.pathway` is validated as a combination rather than as two halves,
+  so `cowork:project`, `agents:project` and `codex:user` are refused — the
+  first two carry no project directory and the third has no runner, so no run
+  of this collector could have written such a record. `targetProblems` in
+  `src/targets.js` is the one table, and `resolveTarget`, `parsePathway` and
+  the record check all read it. A record carrying a trace whose flag set never
+  asked for one withholds as `unrequested`, and `managed_seen` withholds on the
+  same condition, because a count published from those lines states something
+  about a machine from bytes no recorded run could have produced. The `.claude`
+  refusal on the trace path anchors at a segment boundary and ignores case, so
+  a relative `.claude/trace.log` and a shouted `.CLAUDE/trace.log` are both
+  refused. The filesystems this tool runs on fold case, so those two spellings
+  name one directory.
+- `npm run check:probes` prints its census before it sets a failing exit
+  status. Every branch that counts a record `unread` also files a problem, so
+  the total naming the unread denominator never printed on the one run it was
+  built for.
 - The probe's arm sequence moved out of `main`, into `runArms`, and three
   invariants ADR-0024 states as prose now have a test each. The debug path is
   derived under the throwaway root and a path outside it is refused. The trace

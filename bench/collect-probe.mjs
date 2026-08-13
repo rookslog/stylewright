@@ -71,13 +71,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { installSkills } from '../src/install.js';
-import { resolveTarget, PLATFORMS, SCOPES } from '../src/targets.js';
+import { resolveTarget, targetProblems } from '../src/targets.js';
 import { destinationState, ensureDir, isBelow, walk } from '../src/tree.js';
 // `TRACE_LINE_LIMIT` is the reader's constant, not the writer's, so it lives in
 // `probe.mjs` beside the derivation that has to know a list of exactly that
 // length may be a prefix. This file cuts at it, and `traceProblems` refuses a
 // record carrying more, so the cut here is the only place a reading is lost.
-import { armAnswered, isolationProblems, TRACE_FLAG, TRACE_LINE_LIMIT } from './probe.mjs';
+import {
+  armAnswered, isolationProblems, HARNESS_FOR, TRACE_FLAG, TRACE_LINE_LIMIT,
+} from './probe.mjs';
 
 export { TRACE_LINE_LIMIT };
 
@@ -87,14 +89,14 @@ const REPO = path.dirname(HERE);
 /**
  * Which harness reads a pathway's tree. A probe that installed into
  * `.codex/skills` and then asked Claude Code about it would attribute one
- * harness's answer to the other pathway, and would normally record a failure
- * that says nothing about Codex.
+ * harness's answer to the other pathway.
  *
- * `cowork` resolves to the Claude directory, and `agents` is a cross-agent
- * convention that Claude reads, so both are probed with `claude`. Codex needs
- * its own runner, and this collector does not have one.
+ * It lives in `probe.mjs` now, because `checkRecord` has to refuse a record
+ * naming a pathway no runner drives, and that file may not import this one.
+ * Re-exported here so a reader of the collector still finds it where it is
+ * used.
  */
-export const HARNESS_FOR = { claude: 'claude', cowork: 'claude', agents: 'claude' };
+export { HARNESS_FOR };
 
 /** `claude:user` into its two halves, refusing anything this collector cannot probe. */
 export function parsePathway(pathway) {
@@ -108,12 +110,12 @@ export function parsePathway(pathway) {
     throw new Error(`A pathway is <platform>:<scope>, and "${pathway}" is not.`);
   }
   const [platform, scope] = parts;
-  if (!PLATFORMS.includes(platform)) {
-    throw new Error(`Unknown platform "${platform}". Known: ${PLATFORMS.join(', ')}`);
-  }
-  if (!SCOPES.includes(scope)) {
-    throw new Error(`Unknown scope "${scope}". Known: ${SCOPES.join(', ')}`);
-  }
+  // The COMBINATION, through the one table `resolveTarget` reads. Checking the
+  // halves separately let `cowork:project` past here and fail two steps later
+  // in `resolveTarget`, which meant this function and `checkRecord` disagreed
+  // about which pathways exist.
+  const [problem] = targetProblems({ platform, scope });
+  if (problem) throw new Error(problem);
   const harness = HARNESS_FOR[platform];
   if (!harness) {
     throw new Error(

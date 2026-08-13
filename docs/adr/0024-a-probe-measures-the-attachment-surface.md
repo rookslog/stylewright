@@ -259,6 +259,20 @@ tuple. Raising the bound would turn a trace cut at it into one that reads
 complete, which is the codex finding restored by a one-line edit, and the pin is
 what makes that a CI failure and a person's decision.
 
+**A pathway no runner drives is refused, and that is not the flag rule
+loosening.** The check validates the COMBINATION through `targetProblems` and
+`HARNESS_FOR`, because reading the halves separately admitted `cowork:project`,
+`agents:project` and `codex:user`. The distinction against the rule above is the
+one the over-bound trace turned on. A record collected under the wrong FLAGS is
+a run that HAPPENED, and refusing it throws away the evidence of this
+repository's own failure. A pathway no runner drives is a file no run of this
+collector could have written, because `parsePathway` throws before the first
+call is paid for. A future runner arrives by adding its entry to `HARNESS_FOR`,
+and the same commit that lets the collector produce such a record lets the check
+accept it, because both read the one table. The residue: these tables can
+shrink, and dropping a platform would retire every committed record naming it.
+Nothing prevents that, and the corpus pin makes it loud rather than silent.
+
 **The record check asks what the writer asks.** `identity.pathway` was validated
 only as text while the whole reading is keyed on it, so a typo disabled the
 trace check permanently and reported the cause as `unscoped` — a harness-wording
