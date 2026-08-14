@@ -32,8 +32,8 @@ skills/standards/simplified-technical-english/references/examples.md
 grounding/standards/simplified-technical-english/references/examples.md
 ```
 
-A graded file with no matrix is an error, and so is a matrix under that
-directory that grades no file the skill ships.
+A graded file with no matrix is an error, and so is a file under `grounding/`
+that grades no file any skill ships.
 
 ## Which file a row belongs to
 
@@ -84,6 +84,36 @@ reads, and the walk reads nothing else, so a file of another kind there is
 refused by name. This is ADR-0025's allowlist one level down: the directory says
 what may ship, and this says what may stand inside it.
 
+**Three assumptions the one-file checker carried, and what each becomes.** Every
+one of them was justified by there being exactly one graded file per skill, and
+review found all three at once.
+
+*Front matter is metadata.* True of `SKILL.md`, whose block the harness parses
+and never shows a writer. No harness reads a reference file's prefix, so a
+closed `---` block there was removed from the units and reported by nothing,
+while `micromark` renders a thematic break and a setext heading carrying every
+line of it. A rule written there shipped visible to the reader and invisible to
+the check. The block is refused in any subject but `SKILL.md`, and it is still
+removed from the units rather than graded, because reading three lines as prose
+would ground a paragraph no reader sees. `checkSkill` takes `subject` with no
+default, so a caller that does not name the file it grades cannot be handed the
+exemption. That is the rule `now` obeys, for its reason.
+
+*The grounding tree is reachable from the catalogue.* It is not. A matrix whose
+skill was deleted or renamed sits under a directory no catalogue entry names, so
+walking out from each skill never visited it and the run stayed green over
+exactly the stale record this ADR refuses. The scan walks `grounding/` and
+derives the skill from the path, which also catches the same defect one level
+up: a leftover `<tier>/<name>.md`. A stray is reported under the name its path
+implies, because the catalogue is what it fell out of.
+
+*A path names a file.* Only after `lstat` says so. A matrix is identified by its
+path, so following a link there lets two graded files share one physical audit
+record, or lets the check read a record from outside the grounding tree. The
+stray scan cannot see either, because the link stands at exactly the pathname
+the scan holds. This is the disposition the shipped-file allowlist already gives
+a link at an allowed name.
+
 ## The count was a note, and it is an error now
 
 ADR-0025 printed how many files under `references/` no row disposed of, as a
@@ -96,9 +126,29 @@ matrix to write. That is the opposite of quieting the output. A green run over a
 file nobody has graded was the gap the number existed to report, and the gap is
 closed by refusing rather than by counting. ADR-0025 is amended to say so.
 
+## A unit is graded by what it says
+
+Two rules were drawn while filling the column, and both are written into the
+matrices that use them.
+
+A heading is graded by its words rather than by being a heading. `One
+instruction per sentence` states the constraint its section teaches, and an `N`
+row over it retires a rule from review by calling it a title. The test is
+whether the heading says what a writer must do. Seven headings in `examples.md`
+do, six of them citing the rule the skill's own matrix already cites for the
+same claim, and the seventh carrying our authority because Issue 9 has no
+numbered pronoun rule. The rest name a subject, such as `Procedure`.
+
+A table is one unit, so a table is one authority class. `rule-navigation.md`
+carried one table whose `Read when` column is our own advice, and a `G` row over
+that designator attributed every recommendation in it to Rules 1.1 through 9.4.
+The designator cannot be split, so the FILE was: it carries a table of source
+locations graded `G`, and a table of our advice graded `E`. The questions repeat
+across both, which is the cost, and no row mixes the two.
+
 ## What this does not claim
 
-Every row these matrices add starts `unaudited` and `unquoted`. Six `G` rows
+Every row these matrices add starts `unaudited` and `unquoted`. Twelve `G` rows
 across the two files cite a rule, and nobody has read one of them against the
 standard. The matrices declare `**Quotation:** forbidden` for the reason the
 skill's own matrix does, so no rule text moves into a cell.

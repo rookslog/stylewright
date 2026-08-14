@@ -14,14 +14,27 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `grounding/standards/simplified-technical-english/references/examples.md`. The
   two STE reference files installed on every pathway with no row disposing of a
   line in either, and one of them mapped real `Rule N.N` identifiers to topic
-  labels with no `G` row anywhere. They carry 124 rows between them now, six of
-  them `G` rows, every one `unaudited` and `unquoted`. A row space is per file
+  labels with no `G` row anywhere. They carry 127 rows between them now, twelve
+  of them `G` rows, every one `unaudited` and `unquoted`. A row space is per file
   because `Our anchor` names a heading, and two files in one skill can carry the
   same heading. A graded file with no matrix is an error naming the matrix to
-  write, and so is a matrix that grades no file. A file under `references/` that
-  is not Markdown is refused, because the walk reads Markdown alone. Every
-  finding names the file it came from, beside the skill. ADR-0030 records the
-  decision, and it amends ADR-0025's count from a note to an error. Issue #99.
+  write, and so is a file under `grounding/` that grades no file any skill
+  ships. That scan walks the grounding tree and derives the skill from the path,
+  because a matrix whose skill was deleted or renamed sits under a directory the
+  catalogue cannot name. A matrix is asked for with `lstat` and refused unless
+  it is a plain file, because following a link there lets two graded files share
+  one audit record. A file under `references/` that is not Markdown is refused,
+  because the walk reads Markdown alone. A front matter block outside `SKILL.md`
+  is refused, because the harness that reads one is the whole warrant for the
+  exemption, and `checkSkill` takes the file it grades as `subject` with no
+  default. Every finding names the file it came from, beside the skill.
+  ADR-0030 records the decision, and it amends ADR-0025's count from a note to
+  an error. Issue #99.
+- `skills/standards/simplified-technical-english/references/rule-navigation.md`
+  carries two tables where it carried one. A table is one unit, so a table is
+  one authority class, and the single table mixed source locations with our own
+  advice about when to read them. The first table states where the standard
+  answers each question, and the second is our advice. ADR-0030.
 - A blockquote is a unit the checker reads, rather than a construct it refuses.
   It is one block, from its first marker at column 0 to the first line without
   one, named by a designator such as `[quote 8f3a2b1c]` whose digest binds the

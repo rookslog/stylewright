@@ -143,7 +143,7 @@ test('a matrix a reader sees damaged is called broken, whatever the damage', () 
     assert.notDeepEqual(asSeen(matrixText), { headings: MATRIX_COLUMNS, ids: wrote },
       `${what}: this shape is meant to damage what a reader sees`);
 
-    const findings = checkSkill({ skillText: SKILL, matrixText, now: NOW });
+    const findings = checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText, now: NOW });
     const note = (code) => findings.find((f) => f.code === code)?.message;
     assert.equal(note('audit-coverage'), 'not counted: the matrix table is broken.', `${what}: the audit count`);
     assert.equal(note('quote-coverage'), 'not counted: the matrix table is broken.', `${what}: the quote count`);
@@ -169,7 +169,7 @@ test('where the reader sees a table, the checker reads its rows and no others', 
   const SHAPELESS = new Set(['matrix-no-table', 'matrix-no-header', 'matrix-header-columns', 'matrix-delimiter-columns']);
   for (const [what, [, lines]] of Object.entries(SHAPES)) {
     const text = matrix(lines);
-    const findings = checkSkill({ skillText: SKILL, matrixText: text, now: NOW });
+    const findings = checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: text, now: NOW });
     if (findings.some((f) => SHAPELESS.has(f.code))) continue;
     // With multiplicity. A set said `E-01` was seen, over a render that showed
     // it once and a checker that read it twice, so a dropped row could hide
@@ -195,7 +195,7 @@ test('a reader sees no eighth cell', () => {
   assert.equal(rows[0].length, MATRIX_COLUMNS.length);
   assert.ok(!rows[0].some((c) => cellText(c) === 'dropped'), 'GFM drops the cell past the last heading');
   assert.equal(readMatrix(text).rows[0].cells.length, MATRIX_COLUMNS.length + 1, 'the checker sees it, and reports it');
-  const findings = checkSkill({ skillText: SKILL, matrixText: text, now: NOW });
+  const findings = checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: text, now: NOW });
   assert.ok(findings.some((f) => f.code === 'row-has-extra-cell' && f.level === 'error'));
 });
 
@@ -248,7 +248,7 @@ test('a renamed heading renders under its new name, and the record goes with it'
   const text = matrix([HEADER.replace('Audited', 'Notes'), DELIMITER, row('E-01')]);
   assert.deepEqual(asSeen(text), asRead(text), 'nothing here divides the reader from the checker');
   assert.equal(asSeen(text).headings.at(-1), 'Notes');
-  const findings = checkSkill({ skillText: SKILL, matrixText: text, now: NOW });
+  const findings = checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: text, now: NOW });
   assert.ok(findings.some((f) => f.code === 'matrix-header-column-name' && f.level === 'error'));
   assert.equal(findings.find((f) => f.code === 'audit-coverage')?.message,
     'not counted: the matrix table is broken.');
@@ -447,6 +447,23 @@ test('a table a reader sees without a pipe is refused, and a heading is not', ()
   // A delimiter with no header above it is no table to either reader.
   assert.doesNotMatch(renderBlocks('Prose here.\n\n:-'), /<table>/);
   assert.deepEqual(refusalsFor('Prose here.\n\n:-'), []);
+});
+
+test('front matter is invisible to this check and visible to a reader', () => {
+  // The exemption's whole warrant is that a harness consumes the block as
+  // metadata, which is true of `SKILL.md` and of no reference file. This is
+  // what a reader gets for the same bytes where no harness reads them: a
+  // thematic break, and a setext HEADING carrying every line of the block. The
+  // walk yields no unit for any of it, so a rule written there was disposed of
+  // by nothing. `ground --check` refuses the block in a reference file, and
+  // this render is why the refusal is the honest answer rather than grading
+  // three lines a reader never sees as prose.
+  const text = '---\nnote: Always preserve safety.\n---\n\n# Heading\n';
+  const html = renderBlocks(text);
+  assert.match(html, /<hr \/>/);
+  assert.match(html, /<h2>note: Always preserve safety\.<\/h2>/);
+  assert.deepEqual(contentUnits(text).map((u) => u.text), ['Heading']);
+  assert.deepEqual(unmodelled(text), []);
 });
 
 /**

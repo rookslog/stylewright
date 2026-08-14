@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { sections, indentOf, isIndented, columnOf } from './markdown.js';
 import {
-  loadCatalog, isGraded, matrixPathFor, GRADED_DIR,
+  loadCatalog, isGraded, matrixPathFor, GRADED_DIR, TIERS,
 } from './catalog.js';
 import { walk } from './tree.js';
 
@@ -1169,6 +1169,10 @@ function withoutFrontMatter(text) {
 function extract(skillText) {
   const refusals = [];
   const { body, offset } = withoutFrontMatter(skillText);
+  // `offset` is carried out as well as used. It is the count of lines the front
+  // matter took, and it is zero where there is none, so the caller can ask
+  // whether this file opens with a block at all. Only `SKILL.md` has a harness
+  // to read one.
   const secs = sections(body);
   const lines = body.split('\n');
   // `firstLine` for a setext heading, because `startLine` is the underline and
@@ -1193,7 +1197,7 @@ function extract(skillText) {
     out.push({ text: sec.heading, anchor: sec.heading, block: false });
     out.push(...unitsIn(sec.body, sec.heading, at(sec.startLine)));
   }
-  return { units: out, refusals };
+  return { units: out, refusals, frontMatter: offset };
 }
 
 export function contentUnits(skillText) {
@@ -1265,17 +1269,40 @@ const BROKEN = new Set([
 ]);
 
 /**
+ * The one file a harness reads front matter from.
+ *
+ * A skill's front matter is metadata: the harness parses the name and the
+ * description out of it, and never shows it to a writer. That is the whole
+ * warrant for leaving it out of the units, and it is a fact about `SKILL.md`
+ * rather than about Markdown. A reference file has no harness, so a closed
+ * `---` block there is read by nobody: `test/gfm-render.test.js` puts one
+ * through the parser, and a reader gets a thematic break and a setext HEADING
+ * carrying every line of the block. The walk removed those lines instead, so a
+ * directive written there shipped visible to the reader and invisible to the
+ * check. ADR-0030.
+ */
+const HARNESS_READS_FRONT_MATTER = 'SKILL.md';
+
+/**
  * One graded file against its own matrix.
  *
- * `subject` is the file being graded, and it names the file in the findings
- * that speak about it. It defaults to `SKILL.md`, which is what this check read
- * until a skill's reference files were graded as well. `matrixPath` is where
- * the matrix for that file belongs, and it is a display path rather than
- * anything this function opens.
+ * `subject` is the file being graded. It names the file in the findings that
+ * speak about it, and it decides whether front matter here is metadata. It has
+ * no default: the exemption belongs to one file, so a caller that does not say
+ * which file it is grading may not be handed the exemption. That is the rule
+ * `now` and `rowDigest`'s pin already obey, and the reason is theirs — a
+ * default turns a rule off for whoever forgot the argument.
+ *
+ * `matrixPath` is where the matrix for that file belongs, and it is a display
+ * path rather than anything this function opens.
  */
 export function checkSkill({
-  skillText, matrixText, now, subject = 'SKILL.md', matrixPath = null,
+  skillText, matrixText, now, subject, matrixPath = null,
 }) {
+  if (typeof subject !== 'string' || !subject) {
+    throw new TypeError('`subject` must name the file being graded, as a string. '
+      + `Got ${JSON.stringify(subject)}.`);
+  }
   const today = dayOf(now);
   if (matrixText === null || matrixText === undefined) {
     return [{
@@ -1288,7 +1315,7 @@ export function checkSkill({
   // The rows that claim a source. The coverage note counts them at the end, and
   // the source version above the table is required of exactly this set.
   const sourced = rows.filter((r) => /^G-/i.test(r.id));
-  const { units: stmts, refusals } = extract(skillText);
+  const { units: stmts, refusals, frontMatter } = extract(skillText);
   const findings = [];
 
   // The table itself, before any row in it. A matrix whose header or delimiter
@@ -1514,6 +1541,23 @@ export function checkSkill({
           + 'maintains. Delete it.',
       });
     }
+  }
+
+  // The exemption, checked against the file that has it. The block is still
+  // removed from the units, because reading it as prose would merge three lines
+  // a reader sees as a break and a heading into one paragraph nobody wrote.
+  // Removing it silently was the defect: this refuses instead, so the file
+  // cannot pass while the block stands.
+  if (frontMatter && subject !== HARNESS_READS_FRONT_MATTER) {
+    findings.push({
+      level: 'error',
+      code: 'front-matter-outside-skill-md',
+      message: `line 1: ${subject} opens with a front matter block, and no harness reads one `
+        + 'here. A GFM reader sees a thematic break and a heading carrying every line of it, '
+        + 'and this check reads none of them, so a rule written there is disposed of by '
+        + 'nothing. Delete the block, or write its contents as ordinary Markdown below the '
+        + 'first heading.',
+    });
   }
 
   // Refusals lead, because every finding under them rests on a reading the
@@ -1878,62 +1922,99 @@ export function checkShippedFiles({ files, irregular = [], tier, name }) {
 }
 
 /**
- * The matrix at a path, or nothing where no matrix stands there.
+ * What stands at a matrix path: nothing, something that is not a plain file, or
+ * the matrix.
  *
- * A directory at that path is nothing too. The finding then names the path and
- * says a matrix belongs there, which is what the author has to act on either
- * way, and a raw `EISDIR` would stop the whole run over one skill.
+ * The type is asked with `lstat`, and a link is refused rather than read. A
+ * matrix is identified by its path, so following one lets two graded files
+ * share a single physical audit record, or lets the check consume a record from
+ * outside the grounding tree entirely. Neither is visible to the stray scan
+ * below, because the pathname it walks is exactly the pathname that is held.
+ * This is the disposition the shipped-file allowlist already gives a link at an
+ * allowed name, and a study gives a link inside it.
+ *
+ * `ENOTDIR` reads as nothing, because a file standing where a directory belongs
+ * leaves no matrix at the path below it. The stray scan names that file.
  */
-const matrixAt = async (file) => {
+const MATRIX_ABSENT = 'absent';
+const MATRIX_IRREGULAR = 'irregular';
+async function matrixAt(file) {
+  let stat = null;
   try {
-    return await fs.readFile(file, 'utf8');
+    stat = await fs.lstat(file);
   } catch (err) {
-    if (!['ENOENT', 'EISDIR'].includes(err.code)) throw err;
-    return null;
+    if (['ENOENT', 'ENOTDIR'].includes(err.code)) return { state: MATRIX_ABSENT };
+    throw err;
   }
-};
+  if (!stat.isFile()) return { state: MATRIX_IRREGULAR };
+  return { state: 'read', text: await fs.readFile(file, 'utf8') };
+}
+
+/** Where a stray matrix is reported, when its path names no skill. */
+const NO_SKILL = '(grounding)';
 
 /**
- * Every matrix a skill carries that disposes of no file it ships.
+ * The skill a path under `grounding/` answers to, by its own spelling.
  *
- * The mirror of a graded file with no matrix, and the reason it is an error
- * rather than a tidy-up: a matrix nothing reads goes stale unnoticed, and a
- * reference file renamed under one leaves the old rows passing every check
- * here forever, because no check opens a file nobody names.
+ * A stray matrix is reported under the name its path implies, so
+ * `standards/withdrawn/references/guide.md` reaches a reader as `withdrawn`
+ * even though no such skill exists any more. That is the whole point of the
+ * scan: the catalogue cannot name it, because the catalogue is what it fell out
+ * of. A path that implies no skill at all is reported under a name no skill
+ * directory can hold.
  */
-async function orphanMatrices(skill, graded) {
-  const held = new Set(graded.map((rel) => matrixPathFor(skill, rel)));
+function skillNamed(rel) {
+  const parts = rel.split('/');
+  if (parts.length < 2 || !TIERS.includes(parts[0])) return NO_SKILL;
+  return parts.length === 2 ? parts[1].replace(/\.md$/, '') : parts[1];
+}
+
+/**
+ * Every file under `grounding/` that disposes of nothing.
+ *
+ * This walks the grounding tree and compares it against the matrix paths the
+ * catalogue answers to. It used to walk from each catalogue skill instead,
+ * which could not see the case the check exists for: a matrix whose skill was
+ * deleted or renamed sits under a directory no catalogue entry names, so it was
+ * never visited and the run stayed green over exactly the stale record this
+ * refuses. Deriving the skill from the path rather than the path from the skill
+ * is what closes it, and it catches the same defect one level up — a leftover
+ * `<tier>/<name>.md` for a skill that is gone.
+ *
+ * A matrix nothing reads is an error rather than a tidy-up, because its rows go
+ * stale unread, and no check here opens a file nobody names.
+ */
+async function strayMatrices(repoRoot, held) {
+  const root = path.join(repoRoot, 'grounding');
   let found = [];
   try {
-    found = await walk(skill.groundingDir);
+    found = await walk(root);
   } catch (err) {
-    // Nothing there is the ordinary case. A file there is a shape this walk
-    // does not model, and it is named rather than thrown, because one odd path
-    // must not stop the run over every other skill.
-    if (err.code === 'ENOENT') return [];
-    if (err.code !== 'ENOTDIR') throw err;
-    return [{
-      level: 'error',
-      code: 'matrix-grades-nothing',
-      message: `${path.basename(skill.groundingDir)} is where this skill's reference matrices `
-        + 'live, and it is a file. A matrix names the file it grades by its own path, so this '
-        + 'one grades nothing. Make it a directory, or delete it.',
-    }];
+    if (['ENOENT', 'ENOTDIR'].includes(err.code)) return [];
+    throw err;
   }
   return found
-    .map((rel) => path.join(skill.groundingDir, ...rel.split('/')))
-    .filter((file) => !held.has(file))
-    .map((file) => ({
-      level: 'error',
-      code: 'matrix-grades-nothing',
-      message: `${path.relative(path.dirname(skill.groundingDir), file)} disposes of no file `
-        + 'this skill ships. A matrix names the file it grades by its own path, so either the '
-        + 'file moved and this matrix did not, or the matrix is left over. Move it or delete it.',
+    .filter((rel) => !held.has(path.join(root, ...rel.split('/'))))
+    .map((rel) => ({
+      name: skillNamed(rel),
+      finding: {
+        level: 'error',
+        code: 'matrix-grades-nothing',
+        message: `grounding/${rel} disposes of no file any skill ships. A matrix names the `
+          + 'file it grades by its own path, so either that file moved and the matrix did '
+          + 'not, or the skill is gone and the matrix stayed. Move it or delete it.',
+      },
     }));
 }
 
 export async function checkAll(repoRoot, { now } = {}) {
   const out = {};
+  // Every matrix path the catalogue answers to. The stray scan below compares
+  // the grounding tree against this, so a path is held by the file EXISTING and
+  // not by the check being able to read it: a graded file refused for not being
+  // a plain file still has a matrix that grades it, and that matrix is not
+  // stray.
+  const held = new Set();
   for (const skill of await loadCatalog(repoRoot)) {
     // `walk` returns names, and a name says nothing about what stands at it.
     // The type is asked for here, with `lstat`, so the link itself answers
@@ -1958,19 +2039,41 @@ export async function checkAll(repoRoot, { now } = {}) {
     // the link points, and a FIFO at a graded path would hang the run rather
     // than fail it. That is the reading `src/doctor.js` gives an instruction
     // file, and the refusal above is the finding either way.
+    for (const rel of files.filter(isGraded)) held.add(matrixPathFor(skill, rel));
     const graded = files.filter((rel) => isGraded(rel) && !irregular.includes(rel));
     for (const rel of graded) {
       const matrixPath = matrixPathFor(skill, rel);
+      const matrix = await matrixAt(matrixPath);
+      const shown = path.relative(repoRoot, matrixPath);
+      if (matrix.state === MATRIX_IRREGULAR) {
+        // Named and not read, for the reason the graded file above is. The
+        // path is held either way, so the stray scan says nothing about it and
+        // this is the only finding that would.
+        findings.push({
+          level: 'error',
+          code: 'matrix-not-regular',
+          file: rel,
+          message: `${shown} is not a plain file. A matrix is identified by its path, so `
+            + 'following a link there lets two files share one audit record, or lets this '
+            + 'check read a record from outside the grounding tree. Replace it with the '
+            + 'matrix itself.',
+        });
+        continue;
+      }
       findings.push(...checkSkill({
         skillText: await fs.readFile(path.join(skill.dir, ...rel.split('/')), 'utf8'),
-        matrixText: await matrixAt(matrixPath),
+        matrixText: matrix.state === MATRIX_ABSENT ? null : matrix.text,
         now,
         subject: rel,
-        matrixPath: path.relative(repoRoot, matrixPath),
+        matrixPath: shown,
       }).map((f) => ({ ...f, file: rel })));
     }
-    findings.push(...await orphanMatrices(skill, graded));
     out[skill.name] = findings;
+  }
+  // Last, and over the whole tree rather than per skill. A matrix whose skill
+  // is gone sits under a directory the catalogue cannot name.
+  for (const stray of await strayMatrices(repoRoot, held)) {
+    out[stray.name] = [...(out[stray.name] ?? []), stray.finding];
   }
   return out;
 }

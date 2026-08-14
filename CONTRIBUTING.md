@@ -318,6 +318,11 @@ so does a matrix that grades no file. ADR-0030 gives the reason.
 A file under `references/` is Markdown. The walk reads Markdown alone, so
 nothing can grade a file of another kind, and the check refuses one by name.
 
+Do not open a reference file with a front matter block. That exemption belongs
+to `SKILL.md`, whose block a harness reads as metadata. Nothing reads a
+reference file's block, so a rule written there would be graded by nothing, and
+the check refuses it.
+
 ## Write under the skills
 
 Our own documents follow ASD-STE100. `npm run lint:docs` checks them:

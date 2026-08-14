@@ -45,6 +45,16 @@ matrix is refused, and so is a matrix that grades no file. `references/` holds
 Markdown, because the walk reads Markdown alone and nothing can grade a file it
 cannot read. ADR-0030 records the decision.
 
+Two things follow from identity being a PATH. The stray scan walks the whole
+grounding tree and derives the skill from the path, rather than walking out from
+each catalogue entry: a matrix whose skill was deleted or renamed sits under a
+directory the catalogue cannot name, so starting from the catalogue never
+visited the one case the check exists for. And a matrix is asked for with
+`lstat` and refused unless it is a plain file, because following a link lets two
+graded files share one audit record, or lets the check read a record from
+outside the tree. Neither is visible to the other: the link sits at exactly the
+pathname the scan holds.
+
 - A **`G` row** claims the authority of the source. Its rule cell names the rule.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
 - An **`N` row** is narrative. It orients the reader and asserts no rule, so it
@@ -76,6 +86,18 @@ anything above the first heading, and `Source`, `Boundary` and `Notice` grade
 like any other section. Each of those was a hiding place: an instruction under
 a heading called `Source` was disposed of by nothing. Front matter is the one
 thing outside the check, because it is metadata for the harness.
+
+That exemption belongs to `SKILL.md` and to no other file. The harness parses a
+skill's front matter and never shows it to a writer, which is the whole warrant,
+and no harness reads a reference file's prefix. A closed `---` block there was
+removed from the units and reported by nothing, while a reader saw a thematic
+break and a heading carrying every line of it, so a rule written there shipped
+visible to the reader and invisible to the check. `checkSkill` takes the file it
+is grading as `subject`, with no default, because a caller that does not say
+which file it grades may not be handed the exemption. A block in any other file
+is refused by name. The render is in `test/gfm-render.test.js`, by ADR-0028's
+rule, and it decided the disposition: three lines a reader sees as a break and a
+heading are not graded as prose nobody wrote.
 
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.

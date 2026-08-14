@@ -379,8 +379,10 @@ skill fails the gate. ADR-0025 records that decision.
 
 `stylewright ground --check --all` fails when a skill changes and its matrix
 does not. Every heading, paragraph, list item, table and code block counts,
-including the ones before the first heading. Front matter does not, because it
-is metadata for the agent harness rather than instruction for a reader.
+including the ones before the first heading. Front matter in `SKILL.md` does
+not, because the harness reads it as metadata rather than as instruction for a
+reader. No harness reads a reference file, so a front matter block in one is
+refused instead.
 
 The check reads Markdown a line at a time, and it models no container. So it
 states the forms it reads: a blank line, any construct at column 0, a line that

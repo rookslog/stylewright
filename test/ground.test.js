@@ -60,7 +60,11 @@ const errors = (findings) => findings.filter((f) => f.level !== 'note');
  * dated after today is refused against a moment the caller hands in.
  */
 const NOW = '2026-08-06T12:00:00.000Z';
-const check = (args) => checkSkill({ now: NOW, ...args });
+// `subject` names the file being graded, and it has no default: front matter is
+// metadata in `SKILL.md` and in nothing else, so a caller that does not say
+// which file it grades may not be handed that exemption. Every case below
+// grades a skill file unless it says otherwise.
+const check = (args) => checkSkill({ now: NOW, subject: 'SKILL.md', ...args });
 
 test('parses rows and skips the separator', () => {
   const rows = parseMatrix(MATRIX);
@@ -161,13 +165,13 @@ test('the check refuses to run without the day, rather than skipping the future 
   // A default would turn the future rule off for whoever forgot the argument,
   // and `ground --check` already carries the lesson about a gate that fails
   // open on a missing name.
-  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX }), InvalidMoment);
-  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now: 'today' }), InvalidMoment);
+  assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX }), InvalidMoment);
+  assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX, now: 'today' }), InvalidMoment);
 
   // The refusal carries the value and the spellings it accepts. A TypeError
   // said the type was wrong when the shape is what the check objects to.
   const thrown = (now) => {
-    try { checkSkill({ skillText: SKILL, matrixText: MATRIX, now }); return null; } catch (e) { return e; }
+    try { checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX, now }); return null; } catch (e) { return e; }
   };
   const err = thrown('2026-08-06T12:00:00+05:00');
   assert.equal(err.name, 'InvalidMoment');
@@ -183,7 +187,7 @@ test('the day the check runs on must itself be a day', () => {
   // not a day cannot bound anything.
   const ahead = audited(`9999-12-31 ${CURRENT}`);
   for (const now of ['9999-99-99', '0000-00-00', '2026-02-31', '2026-08-06extra', '2026-8-6']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: ahead, now }), InvalidMoment,
+    assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: ahead, now }), InvalidMoment,
       `${now} was accepted as the day the check runs on`);
 
   }
@@ -191,7 +195,7 @@ test('the day the check runs on must itself be a day', () => {
   // A bare day and a UTC timestamp are both moments, and both still refuse the
   // audit dated after them.
   for (const now of ['2026-08-06', '2026-08-06T12:00:00.000Z', '2026-08-06T12:00Z']) {
-    assert.ok(checkSkill({ skillText: SKILL, matrixText: ahead, now })
+    assert.ok(checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: ahead, now })
       .some((f) => f.code === 'audit-ahead-of-the-check'), `${now} was refused`);
   }
 });
@@ -203,12 +207,12 @@ test('the day the check runs on is UTC, so an offset cannot move it', () => {
   // a date, so the grammar refuses the form instead.
   const seventh = audited(`2026-08-07 ${CURRENT}`);
   for (const now of ['2026-08-07T00:30:00+05:00', '2026-08-06T19:30:00-05:00', '2026-08-06 12:00:00']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: seventh, now }), InvalidMoment,
+    assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: seventh, now }), InvalidMoment,
       `${now} was read as a UTC day`);
   }
 
   // The same instant written in UTC is the day the check compares against.
-  assert.ok(checkSkill({ skillText: SKILL, matrixText: seventh, now: '2026-08-06T19:30:00.000Z' })
+  assert.ok(checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: seventh, now: '2026-08-06T19:30:00.000Z' })
     .some((f) => f.code === 'audit-ahead-of-the-check'));
 });
 
@@ -612,7 +616,7 @@ test('a zero offset is UTC, and a bounded time is required', () => {
   // warrant that cannot apply to an offset of no hours.
   for (const now of ['2026-08-06T12:00:00+00:00', '2026-08-06T12:00:00-00:00',
     '2026-08-06T12:00:00.000+0000', '2026-08-06T12:00:00Z']) {
-    assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: FULLY, now })), [],
+    assert.deepEqual(errors(checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: FULLY, now })), [],
       `${now} is UTC and was refused`);
   }
 
@@ -620,7 +624,7 @@ test('a zero offset is UTC, and a bounded time is required', () => {
   // written day put the bound a day early. `99:99:99Z` was simply accepted.
   for (const now of ['2026-08-06T24:00:00Z', '2026-08-06T99:99:99Z', '2026-08-06T12:60:00Z',
     '2026-08-06T12:00:00+05:00', '2026-08-06 12:00:00']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: FULLY, now }), InvalidMoment,
+    assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: FULLY, now }), InvalidMoment,
       `${now} was read as a UTC moment`);
   }
 });
@@ -755,11 +759,11 @@ test('a leap second is 23:59:60 and a fraction belongs to the seconds', () => {
   // `|60` after any minute admitted 1439 times that never existed, and the
   // fraction sat outside the seconds group so `12:00.500Z` parsed.
   for (const now of ['2026-08-06T23:59:60Z', '2026-08-06T23:59:60.5Z', '2026-08-06T12:00:00.000Z']) {
-    assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: MATRIX, now })), [],
+    assert.deepEqual(errors(checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX, now })), [],
       `${now} is a moment and was refused`);
   }
   for (const now of ['2026-08-06T12:00:60Z', '2026-08-06T23:58:60Z', '2026-08-06T12:00.500Z']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now }), InvalidMoment,
+    assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX, now }), InvalidMoment,
       `${now} is not a moment and was accepted`);
   }
 });
@@ -1891,6 +1895,82 @@ test('a reference file no Markdown walk can read is refused by name', async (t) 
   assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
   assert.equal(refusal.level, 'error');
   assert.match(refusal.message, /^references\/agents\.yaml/);
+});
+
+test('front matter is metadata in SKILL.md and a defect in a reference file', async (t) => {
+  // The exemption is a fact about the file a harness reads, not about Markdown.
+  // A reference file has no harness, so a closed `---` block there was removed
+  // from the units and reported by nothing, while a reader saw every line of it
+  // inside a heading. `test/gfm-render.test.js` holds that render.
+  const repo = await withReference(t, `---\nnote: Always preserve safety.\n---\n\n${REFERENCE}`);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  await fsp.writeFile(path.join(matrix, 'patterns.md'), REFERENCE_MATRIX);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'front-matter-outside-skill-md');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.equal(refusal.file, 'references/patterns.md');
+  // The skill's own front matter is untouched, or every skill here would fail.
+  assert.deepEqual(found.filter((f) => f.code === 'front-matter-outside-skill-md'
+    && f.file === 'SKILL.md'), []);
+});
+
+test('the check refuses to run without the file it is grading', () => {
+  // The same rule the day obeys. Front matter is exempt for one file, so a
+  // caller that does not name the file may not be handed that exemption.
+  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now: NOW }), TypeError);
+  assert.throws(() => checkSkill({
+    skillText: SKILL, matrixText: MATRIX, now: NOW, subject: '',
+  }), TypeError);
+});
+
+test('a matrix that is not a plain file is refused and never read', async (t) => {
+  // A matrix is identified by its path, so following a link there lets two
+  // graded files share one audit record, or lets the check read a record from
+  // outside the grounding tree. The stray scan cannot see it either, because
+  // the pathname it walks is exactly the pathname that is held.
+  const repo = await withReference(t, REFERENCE);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  const outside = path.join(repo, 'outside-matrix.md');
+  await fsp.writeFile(outside, REFERENCE_MATRIX);
+  try {
+    await fsp.symlink(outside, path.join(matrix, 'patterns.md'));
+  } catch {
+    return t.skip('this platform does not let the test create a symbolic link');
+  }
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'matrix-not-regular');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.equal(refusal.file, 'references/patterns.md');
+  // Read through the link, the matrix matches and the file passes. It must not.
+  assert.deepEqual(found.filter((f) => f.file === 'references/patterns.md'
+    && f.code !== 'matrix-not-regular'), []);
+  return undefined;
+});
+
+test('a matrix whose skill is gone is found, under the name its path implies', async (t) => {
+  // The scan used to start from the catalogue, so a grounding directory for a
+  // deleted or renamed skill was never visited and the run stayed green over
+  // exactly the stale record this refuses. Both levels are the same defect: a
+  // leftover reference matrix, and a leftover matrix for the skill itself.
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-stray-'));
+  t.after(() => fsp.rm(repo, { recursive: true, force: true }));
+  await fsp.cp(REPO, repo, { recursive: true });
+  const gone = path.join(repo, 'grounding', 'standards', 'withdrawn', 'references');
+  await fsp.mkdir(gone, { recursive: true });
+  await fsp.writeFile(path.join(gone, 'guide.md'), REFERENCE_MATRIX);
+  await fsp.writeFile(path.join(repo, 'grounding', 'standards', 'retired.md'), REFERENCE_MATRIX);
+  const all = await checkAll(repo, { now: NOW });
+  const strays = Object.entries(all).flatMap(([name, found]) => found
+    .filter((f) => f.code === 'matrix-grades-nothing').map((f) => [name, f.message]));
+  assert.equal(strays.length, 2, JSON.stringify(strays));
+  assert.ok(strays.some(([name, m]) => name === 'withdrawn' && /withdrawn\/references\/guide\.md/.test(m)));
+  assert.ok(strays.some(([name, m]) => name === 'retired' && /standards\/retired\.md/.test(m)));
+  // A skill that is still in the catalogue keeps a clean tree.
+  assert.deepEqual(all['demo-standard'].filter((f) => f.code === 'matrix-grades-nothing'), []);
 });
 
 test('every file the shipped catalogue grades has a matrix', async () => {
