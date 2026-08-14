@@ -32,13 +32,22 @@ import { renderTables, renderBlocks, cellText } from './gfm.js';
 const GROUNDING = new URL('../grounding/', import.meta.url);
 const NOW = '2026-08-06T12:00:00.000Z';
 
-async function matrices() {
+/**
+ * Every matrix in the grounding tree, however deep it sits.
+ *
+ * A skill's reference files are graded one matrix per file, under a directory
+ * named for the skill, so a scan of the tier directory alone stopped at the
+ * directory and read none of them. The whole tree is walked instead, which is
+ * what "every shipped matrix" has to mean for the test below to be true.
+ */
+async function matrices(dir = GROUNDING, base = '') {
   const found = [];
-  for (const tier of await readdir(GROUNDING)) {
-    const dir = new URL(`${tier}/`, GROUNDING);
-    for (const name of await readdir(dir)) {
-      if (!name.endsWith('.md')) continue;
-      found.push({ name: `${tier}/${name}`, text: await readFile(new URL(name, dir), 'utf8') });
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const rel = base ? `${base}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      found.push(...await matrices(new URL(`${entry.name}/`, dir), rel));
+    } else if (entry.name.endsWith('.md')) {
+      found.push({ name: rel, text: await readFile(new URL(entry.name, dir), 'utf8') });
     }
   }
   return found;
@@ -87,7 +96,9 @@ description: d
 
 test('every shipped matrix renders as one table the checker read exactly', async () => {
   const found = await matrices();
-  assert.ok(found.length >= 6, 'the grounding directory carries the shipped matrices');
+  assert.ok(found.length >= 8, 'the grounding tree carries the shipped matrices');
+  assert.ok(found.some((m) => m.name.includes('/references/')),
+    'and the reference matrices among them, which a flat scan missed');
   for (const { name, text } of found) {
     const tables = renderTables(text);
     assert.equal(tables.length, 1, `${name}: a reader sees exactly one table`);
@@ -132,7 +143,7 @@ test('a matrix a reader sees damaged is called broken, whatever the damage', () 
     assert.notDeepEqual(asSeen(matrixText), { headings: MATRIX_COLUMNS, ids: wrote },
       `${what}: this shape is meant to damage what a reader sees`);
 
-    const findings = checkSkill({ skillText: SKILL, matrixText, now: NOW });
+    const findings = checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText, now: NOW });
     const note = (code) => findings.find((f) => f.code === code)?.message;
     assert.equal(note('audit-coverage'), 'not counted: the matrix table is broken.', `${what}: the audit count`);
     assert.equal(note('quote-coverage'), 'not counted: the matrix table is broken.', `${what}: the quote count`);
@@ -158,7 +169,7 @@ test('where the reader sees a table, the checker reads its rows and no others', 
   const SHAPELESS = new Set(['matrix-no-table', 'matrix-no-header', 'matrix-header-columns', 'matrix-delimiter-columns']);
   for (const [what, [, lines]] of Object.entries(SHAPES)) {
     const text = matrix(lines);
-    const findings = checkSkill({ skillText: SKILL, matrixText: text, now: NOW });
+    const findings = checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: text, now: NOW });
     if (findings.some((f) => SHAPELESS.has(f.code))) continue;
     // With multiplicity. A set said `E-01` was seen, over a render that showed
     // it once and a checker that read it twice, so a dropped row could hide
@@ -184,7 +195,7 @@ test('a reader sees no eighth cell', () => {
   assert.equal(rows[0].length, MATRIX_COLUMNS.length);
   assert.ok(!rows[0].some((c) => cellText(c) === 'dropped'), 'GFM drops the cell past the last heading');
   assert.equal(readMatrix(text).rows[0].cells.length, MATRIX_COLUMNS.length + 1, 'the checker sees it, and reports it');
-  const findings = checkSkill({ skillText: SKILL, matrixText: text, now: NOW });
+  const findings = checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: text, now: NOW });
   assert.ok(findings.some((f) => f.code === 'row-has-extra-cell' && f.level === 'error'));
 });
 
@@ -237,7 +248,7 @@ test('a renamed heading renders under its new name, and the record goes with it'
   const text = matrix([HEADER.replace('Audited', 'Notes'), DELIMITER, row('E-01')]);
   assert.deepEqual(asSeen(text), asRead(text), 'nothing here divides the reader from the checker');
   assert.equal(asSeen(text).headings.at(-1), 'Notes');
-  const findings = checkSkill({ skillText: SKILL, matrixText: text, now: NOW });
+  const findings = checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: text, now: NOW });
   assert.ok(findings.some((f) => f.code === 'matrix-header-column-name' && f.level === 'error'));
   assert.equal(findings.find((f) => f.code === 'audit-coverage')?.message,
     'not counted: the matrix table is broken.');
@@ -436,4 +447,107 @@ test('a table a reader sees without a pipe is refused, and a heading is not', ()
   // A delimiter with no header above it is no table to either reader.
   assert.doesNotMatch(renderBlocks('Prose here.\n\n:-'), /<table>/);
   assert.deepEqual(refusalsFor('Prose here.\n\n:-'), []);
+});
+
+test('front matter is invisible to this check and visible to a reader', () => {
+  // The exemption's whole warrant is that a harness consumes the block as
+  // metadata, which is true of `SKILL.md` and of no reference file. This is
+  // what a reader gets for the same bytes where no harness reads them.
+  //
+  // The property is stated as one rule over many shapes, and not as the render
+  // of any one of them. A first draft asserted a thematic break and a setext
+  // heading, which is what the first shape below produces and what three of the
+  // others do not: a list inside the block renders as a list, a fenced block as
+  // code, and a table as a table. Writing that one render into four documents
+  // as the reason for the refusal was the comment explaining away what the
+  // parser had not been asked. What holds across every shape is the thing the
+  // refusal actually rests on: a reader sees the block's contents, and this
+  // check reads no unit from any line of it.
+  const shapes = {
+    'a mapping': '---\nnote: Always preserve safety.\n---\n\n# Heading',
+    'a list': '---\n- Always preserve safety.\n---\n\n# Heading',
+    'a fenced block': '---\n```\nAlways preserve safety.\n```\n---\n\n# Heading',
+    'a blank line inside': '---\na: b\n\nc: Always preserve safety.\n---\n\n# Heading',
+    'a table': '---\n| Always preserve safety. | b |\n|---|---|\n---\n\n# Heading',
+  };
+  for (const [name, text] of Object.entries(shapes)) {
+    assert.match(renderBlocks(text), /Always preserve safety\./,
+      `a reader sees the block's contents in ${name}`);
+    assert.deepEqual(contentUnits(text).map((u) => u.text), ['Heading'],
+      `the walk reads no unit from the block in ${name}`);
+    assert.deepEqual(unmodelled(text), [], `and refuses no line of it in ${name}`);
+  }
+});
+
+/**
+ * The blockquote, read as a block, checked against the same parser.
+ *
+ * The walk refused a blockquote until issue #99, because it merged the quote
+ * with its contents: `> - one gasket` reached a matrix row as a paragraph
+ * carrying its own markers. It reads one BLOCK now, named by a digest of what
+ * the quote holds, which is the disposition a table and a fenced block already
+ * have. So the claim to check is the one ADR-0028 asks for: where a reader sees
+ * one blockquote, the walk reads one block, and nothing inside it reaches a
+ * unit of its own.
+ */
+const blockquotes = (text) => (renderBlocks(text).match(/<blockquote>/g) ?? []).length;
+
+test('where a reader sees one blockquote, the walk reads one block', () => {
+  // Each of these holds a construct the walk reads as a block of its own at
+  // column 0. Inside the quote it is the quote's content, and a reader agrees.
+  for (const text of [
+    '> Quoted.',
+    '> One.\n>\n> Two.',
+    '> Intro:\n>\n> - one gasket\n> - two clamps',
+    '> ```js\n> const x = 1;\n> ```',
+    '> | a | b |\n> |---|---|',
+    '> # A heading inside the quote',
+  ]) {
+    assert.equal(blockquotes(text), 1, `a reader sees one quote in ${JSON.stringify(text)}`);
+    // The heading is a unit of its own, so the section's body starts after it.
+    const units = contentUnits(skillWith(text))
+      .filter((u) => u.anchor === 'Later' && u.text !== 'Later');
+    assert.deepEqual(units.map((u) => u.block), [true],
+      `the walk reads one block in ${JSON.stringify(text)}: ${JSON.stringify(units)}`);
+    assert.match(units[0].text, /^\[quote [0-9a-f]{8}\]$/);
+    assert.deepEqual(refusalsFor(text), []);
+  }
+});
+
+test('a line under a blockquote is refused, and the render says why it must be', () => {
+  // A reader CONTINUES the quote over a line that carries prose, and over a
+  // table's own lines, so reading those at the top level would ground the
+  // quote's contents as something else.
+  for (const follower of ['Prose here.', '===', '| a | b |\n|---|---|', '    indented']) {
+    const text = `> Quoted.\n${follower}`;
+    assert.match(renderBlocks(text), /<blockquote>[\s\S]*Prose here\.|<blockquote>[\s\S]*===|<blockquote>[\s\S]*a \| b|<blockquote>[\s\S]*indented/,
+      `a reader keeps ${JSON.stringify(follower)} inside the quote`);
+    assert.ok(refusalsFor(text).includes('a line directly under a blockquote'),
+      `the check refuses ${JSON.stringify(text)}: ${JSON.stringify(refusalsFor(text))}`);
+  }
+});
+
+test('the over-refusal under a blockquote is pinned, because a reader ends it there', () => {
+  // The other direction, stated rather than hidden. A construct that interrupts
+  // a paragraph ends the quote for a reader whatever the quote holds, so these
+  // lines need no refusal. The walk refuses them anyway: whether a line is lazy
+  // continuation depends on the block open INSIDE the quote, and the walk holds
+  // no container state to answer with. The cost is a blank line the author
+  // writes, and every shipped file already has one there.
+  for (const follower of ['- item', '1. item', '```\ncode\n```', '---', '<div>x</div>']) {
+    const text = `> Quoted.\n${follower}`;
+    assert.equal(blockquotes(text), 1);
+    assert.doesNotMatch(renderBlocks(text).split('</blockquote>')[0], /item|code|<div|<hr/,
+      `a reader ends the quote above ${JSON.stringify(follower)}`);
+    assert.ok(refusalsFor(text).includes('a line directly under a blockquote'),
+      'the walk refuses it, and this test is where that cost is recorded');
+    assert.deepEqual(refusalsFor(`> Quoted.\n\n${follower}`), [],
+      'a blank line is the whole remedy');
+  }
+  // A heading is the one follower the two readers agree on with no blank line,
+  // and not because the walk decided it. The section split takes the heading and
+  // everything under it into the next section, so the quote ends at the end of
+  // the body and no line follows it there.
+  assert.deepEqual(refusalsFor('> Quoted.\n## Deeper\n\nProse.'), []);
+  assert.doesNotMatch(renderBlocks('> Quoted.\n## Deeper').split('</blockquote>')[0], /Deeper/);
 });

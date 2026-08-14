@@ -260,8 +260,10 @@ stylewright/
       references/
       agents/openai.yaml
   grounding/                                # repo only, never installs
-    standards/<name>.md
+    standards/<name>.md                     # disposes of SKILL.md
+    standards/<name>/references/<file>.md   # one matrix per reference file
     craft/<name>.md
+    craft/<name>/references/<file>.md
   source/                                   # repo only, never installs
     standards/<name>.md
     craft/<name>.md

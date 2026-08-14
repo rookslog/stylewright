@@ -7,6 +7,51 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A grounding matrix disposes of one file, and `ground --check` reads every file
+  a skill ships to a writer. `SKILL.md` keeps `grounding/<tier>/<skill>.md`, and
+  a Markdown file under `references/` answers to a matrix that mirrors its path,
+  such as
+  `grounding/standards/simplified-technical-english/references/examples.md`. The
+  two STE reference files installed on every pathway with no row disposing of a
+  line in either, and one of them mapped real `Rule N.N` identifiers to topic
+  labels with no `G` row anywhere. They carry 127 rows between them now, twelve
+  of them `G` rows, every one `unaudited` and `unquoted`. A row space is per file
+  because `Our anchor` names a heading, and two files in one skill can carry the
+  same heading. A graded file with no matrix is an error naming the matrix to
+  write, and so is a file under `grounding/` that grades no file any skill
+  ships. That scan walks the grounding tree and derives the skill from the path,
+  because a matrix whose skill was deleted or renamed sits under a directory the
+  catalogue cannot name. A matrix is asked for with `lstat` and refused unless
+  it is a plain file, because following a link there lets two graded files share
+  one audit record. A file under `references/` that is not Markdown is refused,
+  because the walk reads Markdown alone. A front matter block outside `SKILL.md`
+  is refused, because the harness that reads one is the whole warrant for the
+  exemption, and `checkSkill` takes the file it grades as `subject` with no
+  default. Every finding names the file it came from, beside the skill. The
+  report is keyed prototype-safely, so a skill directory or a stray matrix at a
+  name JavaScript owns reaches a reader rather than emptying the report or
+  ending the run. A matrix and a stray are compared by the filesystem's own
+  identity where two spellings resolve to one file, so a miscased matrix is the
+  matrix rather than a stray to delete. ADR-0030 records the decision, and it
+  amends ADR-0025's count from a note to an error. Issue #99.
+- `skills/standards/simplified-technical-english/references/rule-navigation.md`
+  carries two tables where it carried one. A table is one unit, so a table is
+  one authority class, and the single table mixed source locations with our own
+  advice about when to read them. The first table states where the standard
+  answers each question, and the second is our advice. ADR-0030.
+- A blockquote is a unit the checker reads, rather than a construct it refuses.
+  It is one block, from its first marker at column 0 to the first line without
+  one, named by a designator such as `[quote 8f3a2b1c]` whose digest binds the
+  quoted lines. That is the disposition a table and a fenced block already have.
+  The old refusal was never about the marker: the walk merged the quote with its
+  contents, so a quoted list reached a row as a paragraph carrying its own
+  markers. A line directly under a quote is refused instead, because a reader
+  continues a quote over a line that carries prose, and the walk holds no state
+  to say when. Leave a blank line under a quote. An indented marker stays
+  refused. `skills/standards/simplified-technical-english/references/examples.md`
+  went from 113 units and 41 refusals to 113 units and none. ADR-0031 records
+  the decision, and `test/gfm-render.test.js` holds every claim in it against
+  `micromark`.
 - A grounding matrix names the reading its audits answer to, above its table,
   as `**Source version:**` and a pin. The pin joins the row digest, so moving
   the source on voids every audit in the file at once. A `G` row cites a rule

@@ -309,8 +309,19 @@ dictionary, which this repository does not ship.
 
 ## Grounding matrices
 
-Each skill has a grounding matrix in `grounding/`. The matrix disposes of every
-unit of content in the skill, and each row says what that unit claims.
+Each file a skill ships to a writer has a grounding matrix in `grounding/`. The
+matrix disposes of every unit of content in that file, and each row says what
+that unit claims.
+
+One matrix disposes of one file. `SKILL.md` answers to
+`grounding/<tier>/<skill>.md`, and a file under `references/` answers to a
+matrix that mirrors its path, such as
+`grounding/standards/simplified-technical-english/references/examples.md`. A
+row names a heading, and two files in one skill can carry the same heading, so
+a shared row space would let a row claim the wrong occurrence. A file with no
+matrix fails the check, and so does a file under `grounding/` that grades no
+file any skill ships. ADR-0030
+records the decision.
 
 Rows come in three kinds:
 
@@ -369,14 +380,22 @@ skill fails the gate. ADR-0025 records that decision.
 
 `stylewright ground --check --all` fails when a skill changes and its matrix
 does not. Every heading, paragraph, list item, table and code block counts,
-including the ones before the first heading. Front matter does not, because it
-is metadata for the agent harness rather than instruction for a reader.
+including the ones before the first heading. Front matter in `SKILL.md` does
+not, because the harness reads it as metadata rather than as instruction for a
+reader. No harness reads a reference file, so a front matter block in one is
+refused instead.
 
 The check reads Markdown a line at a time, and it models no container. So it
 states the forms it reads: a blank line, any construct at column 0, a line that
 continues the paragraph above it, and an indented code block that stands on its
-own. It refuses every other line and names it, rather than reading a blockquote
-or a nested construct as the wrong unit.
+own. It refuses every other line and names it, rather than reading a nested
+construct as the wrong unit.
+
+A blockquote is one block, named by a digest of what it holds, as a table and a
+fenced block are. The quote runs from its first marker to the first line
+without one. Leave a blank line under it. A line directly below a quote is
+refused, because a reader may keep that line inside the quote and the check
+holds no state to say whether they do. ADR-0031 records the decision.
 
 A continuation line states what it may begin with. It carries a letter, a
 digit, or ordinary sentence punctuation. It also carries a backtick or a tilde,
@@ -384,10 +403,9 @@ where the line opens no fenced block. Any other lead is refused, because a lead
 character alone cannot say whether the line opens a container. Write such a
 line so it begins with a word, or write the construct at column 0.
 
-Three constructs are refused at column 0 as well, because the check reads none
+Two constructs are refused at column 0 as well, because the check reads neither
 of them:
 
-- A blockquote, whose contents the check reads as our own prose.
 - A heading with no text, such as `#`, which opens no section.
 - A list item with no content, such as `-`, which opens no item.
 

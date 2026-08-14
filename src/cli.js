@@ -256,7 +256,10 @@ export async function run(argv, ctx) {
     // that matters most: `ground --check` is a CI gate, and a name it does not
     // know contributed no findings and reported "Grounding clean." A gate that
     // fails open on a typo or a renamed skill is worse than no gate.
-    const unknown = names.filter((n) => !(n in all));
+    // `Object.hasOwn`, so a name the object inherits is unknown here whatever
+    // prototype the result carries. `constructor in all` answered true on a
+    // plain object, and the loop below then spread a function.
+    const unknown = names.filter((n) => !Object.hasOwn(all, n));
     if (unknown.length) {
       say(`Unknown skill: ${unknown.join(', ')}.`);
       say(`Available: ${Object.keys(all).sort().join(', ')}.`);
@@ -267,10 +270,14 @@ export async function run(argv, ctx) {
     // nothing a gate can act on, because no run of this program can raise it.
     // Counting the printed lines instead made the two indistinguishable, and
     // the number that says how little has been checked would have failed CI.
+    // The file a finding came from is printed beside the skill. A skill carries
+    // more than one graded file now, and an anchor is a heading, so two files
+    // in one skill can produce the same line. A finding about the directory
+    // rather than about a file names no file, and prints without one.
     let failed = 0;
     for (const name of names) {
       for (const f of all[name] ?? []) {
-        say(`${name}: ${f.code}: ${f.message}`);
+        say(`${name}: ${f.file ? `${f.file}: ` : ''}${f.code}: ${f.message}`);
         if (f.level !== 'note') failed++;
       }
     }

@@ -3,6 +3,41 @@ import path from 'node:path';
 
 export const TIERS = ['standards', 'craft'];
 
+/** The directory whose files a matrix disposes of, one file at a time. */
+export const GRADED_DIR = 'references';
+
+/**
+ * Whether a matrix disposes of this file, by its path inside the skill.
+ *
+ * `SKILL.md` and every Markdown file under `references/` are graded, and each
+ * of them one matrix at a time. `agents/` is not: a harness reads it as
+ * metadata, the way it reads front matter, and the Markdown walk cannot read
+ * YAML at all. `LICENSE` is not: it is a legal notice carrying no rule for a
+ * writer.
+ */
+export const isGraded = (rel) => rel === 'SKILL.md'
+  || (rel.startsWith(`${GRADED_DIR}/`) && rel.endsWith('.md'));
+
+/**
+ * Where the matrix for one file of a skill lives.
+ *
+ * A matrix disposes of ONE file, and the file it disposes of is the one its own
+ * path names. That is what keeps the row space separate once a skill carries
+ * more than one graded file: `Our anchor` names a heading, and two files in one
+ * skill can carry the same heading, so a shared row space would let a row claim
+ * an occurrence in the wrong file and the check would still pass. Issue #99
+ * asked the question and ADR-0030 records the answer.
+ *
+ * `SKILL.md` keeps the path every document, test and release already names.
+ * Every other graded file mirrors its own path under a directory named for the
+ * skill, so the mapping is one join and a reader finds the matrix by spelling
+ * out the file.
+ */
+export function matrixPathFor(skill, rel) {
+  if (rel === 'SKILL.md') return skill.groundingPath;
+  return path.join(skill.groundingDir, ...rel.split('/'));
+}
+
 /**
  * The line ending is not a signal about the content, so it is removed before
  * anything reads the text. `.gitattributes` governs a checkout of this
@@ -86,6 +121,7 @@ export async function loadCatalog(repoRoot) {
         dir,
         description: fm.description ?? '',
         groundingPath: path.join(repoRoot, 'grounding', tier, `${name}.md`),
+        groundingDir: path.join(repoRoot, 'grounding', tier, name),
       });
     }
   }

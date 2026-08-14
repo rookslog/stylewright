@@ -60,7 +60,11 @@ const errors = (findings) => findings.filter((f) => f.level !== 'note');
  * dated after today is refused against a moment the caller hands in.
  */
 const NOW = '2026-08-06T12:00:00.000Z';
-const check = (args) => checkSkill({ now: NOW, ...args });
+// `subject` names the file being graded, and it has no default: front matter is
+// metadata in `SKILL.md` and in nothing else, so a caller that does not say
+// which file it grades may not be handed that exemption. Every case below
+// grades a skill file unless it says otherwise.
+const check = (args) => checkSkill({ now: NOW, subject: 'SKILL.md', ...args });
 
 test('parses rows and skips the separator', () => {
   const rows = parseMatrix(MATRIX);
@@ -161,13 +165,13 @@ test('the check refuses to run without the day, rather than skipping the future 
   // A default would turn the future rule off for whoever forgot the argument,
   // and `ground --check` already carries the lesson about a gate that fails
   // open on a missing name.
-  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX }), InvalidMoment);
-  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now: 'today' }), InvalidMoment);
+  assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX }), InvalidMoment);
+  assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX, now: 'today' }), InvalidMoment);
 
   // The refusal carries the value and the spellings it accepts. A TypeError
   // said the type was wrong when the shape is what the check objects to.
   const thrown = (now) => {
-    try { checkSkill({ skillText: SKILL, matrixText: MATRIX, now }); return null; } catch (e) { return e; }
+    try { checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX, now }); return null; } catch (e) { return e; }
   };
   const err = thrown('2026-08-06T12:00:00+05:00');
   assert.equal(err.name, 'InvalidMoment');
@@ -183,7 +187,7 @@ test('the day the check runs on must itself be a day', () => {
   // not a day cannot bound anything.
   const ahead = audited(`9999-12-31 ${CURRENT}`);
   for (const now of ['9999-99-99', '0000-00-00', '2026-02-31', '2026-08-06extra', '2026-8-6']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: ahead, now }), InvalidMoment,
+    assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: ahead, now }), InvalidMoment,
       `${now} was accepted as the day the check runs on`);
 
   }
@@ -191,7 +195,7 @@ test('the day the check runs on must itself be a day', () => {
   // A bare day and a UTC timestamp are both moments, and both still refuse the
   // audit dated after them.
   for (const now of ['2026-08-06', '2026-08-06T12:00:00.000Z', '2026-08-06T12:00Z']) {
-    assert.ok(checkSkill({ skillText: SKILL, matrixText: ahead, now })
+    assert.ok(checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: ahead, now })
       .some((f) => f.code === 'audit-ahead-of-the-check'), `${now} was refused`);
   }
 });
@@ -203,12 +207,12 @@ test('the day the check runs on is UTC, so an offset cannot move it', () => {
   // a date, so the grammar refuses the form instead.
   const seventh = audited(`2026-08-07 ${CURRENT}`);
   for (const now of ['2026-08-07T00:30:00+05:00', '2026-08-06T19:30:00-05:00', '2026-08-06 12:00:00']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: seventh, now }), InvalidMoment,
+    assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: seventh, now }), InvalidMoment,
       `${now} was read as a UTC day`);
   }
 
   // The same instant written in UTC is the day the check compares against.
-  assert.ok(checkSkill({ skillText: SKILL, matrixText: seventh, now: '2026-08-06T19:30:00.000Z' })
+  assert.ok(checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: seventh, now: '2026-08-06T19:30:00.000Z' })
     .some((f) => f.code === 'audit-ahead-of-the-check'));
 });
 
@@ -612,7 +616,7 @@ test('a zero offset is UTC, and a bounded time is required', () => {
   // warrant that cannot apply to an offset of no hours.
   for (const now of ['2026-08-06T12:00:00+00:00', '2026-08-06T12:00:00-00:00',
     '2026-08-06T12:00:00.000+0000', '2026-08-06T12:00:00Z']) {
-    assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: FULLY, now })), [],
+    assert.deepEqual(errors(checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: FULLY, now })), [],
       `${now} is UTC and was refused`);
   }
 
@@ -620,7 +624,7 @@ test('a zero offset is UTC, and a bounded time is required', () => {
   // written day put the bound a day early. `99:99:99Z` was simply accepted.
   for (const now of ['2026-08-06T24:00:00Z', '2026-08-06T99:99:99Z', '2026-08-06T12:60:00Z',
     '2026-08-06T12:00:00+05:00', '2026-08-06 12:00:00']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: FULLY, now }), InvalidMoment,
+    assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: FULLY, now }), InvalidMoment,
       `${now} was read as a UTC moment`);
   }
 });
@@ -755,11 +759,11 @@ test('a leap second is 23:59:60 and a fraction belongs to the seconds', () => {
   // `|60` after any minute admitted 1439 times that never existed, and the
   // fraction sat outside the seconds group so `12:00.500Z` parsed.
   for (const now of ['2026-08-06T23:59:60Z', '2026-08-06T23:59:60.5Z', '2026-08-06T12:00:00.000Z']) {
-    assert.deepEqual(errors(checkSkill({ skillText: SKILL, matrixText: MATRIX, now })), [],
+    assert.deepEqual(errors(checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX, now })), [],
       `${now} is a moment and was refused`);
   }
   for (const now of ['2026-08-06T12:00:60Z', '2026-08-06T23:58:60Z', '2026-08-06T12:00.500Z']) {
-    assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now }), InvalidMoment,
+    assert.throws(() => checkSkill({ subject: 'SKILL.md', skillText: SKILL, matrixText: MATRIX, now }), InvalidMoment,
       `${now} is not a moment and was accepted`);
   }
 });
@@ -1057,10 +1061,19 @@ test('a heading with leading spaces is refused, not merged into prose', () => {
     /a heading that does not begin at column 0/);
 });
 
-test('a list inside a blockquote is refused, not flattened into one unit', () => {
-  // Two directives were read as one paragraph, so one row disposed of both.
-  const found = refused('> - Do first.\n> - Do second.');
-  assert.equal(found.match(/a blockquote/g).length, 2);
+test('a list inside a blockquote is one block, and its digest names the list', () => {
+  // Two directives were read as one paragraph carrying its own markers, so one
+  // row disposed of both and the words inside could change under it. The quote
+  // is a block now, on the terms a table and a fenced block already have: one
+  // unit, named by a digest of its contents, so editing a line inside it stops
+  // the row matching. Issue #99.
+  const text = '> - Do first.\n> - Do second.';
+  assert.equal(refused(text), '');
+  const blocks = (t) => contentUnits(`${SKILL}\n## Later\n\n${t}\n`).filter((u) => u.block);
+  const units = blocks(text);
+  assert.equal(units.length, 1);
+  assert.match(units[0].text, /^\[quote [0-9a-f]{8}\]$/);
+  assert.notEqual(blocks('> - Do first.\n> - Do third.')[0].text, units[0].text);
 });
 
 test('a list item indented under another is refused', () => {
@@ -1070,8 +1083,25 @@ test('a list item indented under another is refused', () => {
     /a list item that does not begin at column 0/);
 });
 
-test('a fence inside a blockquote is refused', () => {
-  assert.match(refused('> ```js\n> const x = 1;\n> ```'), /a blockquote/);
+test('a fence inside a blockquote is the quote\'s contents, not a block of its own', () => {
+  // The marker carries the quote, so the walk never reads the fence as an
+  // opener. One block, and the fence closes nothing outside it.
+  const text = '> ```js\n> const x = 1;\n> ```\n\nAlways preserve safety.';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`)
+    .filter((u) => u.anchor === 'Later');
+  assert.equal(units.filter((u) => u.block).length, 1);
+  assert.ok(units.some((u) => u.text === 'Always preserve safety.'));
+});
+
+test('a line directly under a blockquote is refused, because a reader may keep it', () => {
+  // A reader continues the quote over a line that carries prose, and ends it at
+  // a construct that interrupts a paragraph. Which one depends on the block open
+  // INSIDE the quote, and this walk holds no container state, so it names the
+  // line instead of guessing.
+  assert.match(refused('> Quoted.\nAlways preserve safety.'),
+    /a line directly under a blockquote/);
+  assert.equal(refused('> Quoted.\n\nAlways preserve safety.'), '');
 });
 
 test('a table indented under a list item is refused', () => {
@@ -1125,8 +1155,10 @@ test('an empty list marker opens a list, so its child block is refused', () => {
 
 test('a container prefix is refused before the line becomes a table', () => {
   // `> A | B` over `--- | ---` reached the table branch first and became a
-  // designator, so a blockquote passed the guard with no refusal at all.
-  assert.match(refused('> A | B\n--- | ---\n> c | d'), /a blockquote/);
+  // designator, so a blockquote passed the guard with no refusal at all. The
+  // quote is read as a quote now, and the delimiter under it is the line a
+  // reader may keep inside that quote.
+  assert.match(refused('> A | B\n--- | ---\n> c | d'), /a line directly under a blockquote/);
   assert.match(refused('  ## A | B\n--- | ---'),
     /a heading that does not begin at column 0/);
   assert.equal(refused('| a | b |\n|---|---|\n| c | d |'), '');
@@ -1403,7 +1435,7 @@ test('a refusal carries a remedy the author can follow', () => {
   }).find((f) => f.code === 'unmodelled-construct').message;
 
   for (const [text, remedy] of [
-    ['> quoted', /fenced block/],
+    ['> quoted\nProse under it.', /Leave a blank line under the quote/],
     ['#', /Give the heading its text/],
     ['-', /Give the item its words/],
     ['- A | B\n--- | ---', /Move the table out of the list/],
@@ -1428,9 +1460,10 @@ test('an indented construct with no list above it is code, and stands', () => {
 });
 
 test('a refusal names the line in the file, front matter counted', () => {
-  const skillText = `${SKILL}\n> Quoted.\n`;
-  const line = skillText.split('\n').indexOf('> Quoted.') + 1;
-  assert.deepEqual(unmodelled(skillText), [{ line, shape: 'a blockquote' }]);
+  const skillText = `${SKILL}\n  > Quoted.\n`;
+  const line = skillText.split('\n').indexOf('  > Quoted.') + 1;
+  assert.deepEqual(unmodelled(skillText),
+    [{ line, shape: 'a blockquote that does not begin at column 0' }]);
   assert.ok(check({ skillText, matrixText: MATRIX })
     .some((f) => f.code === 'unmodelled-construct' && f.message.startsWith(`line ${line}:`)));
 });
@@ -1743,4 +1776,291 @@ test('what a skill directory may ship passes, and the shipped catalogue does', a
   assert.deepEqual(Object.entries(all)
     .flatMap(([name, fs]) => fs.filter((f) => f.code === 'ungoverned-shipped-file')
       .map((f) => `${name}: ${f.message}`)), []);
+});
+
+// A skill carries more than one graded file. `SKILL.md` was the only one, and
+// `references/` shipped beside it with nothing disposing of a line. ADR-0025
+// settled that they are graded rather than evicted, and ADR-0030 says how: one
+// matrix per file, at the path that mirrors the file, so no row can claim an
+// occurrence in a file it was not written for.
+
+/** A copy of the fixture repository, with a reference file planted in it. */
+async function withReference(t, text, name = 'patterns.md') {
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-ref-'));
+  t.after(() => fsp.rm(repo, { recursive: true, force: true }));
+  await fsp.cp(REPO, repo, { recursive: true });
+  const dir = path.join(repo, 'skills', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(dir, { recursive: true });
+  await fsp.writeFile(path.join(dir, name), text);
+  return repo;
+}
+
+const REFERENCE = `# Patterns
+
+## Rules
+
+- Use no more than 20 words in a sentence.
+`;
+
+const REFERENCE_MATRIX = `# Grounding: references/patterns.md
+
+${DECLARED}
+
+${PINNED}
+
+| ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
+|---|---|---|---|---|---|---|
+| N-01 | Patterns | Patterns |  |  | Section title |  |
+| N-02 | Rules | Rules |  |  | Section title |  |
+| G-01 | Use no more than 20 words in a sentence. | Rules | DEMO-4 | unquoted | The Demo Standard, clause 4 | unaudited |
+`;
+
+test('a reference file with no matrix is refused, and the refusal names the path', async (t) => {
+  const repo = await withReference(t, REFERENCE);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'no-matrix');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.equal(refusal.file, 'references/patterns.md');
+  assert.match(refusal.message,
+    /grounding[\\/]standards[\\/]demo-standard[\\/]references[\\/]patterns\.md/);
+});
+
+test('a reference file graded by its own matrix passes, and its findings name it', async (t) => {
+  const repo = await withReference(t, REFERENCE);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  await fsp.writeFile(path.join(matrix, 'patterns.md'), REFERENCE_MATRIX);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.deepEqual(errors(found), []);
+  // The coverage note is per matrix, so the reference file gets its own.
+  const notes = found.filter((f) => f.file === 'references/patterns.md');
+  assert.deepEqual(notes.map((f) => f.code), ['audit-coverage', 'quote-coverage']);
+  assert.ok(found.some((f) => f.file === 'SKILL.md'), 'the skill keeps its own findings');
+
+  // The row space is separate, which is the whole reason for a second file. The
+  // reference file carries a heading `Rules` too, and the sentence under it is
+  // the sentence `SKILL.md` carries, so one shared space would let either
+  // matrix claim the other's occurrence.
+  await fsp.writeFile(path.join(matrix, 'patterns.md'),
+    REFERENCE_MATRIX.replace('| N-01 | Patterns | Patterns |  |  | Section title |  |\n', ''));
+  const after = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.deepEqual(errors(after).map((f) => [f.file, f.code]),
+    [['references/patterns.md', 'uncovered-statement']]);
+});
+
+test('a matrix that grades no file the skill ships is refused', async (t) => {
+  // The mirror of the file with no matrix. A reference file renamed under its
+  // matrix leaves rows nothing opens, and no check here reads a file nobody
+  // names, so it would pass forever.
+  const repo = await withReference(t, REFERENCE);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  await fsp.writeFile(path.join(matrix, 'patterns.md'), REFERENCE_MATRIX);
+  await fsp.writeFile(path.join(matrix, 'withdrawn.md'), REFERENCE_MATRIX);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'matrix-grades-nothing');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.match(refusal.message, /withdrawn\.md/);
+});
+
+test('a reference file that is not a plain file is refused and never read', async (t) => {
+  // `readFile` resolves a link, so grading one would read bytes from wherever
+  // it points, and a FIFO at a graded path would hang the run rather than fail
+  // it. The refusal is the finding, and it fails the gate either way.
+  const repo = await withReference(t, REFERENCE);
+  const dir = path.join(repo, 'skills', 'standards', 'demo-standard', 'references');
+  const outside = path.join(repo, 'outside.md');
+  await fsp.writeFile(outside, '# Outside\n');
+  await fsp.rm(path.join(dir, 'patterns.md'));
+  try {
+    await fsp.symlink(outside, path.join(dir, 'patterns.md'));
+  } catch {
+    return t.skip('this platform does not let the test create a symbolic link');
+  }
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.ok(found.some((f) => f.code === 'shipped-file-not-regular'));
+  assert.deepEqual(found.filter((f) => f.file === 'references/patterns.md'), []);
+  return undefined;
+});
+
+test('a reference file no Markdown walk can read is refused by name', async (t) => {
+  // The allowlist admits the directory. A matrix disposes of what the walk
+  // reads, and the walk reads Markdown, so a file of another kind there ships
+  // with nothing able to grade it.
+  const repo = await withReference(t, 'interface:\n', 'agents.yaml');
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'reference-not-markdown');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.match(refusal.message, /^references\/agents\.yaml/);
+});
+
+test('front matter is metadata in SKILL.md and a defect in a reference file', async (t) => {
+  // The exemption is a fact about the file a harness reads, not about Markdown.
+  // A reference file has no harness, so a closed `---` block there was removed
+  // from the units and reported by nothing, while a reader saw every line of it
+  // inside a heading. `test/gfm-render.test.js` holds that render.
+  const repo = await withReference(t, `---\nnote: Always preserve safety.\n---\n\n${REFERENCE}`);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  await fsp.writeFile(path.join(matrix, 'patterns.md'), REFERENCE_MATRIX);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'front-matter-outside-skill-md');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.equal(refusal.file, 'references/patterns.md');
+  // The skill's own front matter is untouched, or every skill here would fail.
+  assert.deepEqual(found.filter((f) => f.code === 'front-matter-outside-skill-md'
+    && f.file === 'SKILL.md'), []);
+});
+
+test('the check refuses to run without the file it is grading', () => {
+  // The same rule the day obeys. Front matter is exempt for one file, so a
+  // caller that does not name the file may not be handed that exemption.
+  assert.throws(() => checkSkill({ skillText: SKILL, matrixText: MATRIX, now: NOW }), TypeError);
+  assert.throws(() => checkSkill({
+    skillText: SKILL, matrixText: MATRIX, now: NOW, subject: '',
+  }), TypeError);
+});
+
+test('a matrix that is not a plain file is refused and never read', async (t) => {
+  // A matrix is identified by its path, so following a link there lets two
+  // graded files share one audit record, or lets the check read a record from
+  // outside the grounding tree. The stray scan cannot see it either, because
+  // the pathname it walks is exactly the pathname that is held.
+  const repo = await withReference(t, REFERENCE);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  const outside = path.join(repo, 'outside-matrix.md');
+  await fsp.writeFile(outside, REFERENCE_MATRIX);
+  try {
+    await fsp.symlink(outside, path.join(matrix, 'patterns.md'));
+  } catch {
+    return t.skip('this platform does not let the test create a symbolic link');
+  }
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'matrix-not-regular');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.equal(refusal.file, 'references/patterns.md');
+  // Read through the link, the matrix matches and the file passes. It must not.
+  assert.deepEqual(found.filter((f) => f.file === 'references/patterns.md'
+    && f.code !== 'matrix-not-regular'), []);
+  return undefined;
+});
+
+test('a matrix whose skill is gone is found, under the name its path implies', async (t) => {
+  // The scan used to start from the catalogue, so a grounding directory for a
+  // deleted or renamed skill was never visited and the run stayed green over
+  // exactly the stale record this refuses. Both levels are the same defect: a
+  // leftover reference matrix, and a leftover matrix for the skill itself.
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-stray-'));
+  t.after(() => fsp.rm(repo, { recursive: true, force: true }));
+  await fsp.cp(REPO, repo, { recursive: true });
+  const gone = path.join(repo, 'grounding', 'standards', 'withdrawn', 'references');
+  await fsp.mkdir(gone, { recursive: true });
+  await fsp.writeFile(path.join(gone, 'guide.md'), REFERENCE_MATRIX);
+  await fsp.writeFile(path.join(repo, 'grounding', 'standards', 'retired.md'), REFERENCE_MATRIX);
+  const all = await checkAll(repo, { now: NOW });
+  const strays = Object.entries(all).flatMap(([name, found]) => found
+    .filter((f) => f.code === 'matrix-grades-nothing').map((f) => [name, f.message]));
+  assert.equal(strays.length, 2, JSON.stringify(strays));
+  assert.ok(strays.some(([name, m]) => name === 'withdrawn' && /withdrawn\/references\/guide\.md/.test(m)));
+  assert.ok(strays.some(([name, m]) => name === 'retired' && /standards\/retired\.md/.test(m)));
+  // A skill that is still in the catalogue keeps a clean tree.
+  assert.deepEqual(all['demo-standard'].filter((f) => f.code === 'matrix-grades-nothing'), []);
+});
+
+test('a directory at a matrix path is named for what it is', async (t) => {
+  // One message about links told the author of a directory the wrong thing,
+  // and the "write one at" remedy went with it. The type found is named now.
+  const repo = await withReference(t, REFERENCE);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(path.join(matrix, 'patterns.md'), { recursive: true });
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'matrix-not-regular');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.match(refusal.message, /is a directory/);
+  assert.doesNotMatch(refusal.message, /Write one at/);
+});
+
+/** Whether this filesystem resolves two spellings of one name to one file. */
+async function foldsCase(dir) {
+  await fsp.writeFile(path.join(dir, 'case-probe.tmp'), 'x');
+  try {
+    await fsp.stat(path.join(dir, 'CASE-PROBE.tmp'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await fsp.rm(path.join(dir, 'case-probe.tmp'), { force: true });
+  }
+}
+
+test('a miscased matrix is the matrix, not a stray to delete', async (t) => {
+  // Two spellings can be one file. The check read the matrix at the held
+  // spelling and then reported it as a stray at the walked one, telling the
+  // author to delete the file it had just used. The install engine asks the
+  // filesystem this question already.
+  const repo = await withReference(t, REFERENCE);
+  if (!await foldsCase(repo)) return t.skip('this filesystem does not fold case');
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  await fsp.writeFile(path.join(matrix, 'Patterns.md'), REFERENCE_MATRIX);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.deepEqual(found.filter((f) => f.code === 'matrix-grades-nothing'), [],
+    'the matrix the check read is not a stray');
+  assert.deepEqual(errors(found), [], `the file is graded: ${JSON.stringify(errors(found))}`);
+  return undefined;
+});
+
+test('a name JavaScript owns is a skill name like any other', async (t) => {
+  // A stray's name comes from a path, so `grounding/standards/constructor/`
+  // read back a FUNCTION rather than nothing, and appending to it threw and
+  // took the report for every other skill with it. A skill directory called
+  // `__proto__` is the other half: assigning that on an ordinary object
+  // invokes the inherited setter, so the skill left the report in silence.
+  // `keep` in the install statement is built prototype-safely for that reason.
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-proto-'));
+  t.after(() => fsp.rm(repo, { recursive: true, force: true }));
+  await fsp.cp(REPO, repo, { recursive: true });
+  for (const name of ['constructor', 'toString', '__proto__']) {
+    const gone = path.join(repo, 'grounding', 'standards', name, 'references');
+    await fsp.mkdir(gone, { recursive: true });
+    await fsp.writeFile(path.join(gone, 'guide.md'), REFERENCE_MATRIX);
+  }
+  const owned = path.join(repo, 'skills', 'craft', '__proto__');
+  await fsp.mkdir(owned, { recursive: true });
+  await fsp.writeFile(path.join(owned, 'SKILL.md'),
+    '---\nname: __proto__\ndescription: A skill at a name JavaScript owns.\n---\n\n# Owned\n');
+
+  const all = await checkAll(repo, { now: NOW });
+  for (const name of ['constructor', 'toString']) {
+    assert.ok(Object.hasOwn(all, name), `${name} reached the report`);
+    assert.ok(all[name].some((f) => f.code === 'matrix-grades-nothing'));
+  }
+  // `__proto__` is both a stray matrix and a real skill here, so its entry
+  // carries the skill's own findings and the stray beside them.
+  assert.ok(Object.hasOwn(all, '__proto__'), 'the skill reached the report');
+  assert.ok(all['__proto__'].some((f) => f.code === 'no-matrix'));
+  assert.ok(all['__proto__'].some((f) => f.code === 'matrix-grades-nothing'));
+  // Nothing the object merely inherits reads as a skill.
+  assert.ok(!Object.hasOwn(all, 'hasOwnProperty'));
+  assert.equal(all.valueOf, undefined, 'the result carries no prototype');
+});
+
+test('every file the shipped catalogue grades has a matrix', async () => {
+  // Issue #99 in the shape it was reported: the two STE reference files ship on
+  // every install pathway, and no row disposed of a line in either.
+  const all = await checkAll(path.join(import.meta.dirname, '..'), { now: NOW });
+  assert.deepEqual(Object.entries(all)
+    .flatMap(([name, found]) => found
+      .filter((f) => ['no-matrix', 'matrix-grades-nothing', 'reference-not-markdown'].includes(f.code))
+      .map((f) => `${name}: ${f.message}`)), []);
+  const graded = all['simplified-technical-english'].map((f) => f.file);
+  for (const rel of ['SKILL.md', 'references/examples.md', 'references/rule-navigation.md']) {
+    assert.ok(graded.includes(rel), `${rel} was read`);
+  }
 });

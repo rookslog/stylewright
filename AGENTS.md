@@ -32,6 +32,30 @@ them, so look for them first.
 Every unit of content in a graded section of a skill is disposed of in
 `grounding/<tier>/<skill>.md`. Nothing enters a skill unclassified.
 
+A matrix disposes of ONE file. `SKILL.md` answers to
+`grounding/<tier>/<skill>.md`, and every Markdown file under `references/`
+answers to a matrix mirroring its path, such as
+`grounding/standards/simplified-technical-english/references/examples.md`. The
+row space is what forces that. `Our anchor` names a heading, two files in one
+skill can carry the same heading, and a shared space let a row claim an
+occurrence in the file nobody wrote it for while every cell still matched. The
+file identity sits in the matrix's own path, where a filesystem holds it rather
+than a cell, so no column moved and no digest changed. A graded file with no
+matrix is refused, and so is a file under `grounding/` that grades no file any
+skill ships. `references/` holds
+Markdown, because the walk reads Markdown alone and nothing can grade a file it
+cannot read. ADR-0030 records the decision.
+
+Two things follow from identity being a PATH. The stray scan walks the whole
+grounding tree and derives the skill from the path, rather than walking out from
+each catalogue entry: a matrix whose skill was deleted or renamed sits under a
+directory the catalogue cannot name, so starting from the catalogue never
+visited the one case the check exists for. And a matrix is asked for with
+`lstat` and refused unless it is a plain file, because following a link lets two
+graded files share one audit record, or lets the check read a record from
+outside the tree. Neither is visible to the other: the link sits at exactly the
+pathname the scan holds.
+
 - A **`G` row** claims the authority of the source. Its rule cell names the rule.
 - An **`E` row** is our own editorial guidance. Its rule cell is empty.
 - An **`N` row** is narrative. It orients the reader and asserts no rule, so it
@@ -51,18 +75,37 @@ entered the STE skill unclassified while `ground --check` reported clean. Any
 change that narrows what the checker sees reopens that hole, whatever it widens
 elsewhere.
 
-A table and a fenced block are units. Neither fits in a matrix cell, so each
-carries a designator such as `[table 8f3a2b1c]`, whose digest names the block
-CONTENTS. An ordinal named a position instead, so a table could be rewritten
-whole while the matrix stayed clean. Exempting these was the first attempt at
-this fix, and it was the same defect renamed. A rule written as a table is
-still a rule.
+A table, a fenced block and a blockquote are units. None of them fits in a
+matrix cell, so each carries a designator such as `[table 8f3a2b1c]`, whose
+digest names the block CONTENTS. An ordinal named a position instead, so a table
+could be rewritten whole while the matrix stayed clean. Exempting these was the
+first attempt at this fix, and it was the same defect renamed. A rule written as
+a table is still a rule.
 
 There are no exempt headings and no exempt sections. A heading is a unit, so is
 anything above the first heading, and `Source`, `Boundary` and `Notice` grade
 like any other section. Each of those was a hiding place: an instruction under
 a heading called `Source` was disposed of by nothing. Front matter is the one
 thing outside the check, because it is metadata for the harness.
+
+That exemption belongs to `SKILL.md` and to no other file. The harness parses a
+skill's front matter and never shows it to a writer, which is the whole warrant,
+and no harness reads a reference file's prefix. A closed `---` block there was
+removed from the units and reported by nothing, so a rule written there shipped
+visible to the reader and invisible to the check. `checkSkill` takes the file it
+is grading as `subject`, with no default, because a caller that does not say
+which file it grades may not be handed the exemption. A block in any other file
+is refused by name.
+
+State what that block renders as carefully, because it depends on the lines.
+`test/gfm-render.test.js` puts five shapes through the parser, by ADR-0028's
+rule: a mapping gives a thematic break and a setext heading, a list gives a
+list, a fenced block gives code, and a table gives a table. An earlier draft of
+this paragraph named the first render as the reason, in four documents at once,
+which the parser refutes for the other four shapes. The property that holds
+across all of them is the one the refusal rests on, and it is the one to state:
+a reader sees the block's contents, and the walk reads no unit from any line of
+it.
 
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
@@ -254,9 +297,23 @@ The checker reads Markdown a line at a time, and it models no container. So it
 states the forms it reads and refuses every line outside them. Those forms are
 a blank line, any construct at column 0, a line that continues the paragraph
 above it while carrying prose, and an indented code block that stands on its
-own. A blockquote, an empty marker and an empty heading are the exceptions at
-column 0, because the checker does not read those either. Anything outside the
-forms fails as `unmodelled-construct`, with the line and what to write instead.
+own. An empty marker and an empty heading are the exceptions at column 0,
+because the checker does not read those either. Anything outside the forms
+fails as `unmodelled-construct`, with the line and what to write instead.
+
+A blockquote was a third exception until the walk was given a reading of one.
+It is a block now, from its first marker at column 0 to the first line without
+one, named by a digest of what it holds. The refusal was never about the
+marker: the walk merged the quote with its contents, so `> - one gasket`
+reached a row as a paragraph carrying its own markers. A reading a reader agrees
+with removes the exception, and that is ADR-0016 applied forwards rather than
+a rule naming the shape. A line directly under a quote is refused instead,
+because a reader continues the quote over a line that carries prose and ends it
+at one that interrupts a paragraph, and which of those depends on the block open
+INSIDE the quote. The remedy is the blank line every shipped file already has.
+An indented marker stays refused, as an indented table does. ADR-0031 records
+the decision, and `test/gfm-render.test.js` pins the over-refusal beside the
+render that measures it.
 
 A continuation line states what it may BEGIN with, and that is the third form
 read the same way round as the rest. It carries a letter, a digit or ordinary
@@ -357,9 +414,9 @@ line that matters: no matrix reaches an installed tree.
 
 ### A file in a skill directory that nothing governs
 
-The matrix disposes of `SKILL.md` and opens no other file, so a second file
-beside it installs ungraded on every pathway. A `SOURCE.md` shipped that way
-for four releases, carrying numbered procedures at whoever read it.
+The matrix used to dispose of `SKILL.md` and to open no other file, so a second
+file beside it installed ungraded on every pathway. A `SOURCE.md` shipped that
+way for four releases, carrying numbered procedures at whoever read it.
 
 So a skill directory ships `SKILL.md`, `LICENSE`, `agents/`, and `references/`,
 and `ground --check` refuses anything else by name. The source record moved to
@@ -378,13 +435,15 @@ plain file. `copyFile` resolves a link, so a link called `LICENSE` ships the
 bytes on the other end of it and the allowlist would have passed it. This is
 the disposition a study already gives a link inside it.
 
-`references/` is the one entry whose governance is owed. `SKILL.md` routes a
+`references/` was the one entry whose governance was owed. `SKILL.md` routes a
 writer into it, so it is context and not an audit record, and the answer to
-ungraded context is to grade it rather than to evict it. Until issue #99 lands,
-every run prints how many files under `references/` no row disposes of. That
-count is a note, like `audit-coverage` beside it. Do not promote it to an
-error, and do not remove it to quiet the output. ADR-0025 records both
-decisions.
+ungraded context is to grade it rather than to evict it. ADR-0025 settled that
+and printed a count in the meantime, because nothing could grade those files
+while the walk refused a blockquote. Issue #99 landed both halves. A matrix now
+disposes of each file under `references/`, and the count is an error naming the
+matrix to write. Read that as the note being answered rather than removed: what
+replaced it refuses more than it counted. ADR-0030 records the decision, and it
+amends ADR-0025.
 
 ### Impurity in `src/`
 
