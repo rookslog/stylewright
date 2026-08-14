@@ -2,7 +2,7 @@
 type: adr
 status: accepted
 decided: 2026-08-07
-issues: [21, 43, 94, 95]
+issues: [21, 43, 94, 95, 113]
 ---
 
 # ADR-0024 — A probe arm enables the user source, and plants in the description
@@ -329,3 +329,51 @@ identity tuple and to nothing wider: harness build `2.1.222`, platform
 model each record names. Nothing generalises across any element of it, as
 section 4.1 already says of everything else, and a reader who wants the served
 build reads it from the record rather than from this sentence.
+
+## Amended 2026-08-14 — flag presence is a value reading
+
+The split above fixed one half of the case it names. `checkRecord` read the
+flag NAMES as well as the structure, so it refused a record that omitted a
+required flag and a record that named a flag outside the set. Only a wrong
+VALUE reached the acceptance test.
+
+That left the guarantee false in the shape it was written. A record omitting
+`--strict-mcp-config` was a broken file. So was a record carrying `--verbose`.
+The flag set had already moved once, on this ADR, and the next move that adds
+or removes a NAME rather than a value would make every committed record
+malformed again. Issue 113 reports it, and an adversarial review of pull
+request #110 found it.
+
+**Decision.** Allowlist membership and required-flag presence move to the value
+reading. `isolationProblems` now reads the names, the presence and the values,
+and `deriveOutcome` reports all three as `isolated`. `flagShapeProblems` keeps
+structural impossibility alone: flags that are not a non-empty array, an entry
+that is not a string, a flag stated twice, a value-taking flag at the end of
+the list, and a flag sitting where another flag's value belongs. The operator
+ruled on 2026-08-14, on the fork issue 113 states.
+
+The guarantee now holds whole. A record collected under the wrong flags derives
+FAIL, prints as FAIL, and can never read as a pass, and that covers the omitted
+flag and the unknown flag as well as the wrong value.
+
+**The principle, stated once.** A check may refuse a record on a STABLE
+IDENTITY fact of the collector. The pathway combination is one, and it stays a
+shape refusal untouched, because no run of this collector could have written a
+pathway no runner drives. A check may not refuse a record on a VERSIONED
+PROTOCOL CHOICE. Flag names, required presence and `TRACE_LINE_LIMIT` are all
+such choices. Each one moves when this repository amends the protocol, and a
+check that refuses on it retires committed evidence on the day it moves. So a
+versioned choice decides a READING, and never a record's validity. This
+generalises the `TRACE_LINE_LIMIT` rule the section above already states.
+
+**What the parse does not change.** Every element is still consumed. An unknown
+flag consumes one element under both readings, so the two walks see the same
+list and `flagsSeen` answers the same question it answered before.
+
+**What would reopen this.** The corpus admits records from this repository's
+own collector and from nothing else, which is what makes an unknown flag a
+protocol question rather than an authenticity question. If `bench/probes/` ever
+admits a record from outside that collector, the allowlist becomes a genuine
+authenticity surface, and refusing an unknown flag would then be a claim about
+where the file came from rather than about which protocol version wrote it.
+Revisit this decision on that day.

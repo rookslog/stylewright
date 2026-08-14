@@ -478,11 +478,23 @@ number published in `bench/README.md`.
   the protocol.
 - **A record collected under the wrong flags is a failed probe, not a
   broken file.** `checkRecord` reads the flag shape and `deriveOutcome`
-  reads the values, as `isolated`. They were one reading, which made such
-  a record malformed — so the repository could not keep one, and the rule
-  that a recorded failure is a result did not hold for the isolation
-  failure. Nothing is weakened: the record still derives FAIL and can
-  never read as a pass. ADR-0024.
+  reads the names, the presence and the values, as `isolated`. They were
+  one reading, which made such a record malformed — so the repository
+  could not keep one, and the rule that a recorded failure is a result
+  did not hold for the isolation failure. The first split reached the
+  wrong-VALUE case alone, so a record omitting `--strict-mcp-config` or
+  carrying `--verbose` was still a broken file, and the next move that
+  adds or removes a flag NAME would have made every committed record
+  malformed. Issue 113 reports it. A check may refuse a record on a
+  stable identity fact of the collector, and never on a protocol choice
+  this repository versions. Flag names, required presence and
+  `TRACE_LINE_LIMIT` are versioned choices, so each decides a reading and
+  never a record's validity. `flagShapeProblems` keeps structural
+  impossibility alone: flags that are not a non-empty array, an entry
+  that is not a string, a flag stated twice, a value-taking flag at the
+  end of the list, and a flag sitting where another flag's value belongs.
+  Nothing is weakened: the record still derives FAIL and can never read
+  as a pass. ADR-0024.
 - A probe arm runs `--setting-sources user`, and `bench/run.sh` selects
   its spelling from `--rules`: `none` gives the no-guidance control `''`,
   and `user` gives the treatment arm `user`. The divergence is between a
@@ -549,7 +561,11 @@ number published in `bench/README.md`.
   pathways no run of this collector could have written. That is not the
   wrong-flags rule loosening: a wrong-flag record is a run that HAPPENED
   and must stay readable, and a pathway no runner drives is a file this
-  tool could not have produced. A trace beside a flag set carrying no
+  tool could not have produced. The pathway combination is a stable
+  identity fact, so it stays a shape refusal. The flag set is not one,
+  and it is no longer an example of this rule — `flagShapeProblems` reads
+  structure alone, and the names and the presence answer to
+  `isolationProblems` beside the values. A trace beside a flag set carrying no
   `--debug-file` withholds as `unrequested`, and `managed_seen` withholds
   on the same condition, because the question there is not whether the
   count is a floor but whether the bytes are evidence at all. The
