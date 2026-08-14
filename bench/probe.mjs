@@ -360,22 +360,26 @@ function keyPaths(value, prefix = '') {
  * `isolated`.
  *
  * `flagShapeProblems` is the RECORD CHECK, and it reads structural
- * impossibility alone. `runArms` builds ONE flag set above the loop, so a
- * record carries a list of strings where each named flag appears once and each
- * value-taking flag is followed by its value. Nothing else there is a fact
- * about the collector. So the shape reading keeps five refusals: flags that are
- * not a non-empty array, an entry that is not a string, a flag stated twice, a
+ * impossibility alone. `armFlags` returns a LITERAL array and `runArms` builds
+ * one of them above the loop, so a record carries a list of strings that
+ * alternates flags with their values, each flag stated once, and no element
+ * floating between them. That much holds under any revision. So the shape
+ * reading keeps six refusals: flags that are not a non-empty array, an entry
+ * that is not a string, an element that is neither a flag nor a flag's value
+ * named by position alone, a flag stated twice whatever its name, a
  * value-taking flag at the end of the list, and a flag sitting where another
  * flag's value belongs. `checkRecord` asks this one.
  *
- * The line between them is stable identity against versioned protocol. A check
- * may refuse a record on a fact about the collector that does not move — the
- * pathway combination is one, because no run could have written a pathway no
- * runner drives. It may not refuse a record on a PROTOCOL CHOICE this
- * repository versions. Which flags a probe arm runs is such a choice, and so is
- * `TRACE_LINE_LIMIT`. The set moved on 2026-08-07 and it will move again, and a
- * check that refuses on it retires committed evidence every time it moves. So a
- * versioned choice decides a READING and never a record's validity.
+ * The line between them is stable identity against versioned protocol, and the
+ * flag walk carries it twice over. A check may refuse a record on a fact about
+ * the collector that does not move. The pathway combination is one, because no
+ * run could have written a pathway no runner drives, and the INVOCATION GRAMMAR
+ * is another, because the array is constructed rather than parsed. A check may
+ * not refuse a record on the NAMED SET, which this repository versions. Which
+ * flags a probe arm runs is such a choice, and so is `TRACE_LINE_LIMIT`. The set
+ * moved on 2026-08-07 and it will move again, and a check that refuses on it
+ * retires committed evidence every time it moves. So a versioned choice decides
+ * a READING and never a record's validity.
  *
  * Both readings were one function, and `checkRecord` asked the acceptance test.
  * That made a probe which ran the wrong flags a MALFORMED RECORD rather than a
@@ -409,6 +413,11 @@ export function flagShapeProblems(flags) {
  * `includes`, because a flag sitting in a value position is not a flag the arm
  * ran. One walk answers both questions, so no second reading of an invocation
  * can drift from the one the acceptance test uses.
+ *
+ * It holds every flag the walk read in a flag position, and not every ALLOWED
+ * one. A flag outside the set is still a flag the arm ran, and the duplicate
+ * check has to see it — reading membership first let `--verbose --verbose` past
+ * a rule that names no flag.
  */
 export function flagsSeen(flags) {
   return flagProblems(flags, false).seen;
@@ -434,21 +443,35 @@ function flagProblems(flags, values) {
       i += 1;
       continue;
     }
+    if (!flag.startsWith('-')) {
+      // A floating element, which is the GRAMMAR and not the named set. The
+      // array is CONSTRUCTED rather than parsed, so every element is a flag or
+      // the value of the flag before it under any revision, whatever the set
+      // becomes. So this stays a shape refusal.
+      //
+      // It names the position and never the element. The old message quoted it,
+      // and a credential-shaped positional then withheld the whole line through
+      // `redact` — safe, and unreadable. A position carries nothing of the
+      // record, so the diagnostic survives.
+      problems.push(`the entry at position ${i} is not part of a probe arm's invocation.`);
+      i += 1;
+      continue;
+    }
+    // Duplication is read BEFORE membership, and it is name-agnostic. `runArms`
+    // builds one flag set, so NO flag is stated twice under any revision, and
+    // reading the duplicate only for a flag this repository currently knows let
+    // `--verbose --verbose` through the shape check.
+    if (seen.has(flag)) problems.push(`${flag} appears twice, so the arm's surface is unclear.`);
+    seen.add(flag);
     if (!ALLOWED_FLAGS.includes(flag)) {
       // A flag outside the set is a configuration surface the arm never opened,
       // so the ACCEPTANCE test refuses it. The shape reading passes it over,
       // because the set is a protocol choice this repository versions. Either
       // way it consumes one element, so both readings walk the list alike.
-      if (values) {
-        problems.push(flag.startsWith('-')
-          ? `${flag} is not a flag a probe arm runs.`
-          : `"${flag}" at position ${i} is not part of a probe arm's invocation.`);
-      }
+      if (values) problems.push(`${flag} is not a flag a probe arm runs.`);
       i += 1;
       continue;
     }
-    if (seen.has(flag)) problems.push(`${flag} appears twice, so the arm's surface is unclear.`);
-    seen.add(flag);
     if (!FLAGS_TAKING_A_VALUE.includes(flag)) {
       i += 1;
       continue;

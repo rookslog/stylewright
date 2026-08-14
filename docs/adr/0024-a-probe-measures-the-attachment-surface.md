@@ -348,9 +348,10 @@ request #110 found it.
 reading. `isolationProblems` now reads the names, the presence and the values,
 and `deriveOutcome` reports all three as `isolated`. `flagShapeProblems` keeps
 structural impossibility alone: flags that are not a non-empty array, an entry
-that is not a string, a flag stated twice, a value-taking flag at the end of
-the list, and a flag sitting where another flag's value belongs. The operator
-ruled on 2026-08-14, on the fork issue 113 states.
+that is not a string, an element that is neither a flag nor a flag's value
+named by position alone, a flag stated twice whatever its name, a value-taking
+flag at the end of the list, and a flag sitting where another flag's value
+belongs. The operator ruled on 2026-08-14, on the fork issue 113 states.
 
 The guarantee now holds whole. A record collected under the wrong flags derives
 FAIL, prints as FAIL, and can never read as a pass, and that covers the omitted
@@ -366,9 +367,32 @@ check that refuses on it retires committed evidence on the day it moves. So a
 versioned choice decides a READING, and never a record's validity. This
 generalises the `TRACE_LINE_LIMIT` rule the section above already states.
 
+**The named set moves, and the invocation grammar does not.** A review of the
+pull request carrying this section drew the line one notch too far, and this
+records the correction. `armFlags` returns a LITERAL array, so a record's flag
+list alternates flags with their values, states each flag once, and floats no
+element between them — under every revision, whatever the set becomes. The
+grammar is therefore a stable identity fact and it stays on the shape side, and
+only membership and presence moved. Two cases were wrong for one round. A
+duplicated UNKNOWN flag escaped the shape check entirely, because the
+membership branch returned before the duplicate branch ran, so a rule that
+names no flag was read only for the flags this repository currently knows. And
+a floating positional moved value-side with the names, though no revision can
+produce one.
+
+**A shape message names a position and never an element.** The positional
+refusal used to quote the element back. `redact` withheld the whole line when
+that element was credential-shaped, which was safe and unreadable. A position
+carries nothing of the record, so the diagnostic survives the case it was built
+for. The duplicate message still names the flag, because a dash-led token IS
+the flag rather than a value it carries, and `redact` at emission covers the
+one case where such a token is credential-shaped.
+
 **What the parse does not change.** Every element is still consumed. An unknown
 flag consumes one element under both readings, so the two walks see the same
-list and `flagsSeen` answers the same question it answered before.
+list. `flagsSeen` now holds every flag the walk read in a flag position rather
+than every ALLOWED one, which is what lets the duplicate check see a name this
+repository does not know, and no consumer's question changes answer.
 
 **What would reopen this.** The corpus admits records from this repository's
 own collector and from nothing else, which is what makes an unknown flag a

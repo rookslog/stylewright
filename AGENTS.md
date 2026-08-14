@@ -489,12 +489,20 @@ number published in `bench/README.md`.
   stable identity fact of the collector, and never on a protocol choice
   this repository versions. Flag names, required presence and
   `TRACE_LINE_LIMIT` are versioned choices, so each decides a reading and
-  never a record's validity. `flagShapeProblems` keeps structural
-  impossibility alone: flags that are not a non-empty array, an entry
-  that is not a string, a flag stated twice, a value-taking flag at the
-  end of the list, and a flag sitting where another flag's value belongs.
-  Nothing is weakened: the record still derives FAIL and can never read
-  as a pass. ADR-0024.
+  never a record's validity. The named set moves, and the invocation
+  GRAMMAR does not: `armFlags` returns a literal array, so no revision
+  floats an element between a flag and its value or states one flag
+  twice. So `flagShapeProblems` keeps structural impossibility alone:
+  flags that are not a non-empty array, an entry that is not a string, an
+  element that is neither a flag nor a flag's value named by position
+  alone, a flag stated twice whatever its name, a value-taking flag at
+  the end of the list, and a flag sitting where another flag's value
+  belongs. Reading membership before duplication let `--verbose
+  --verbose` past a rule that names no flag, and a shape message names a
+  position rather than an element, because quoting one withheld the whole
+  line through `redact` whenever it was credential-shaped. Nothing is
+  weakened: the record still derives FAIL and can never read as a pass.
+  ADR-0024.
 - A probe arm runs `--setting-sources user`, and `bench/run.sh` selects
   its spelling from `--rules`: `none` gives the no-guidance control `''`,
   and `user` gives the treatment arm `user`. The divergence is between a
