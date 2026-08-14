@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { loadCatalog, readFrontmatter } from '../src/catalog.js';
+import {
+  loadCatalog, readFrontmatter, isGraded, matrixPathFor,
+} from '../src/catalog.js';
 import { contained } from '../src/manifest.js';
 import { walk } from '../src/tree.js';
 
@@ -76,6 +78,30 @@ test('grounding path points outside the skill directory', async () => {
   const skill = cat.find((s) => s.name === 'demo-standard');
   assert.ok(skill.groundingPath.endsWith(path.join('grounding', 'standards', 'demo-standard.md')));
   assert.ok(!skill.groundingPath.startsWith(skill.dir));
+});
+
+test('a matrix is found by the path of the file it grades', async () => {
+  // One matrix disposes of one file, and the file it disposes of is the one its
+  // own path names. `SKILL.md` keeps the path every document and release
+  // already names, and every other graded file mirrors its own path.
+  const cat = await loadCatalog(REPO);
+  const skill = cat.find((s) => s.name === 'demo-standard');
+  assert.equal(matrixPathFor(skill, 'SKILL.md'), skill.groundingPath);
+  assert.ok(matrixPathFor(skill, 'references/patterns.md')
+    .endsWith(path.join('grounding', 'standards', 'demo-standard', 'references', 'patterns.md')));
+  assert.ok(!matrixPathFor(skill, 'references/patterns.md').startsWith(skill.dir));
+});
+
+test('a matrix disposes of SKILL.md and of Markdown under references, and nothing else', () => {
+  // `agents/` is metadata a harness reads, the way it reads front matter, and
+  // the Markdown walk cannot read YAML at all. `LICENSE` carries no rule for a
+  // writer. Both are governed by what they are, and neither is graded.
+  assert.ok(isGraded('SKILL.md'));
+  assert.ok(isGraded('references/examples.md'));
+  assert.ok(isGraded('references/deeper/examples.md'));
+  for (const rel of ['LICENSE', 'agents/openai.yaml', 'references/table.csv', 'README.md']) {
+    assert.ok(!isGraded(rel), `${rel} is not graded`);
+  }
 });
 
 test('frontmatter name must match directory name', async () => {

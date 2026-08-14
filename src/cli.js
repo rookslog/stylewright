@@ -267,10 +267,14 @@ export async function run(argv, ctx) {
     // nothing a gate can act on, because no run of this program can raise it.
     // Counting the printed lines instead made the two indistinguishable, and
     // the number that says how little has been checked would have failed CI.
+    // The file a finding came from is printed beside the skill. A skill carries
+    // more than one graded file now, and an anchor is a heading, so two files
+    // in one skill can produce the same line. A finding about the directory
+    // rather than about a file names no file, and prints without one.
     let failed = 0;
     for (const name of names) {
       for (const f of all[name] ?? []) {
-        say(`${name}: ${f.code}: ${f.message}`);
+        say(`${name}: ${f.file ? `${f.file}: ` : ''}${f.code}: ${f.message}`);
         if (f.level !== 'note') failed++;
       }
     }

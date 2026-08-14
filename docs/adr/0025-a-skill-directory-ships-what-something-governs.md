@@ -63,7 +63,8 @@ ungraded context is to grade it, not to evict it.
 
 Grading it is not this decision. `examples.md` yields 113 content units, and 41
 of its lines are blockquotes that the extractor refuses today, so a matrix
-cannot cover it until that grammar admits them. Issue #99 carries the work.
+cannot cover it until that grammar admits them. Issue #99 carries the work, and
+ADR-0030 and ADR-0031 record how it landed.
 
 ## The count is a note, and it stays one
 
@@ -75,6 +76,16 @@ issue 40 gives: a green run over content nobody has graded is the thing the
 number exists to report. Do not promote it to an error, which would fail every
 release until #99 lands. Do not remove it to quiet the output, which would hide
 what this decision could not finish.
+
+**Amended 2026-08-14, when #99 landed.** A matrix disposes of every file under
+`references/`, one matrix per file, so the reason above no longer holds: an
+ungraded reference file is a defect a contributor can fix rather than a state
+the repository is stuck in. The count is an error now, per file, naming the
+matrix to write. ADR-0030 records the decision and the row-space question it
+turned on, and ADR-0031 records the grammar change that made `examples.md`
+gradeable. The two instructions above stand for any future note of this kind:
+what replaced this one refuses more than it counted, and nothing was removed to
+quiet the output.
 
 ## What was rejected
 

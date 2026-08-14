@@ -2,7 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { sections, indentOf, isIndented, columnOf } from './markdown.js';
-import { loadCatalog } from './catalog.js';
+import {
+  loadCatalog, isGraded, matrixPathFor, GRADED_DIR,
+} from './catalog.js';
 import { walk } from './tree.js';
 
 /**
@@ -215,8 +217,8 @@ export function parseMatrix(text) {
 const digest = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 8);
 
 /**
- * A table and a fenced block do not fit in a matrix cell, so each is named by a
- * designator instead.
+ * A table, a fenced block and a blockquote do not fit in a matrix cell, so each
+ * is named by a designator instead.
  *
  * The designator carries a digest of the block rather than a number. An
  * ordinal identified a POSITION, so the contents of a table could be replaced
@@ -225,7 +227,7 @@ const digest = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(
  * digest identifies the CONTENT: edit the block and its row stops matching,
  * which is what every other row already does.
  */
-const DESIGNATOR = /^\[(?:table|code) [0-9a-f]{8}\]$/;
+const DESIGNATOR = /^\[(?:table|code|quote) [0-9a-f]{8}\]$/;
 
 /**
  * What a `G` row records about its own audit.
@@ -735,6 +737,24 @@ const EMPTY_HEADING = /^#{1,6}\s*$/;
 const ORDERED = /^(\d{1,9})[.)](?:\s|$)/;
 
 /**
+ * A blockquote, at column 0 and nowhere else.
+ *
+ * The walk reads the quote as ONE block, from this line to the first line that
+ * does not carry the marker. A reader sees one block there too, and what sits
+ * inside it — a paragraph, a list, a table, a heading — is the container state
+ * this walk holds none of. So the quote is disposed of the way a table and a
+ * fenced block already are, by a digest of its contents, and nothing inside it
+ * can be grounded as something else. That is what the refusal used to protect:
+ * `> Make sure that the kit contains these parts:` over four quoted list items
+ * reached one matrix row as a paragraph carrying its own markers. ADR-0031.
+ *
+ * A marker indented one to three columns is still a quote to a reader, and it
+ * stays refused, because the walk claims a construct at column 0 before it
+ * looks at an indent. That is the disposition an indented table already has.
+ */
+const OPENS_QUOTE = /^>/;
+
+/**
  * Whether a marker on this line opens a list WHERE IT STANDS.
  *
  * A bullet opens one anywhere. An ordered marker opens one where no prose is
@@ -786,12 +806,18 @@ const CODE_PADDING = 5;
 // the same rule. Two copies of it gave one file two readings.
 
 /**
- * The three constructs refused at column 0, named once. README lists them for
- * a contributor, and a test holds that list against this one, because a
- * document that names two of three teaches an author to write the third.
+ * The constructs refused at column 0, named once. README lists them for a
+ * contributor, and a test holds that list against this one, because a document
+ * that names one of two teaches an author to write the other.
+ *
+ * A blockquote was the third of these until the walk was given a reading of
+ * one. It is now a block, like a table and a fenced block, and ADR-0031 records
+ * why: the refusal was never about the marker, it was that the walk merged the
+ * quote with its contents and read `> - one gasket` as a paragraph's own words.
+ * A reading that agrees with the reader removes the exception, which is
+ * ADR-0016's rule applied forwards rather than another rule naming a shape.
  */
 export const AT_COLUMN_ZERO = {
-  blockquote: 'a blockquote',
   heading: 'a heading with no text',
   item: 'a list item with no content',
 };
@@ -900,9 +926,6 @@ function outsideGrammar(line, {
   startsBlock, openText, openItem, listOpen, opensFence, opensTable,
 }) {
   if (!line.trim()) return null;
-  // A blockquote is the one construct at column 0 whose contents the extractor
-  // reads as its own prose, so the quote and its container merge.
-  if (indentOf(line) === 0 && line.startsWith('>')) return AT_COLUMN_ZERO.blockquote;
   // An empty heading is refused wherever it appears, because a heading does
   // interrupt a paragraph for a Markdown reader, and neither the section scan
   // nor the walk reads one. `Prose` over `#` over a directive was one unit.
@@ -978,6 +1001,24 @@ function unitsIn(body, anchor, refuse = () => {}) {
       if (!line.trim() || isIndented(line)) { block.lines.push(line); continue; }
       closeBlock();
     }
+    // The quote's own contents, settled before anything else looks at the line,
+    // for the reason an indented block's are. A fence marker, a table row and a
+    // list marker all appear inside a quote in this repository's own examples,
+    // and each of them is the quote's content rather than a block of its own.
+    //
+    // The block ends at the first line without a marker. A reader ends it at a
+    // blank line and at a construct that interrupts a paragraph, and CONTINUES
+    // it over a line that merely carries prose: `> Quoted.` over `Prose.` is one
+    // paragraph inside the quote, and so are a table's own lines. Which of those
+    // a reader does depends on what block is open INSIDE the quote, which this
+    // walk holds no state for, so the line is refused rather than guessed at.
+    // Doubt reads as the strict case here as it does everywhere else, and the
+    // author writes the blank line every shipped file already has.
+    if (block?.kind === 'quote') {
+      if (OPENS_QUOTE.test(line)) { block.lines.push(line); continue; }
+      closeBlock();
+      if (line.trim()) refuse(i, 'a line directly under a blockquote');
+    }
     const fence = FENCE.exec(line);
     // Close only on the SAME marker, at least as long. A four-backtick fence
     // around a three-backtick example was closed by the example's own opening
@@ -1033,6 +1074,17 @@ function unitsIn(body, anchor, refuse = () => {}) {
       // The info string governs how the block is read, so it is part of the
       // block. Hashing the body alone gave ```js and ```sh one designator.
       block = { kind: 'code', lines: [fence[3].trim()], marker: fence[2] };
+      continue;
+    }
+    // A quote opens where a reader opens one, which includes under open prose:
+    // a blockquote interrupts a paragraph, so the paragraph is flushed rather
+    // than continued. The list above it has ended for the same reason a fence
+    // ends one.
+    if (OPENS_QUOTE.test(line)) {
+      listOpen = false;
+      flush();
+      closeBlock();
+      block = { kind: 'quote', lines: [line] };
       continue;
     }
     // A table row need not start with a pipe. `Name | Meaning` over
@@ -1155,8 +1207,8 @@ export function contentUnits(skillText) {
  * says the check misread the line.
  */
 function remedyFor(shape) {
-  if (shape.startsWith('a blockquote')) {
-    return 'Write the quoted words as our own prose, or put them in a fenced block.';
+  if (shape === 'a line directly under a blockquote') {
+    return 'Leave a blank line under the quote, or carry the marker on to this line.';
   }
   if (shape === 'a heading with no text') return 'Give the heading its text, or delete the line.';
   if (shape === 'a list item with no content') return 'Give the item its words, or delete the marker.';
@@ -1212,10 +1264,25 @@ const BROKEN = new Set([
   'row-outside-the-table',
 ]);
 
-export function checkSkill({ skillText, matrixText, now }) {
+/**
+ * One graded file against its own matrix.
+ *
+ * `subject` is the file being graded, and it names the file in the findings
+ * that speak about it. It defaults to `SKILL.md`, which is what this check read
+ * until a skill's reference files were graded as well. `matrixPath` is where
+ * the matrix for that file belongs, and it is a display path rather than
+ * anything this function opens.
+ */
+export function checkSkill({
+  skillText, matrixText, now, subject = 'SKILL.md', matrixPath = null,
+}) {
   const today = dayOf(now);
   if (matrixText === null || matrixText === undefined) {
-    return [{ level: 'error', code: 'no-matrix', message: 'Skill has no grounding matrix.' }];
+    return [{
+      level: 'error',
+      code: 'no-matrix',
+      message: `no grounding matrix disposes of ${subject}.${matrixPath ? ` Write one at ${matrixPath}.` : ''}`,
+    }];
   }
   const rows = parseMatrix(matrixText);
   // The rows that claim a source. The coverage note counts them at the end, and
@@ -1488,8 +1555,8 @@ export function checkSkill({ skillText, matrixText, now }) {
         level: 'error',
         code: spent ? 'duplicate-row' : 'missing-quote',
         message: spent
-          ? `${row.id}: "${row.guidance}" appears fewer times in SKILL.md than the matrix claims.`
-          : `${row.id}: "${row.guidance}" no longer appears in SKILL.md.`,
+          ? `${row.id}: "${row.guidance}" appears fewer times in ${subject} than the matrix claims.`
+          : `${row.id}: "${row.guidance}" no longer appears in ${subject}.`,
       });
     } else if (hit.anchor !== row.anchor) {
       findings.push({
@@ -1746,26 +1813,27 @@ export const SHIPPED_FILES = {
 /**
  * Directories a skill may ship, and what governs what is inside them.
  *
- * `references/` is the one entry whose governance is owed rather than held.
+ * `references/` was the one entry whose governance was owed rather than held.
  * The skill routes an agent into it while the agent writes, so it is context
  * and not an audit record, and the answer to ungraded context is to grade it
- * rather than to evict it. ADR-0025 records that, and issue #99 carries the
- * work. Until it lands, every run counts what those files hold.
+ * rather than to evict it. ADR-0025 recorded that and could not do the work,
+ * so every run counted the files instead. ADR-0030 does the work: a matrix
+ * disposes of each of those files, one matrix per file, and a file with no
+ * matrix is an error rather than a number in a note.
  */
 export const SHIPPED_DIRS = {
   agents: 'a harness reads it as metadata, the way it reads front matter',
-  references: 'the skill routes a writer into it, and no matrix disposes of it yet',
+  references: 'a matrix outside the skill disposes of every unit in each file',
 };
 
 /**
  * The files in one skill directory, against that list. Pure, so the walk that
  * finds them stays in the caller.
  *
- * The reference count is a note, for the reason `audit-coverage` is one: no
- * run of this program can raise it, and a gate that fails on it would fail
- * every release until issue #99 lands. Do not promote it to an error, and do
- * not remove it to quiet the output. A green run over files nothing grades is
- * the thing this number exists to report.
+ * `references/` holds Markdown, because a matrix disposes of what the Markdown
+ * walk reads and the walk reads nothing else. A file of another kind there is
+ * refused by name rather than counted, which is the disposition ADR-0025 gives
+ * a file nothing governs and ADR-0030 extends to a file nothing CAN grade.
  */
 export function checkShippedFiles({ files, irregular = [], tier, name }) {
   const allowed = Object.entries(SHIPPED_FILES)
@@ -1797,28 +1865,76 @@ export function checkShippedFiles({ files, irregular = [], tier, name }) {
         + 'matrix and outside every copy. Anything else needs a decision about what '
         + 'governs it before it ships.',
     })));
-  const referenced = files.filter((rel) => rel.startsWith('references/'));
-  if (referenced.length) {
-    findings.push({
-      level: 'note',
-      code: 'reference-coverage',
-      message: `${referenced.length} file(s) under references/ install with this skill and `
-        + `no row disposes of them: ${referenced.join(', ')}.`,
-    });
-  }
+  findings.push(...files
+    .filter((rel) => rel.startsWith(`${GRADED_DIR}/`) && !isGraded(rel))
+    .map((rel) => ({
+      level: 'error',
+      code: 'reference-not-markdown',
+      message: `${rel} ships with this skill, and no matrix can dispose of it. A matrix `
+        + 'disposes of the units a Markdown walk reads, and the walk reads Markdown alone. '
+        + `Write it as Markdown under ${GRADED_DIR}/, or find it a home that governs it.`,
+    })));
   return findings;
+}
+
+/**
+ * The matrix at a path, or nothing where no matrix stands there.
+ *
+ * A directory at that path is nothing too. The finding then names the path and
+ * says a matrix belongs there, which is what the author has to act on either
+ * way, and a raw `EISDIR` would stop the whole run over one skill.
+ */
+const matrixAt = async (file) => {
+  try {
+    return await fs.readFile(file, 'utf8');
+  } catch (err) {
+    if (!['ENOENT', 'EISDIR'].includes(err.code)) throw err;
+    return null;
+  }
+};
+
+/**
+ * Every matrix a skill carries that disposes of no file it ships.
+ *
+ * The mirror of a graded file with no matrix, and the reason it is an error
+ * rather than a tidy-up: a matrix nothing reads goes stale unnoticed, and a
+ * reference file renamed under one leaves the old rows passing every check
+ * here forever, because no check opens a file nobody names.
+ */
+async function orphanMatrices(skill, graded) {
+  const held = new Set(graded.map((rel) => matrixPathFor(skill, rel)));
+  let found = [];
+  try {
+    found = await walk(skill.groundingDir);
+  } catch (err) {
+    // Nothing there is the ordinary case. A file there is a shape this walk
+    // does not model, and it is named rather than thrown, because one odd path
+    // must not stop the run over every other skill.
+    if (err.code === 'ENOENT') return [];
+    if (err.code !== 'ENOTDIR') throw err;
+    return [{
+      level: 'error',
+      code: 'matrix-grades-nothing',
+      message: `${path.basename(skill.groundingDir)} is where this skill's reference matrices `
+        + 'live, and it is a file. A matrix names the file it grades by its own path, so this '
+        + 'one grades nothing. Make it a directory, or delete it.',
+    }];
+  }
+  return found
+    .map((rel) => path.join(skill.groundingDir, ...rel.split('/')))
+    .filter((file) => !held.has(file))
+    .map((file) => ({
+      level: 'error',
+      code: 'matrix-grades-nothing',
+      message: `${path.relative(path.dirname(skill.groundingDir), file)} disposes of no file `
+        + 'this skill ships. A matrix names the file it grades by its own path, so either the '
+        + 'file moved and this matrix did not, or the matrix is left over. Move it or delete it.',
+    }));
 }
 
 export async function checkAll(repoRoot, { now } = {}) {
   const out = {};
   for (const skill of await loadCatalog(repoRoot)) {
-    const skillText = await fs.readFile(path.join(skill.dir, 'SKILL.md'), 'utf8');
-    let matrixText = null;
-    try {
-      matrixText = await fs.readFile(skill.groundingPath, 'utf8');
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
-    }
     // `walk` returns names, and a name says nothing about what stands at it.
     // The type is asked for here, with `lstat`, so the link itself answers
     // rather than whatever it points at.
@@ -1828,12 +1944,33 @@ export async function checkAll(repoRoot, { now } = {}) {
       const st = await fs.lstat(path.join(skill.dir, rel));
       if (!st.isFile()) irregular.push(rel);
     }
-    out[skill.name] = [
-      ...checkShippedFiles({
-        files, irregular, tier: skill.tier, name: skill.name,
-      }),
-      ...checkSkill({ skillText, matrixText, now }),
-    ];
+    const findings = checkShippedFiles({
+      files, irregular, tier: skill.tier, name: skill.name,
+    });
+    // One matrix per graded file, and each finding carries the file it came
+    // from. A skill used to carry one graded file, so the file went without
+    // saying. It does not now: two files in one skill can hold the same
+    // heading, and a reader given the anchor alone cannot tell which one a
+    // finding is about.
+    //
+    // A file the check has already refused for not being a plain file is not
+    // read. `readFile` resolves a link, so it would grade bytes from wherever
+    // the link points, and a FIFO at a graded path would hang the run rather
+    // than fail it. That is the reading `src/doctor.js` gives an instruction
+    // file, and the refusal above is the finding either way.
+    const graded = files.filter((rel) => isGraded(rel) && !irregular.includes(rel));
+    for (const rel of graded) {
+      const matrixPath = matrixPathFor(skill, rel);
+      findings.push(...checkSkill({
+        skillText: await fs.readFile(path.join(skill.dir, ...rel.split('/')), 'utf8'),
+        matrixText: await matrixAt(matrixPath),
+        now,
+        subject: rel,
+        matrixPath: path.relative(repoRoot, matrixPath),
+      }).map((f) => ({ ...f, file: rel })));
+    }
+    findings.push(...await orphanMatrices(skill, graded));
+    out[skill.name] = findings;
   }
   return out;
 }

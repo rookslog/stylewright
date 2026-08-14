@@ -32,13 +32,22 @@ import { renderTables, renderBlocks, cellText } from './gfm.js';
 const GROUNDING = new URL('../grounding/', import.meta.url);
 const NOW = '2026-08-06T12:00:00.000Z';
 
-async function matrices() {
+/**
+ * Every matrix in the grounding tree, however deep it sits.
+ *
+ * A skill's reference files are graded one matrix per file, under a directory
+ * named for the skill, so a scan of the tier directory alone stopped at the
+ * directory and read none of them. The whole tree is walked instead, which is
+ * what "every shipped matrix" has to mean for the test below to be true.
+ */
+async function matrices(dir = GROUNDING, base = '') {
   const found = [];
-  for (const tier of await readdir(GROUNDING)) {
-    const dir = new URL(`${tier}/`, GROUNDING);
-    for (const name of await readdir(dir)) {
-      if (!name.endsWith('.md')) continue;
-      found.push({ name: `${tier}/${name}`, text: await readFile(new URL(name, dir), 'utf8') });
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const rel = base ? `${base}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      found.push(...await matrices(new URL(`${entry.name}/`, dir), rel));
+    } else if (entry.name.endsWith('.md')) {
+      found.push({ name: rel, text: await readFile(new URL(entry.name, dir), 'utf8') });
     }
   }
   return found;
@@ -87,7 +96,9 @@ description: d
 
 test('every shipped matrix renders as one table the checker read exactly', async () => {
   const found = await matrices();
-  assert.ok(found.length >= 6, 'the grounding directory carries the shipped matrices');
+  assert.ok(found.length >= 8, 'the grounding tree carries the shipped matrices');
+  assert.ok(found.some((m) => m.name.includes('/references/')),
+    'and the reference matrices among them, which a flat scan missed');
   for (const { name, text } of found) {
     const tables = renderTables(text);
     assert.equal(tables.length, 1, `${name}: a reader sees exactly one table`);
@@ -436,4 +447,77 @@ test('a table a reader sees without a pipe is refused, and a heading is not', ()
   // A delimiter with no header above it is no table to either reader.
   assert.doesNotMatch(renderBlocks('Prose here.\n\n:-'), /<table>/);
   assert.deepEqual(refusalsFor('Prose here.\n\n:-'), []);
+});
+
+/**
+ * The blockquote, read as a block, checked against the same parser.
+ *
+ * The walk refused a blockquote until issue #99, because it merged the quote
+ * with its contents: `> - one gasket` reached a matrix row as a paragraph
+ * carrying its own markers. It reads one BLOCK now, named by a digest of what
+ * the quote holds, which is the disposition a table and a fenced block already
+ * have. So the claim to check is the one ADR-0028 asks for: where a reader sees
+ * one blockquote, the walk reads one block, and nothing inside it reaches a
+ * unit of its own.
+ */
+const blockquotes = (text) => (renderBlocks(text).match(/<blockquote>/g) ?? []).length;
+
+test('where a reader sees one blockquote, the walk reads one block', () => {
+  // Each of these holds a construct the walk reads as a block of its own at
+  // column 0. Inside the quote it is the quote's content, and a reader agrees.
+  for (const text of [
+    '> Quoted.',
+    '> One.\n>\n> Two.',
+    '> Intro:\n>\n> - one gasket\n> - two clamps',
+    '> ```js\n> const x = 1;\n> ```',
+    '> | a | b |\n> |---|---|',
+    '> # A heading inside the quote',
+  ]) {
+    assert.equal(blockquotes(text), 1, `a reader sees one quote in ${JSON.stringify(text)}`);
+    // The heading is a unit of its own, so the section's body starts after it.
+    const units = contentUnits(skillWith(text))
+      .filter((u) => u.anchor === 'Later' && u.text !== 'Later');
+    assert.deepEqual(units.map((u) => u.block), [true],
+      `the walk reads one block in ${JSON.stringify(text)}: ${JSON.stringify(units)}`);
+    assert.match(units[0].text, /^\[quote [0-9a-f]{8}\]$/);
+    assert.deepEqual(refusalsFor(text), []);
+  }
+});
+
+test('a line under a blockquote is refused, and the render says why it must be', () => {
+  // A reader CONTINUES the quote over a line that carries prose, and over a
+  // table's own lines, so reading those at the top level would ground the
+  // quote's contents as something else.
+  for (const follower of ['Prose here.', '===', '| a | b |\n|---|---|', '    indented']) {
+    const text = `> Quoted.\n${follower}`;
+    assert.match(renderBlocks(text), /<blockquote>[\s\S]*Prose here\.|<blockquote>[\s\S]*===|<blockquote>[\s\S]*a \| b|<blockquote>[\s\S]*indented/,
+      `a reader keeps ${JSON.stringify(follower)} inside the quote`);
+    assert.ok(refusalsFor(text).includes('a line directly under a blockquote'),
+      `the check refuses ${JSON.stringify(text)}: ${JSON.stringify(refusalsFor(text))}`);
+  }
+});
+
+test('the over-refusal under a blockquote is pinned, because a reader ends it there', () => {
+  // The other direction, stated rather than hidden. A construct that interrupts
+  // a paragraph ends the quote for a reader whatever the quote holds, so these
+  // lines need no refusal. The walk refuses them anyway: whether a line is lazy
+  // continuation depends on the block open INSIDE the quote, and the walk holds
+  // no container state to answer with. The cost is a blank line the author
+  // writes, and every shipped file already has one there.
+  for (const follower of ['- item', '1. item', '```\ncode\n```', '---', '<div>x</div>']) {
+    const text = `> Quoted.\n${follower}`;
+    assert.equal(blockquotes(text), 1);
+    assert.doesNotMatch(renderBlocks(text).split('</blockquote>')[0], /item|code|<div|<hr/,
+      `a reader ends the quote above ${JSON.stringify(follower)}`);
+    assert.ok(refusalsFor(text).includes('a line directly under a blockquote'),
+      'the walk refuses it, and this test is where that cost is recorded');
+    assert.deepEqual(refusalsFor(`> Quoted.\n\n${follower}`), [],
+      'a blank line is the whole remedy');
+  }
+  // A heading is the one follower the two readers agree on with no blank line,
+  // and not because the walk decided it. The section split takes the heading and
+  // everything under it into the next section, so the quote ends at the end of
+  // the body and no line follows it there.
+  assert.deepEqual(refusalsFor('> Quoted.\n## Deeper\n\nProse.'), []);
+  assert.doesNotMatch(renderBlocks('> Quoted.\n## Deeper').split('</blockquote>')[0], /Deeper/);
 });

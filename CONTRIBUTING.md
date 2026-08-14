@@ -285,10 +285,38 @@ Write your `SKILL.md` in the Markdown the check models. Four forms pass: a
 blank line, any construct written at column 0, a line that continues the
 paragraph above it, and an indented code block that stands on its own. The
 check reads a line at a time and models no container, so it refuses every
-other line and names it. A blockquote, an empty marker and an empty heading
-are refused at column 0 as well, because the check does not read those either.
-ADR-0016 gives the reason. Report a skill that needs a container to say what
-it means on issue 37.
+other line and names it. An empty marker and an empty heading are refused at
+column 0 as well, because the check does not read those either. ADR-0016 gives
+the reason. Report a skill that needs a container to say what it means on
+issue 37.
+
+A blockquote is one block, and its row names a digest of what the quote holds.
+Leave a blank line under the quote. The check refuses the line directly below
+one, because a reader may keep that line inside the quote. ADR-0031 gives the
+reason.
+
+## Grade every file the skill ships to a writer
+
+A skill directory ships `SKILL.md`, `LICENSE`, `agents/`, and `references/`. A
+matrix disposes of `SKILL.md` and of every Markdown file under `references/`,
+one matrix for each file.
+
+The matrix for `SKILL.md` is `grounding/<tier>/<skill>.md`. The matrix for a
+reference file mirrors that file's own path, under a directory named for the
+skill:
+
+```
+skills/standards/demo/references/examples.md
+grounding/standards/demo/references/examples.md
+```
+
+Write the reference matrix the way you write the skill's own. It carries the
+same seven columns, its own quotation declaration, and its own source version
+when it holds a `G` row. A reference file with no matrix fails the check, and
+so does a matrix that grades no file. ADR-0030 gives the reason.
+
+A file under `references/` is Markdown. The walk reads Markdown alone, so
+nothing can grade a file of another kind, and the check refuses one by name.
 
 ## Write under the skills
 

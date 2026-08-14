@@ -1057,10 +1057,19 @@ test('a heading with leading spaces is refused, not merged into prose', () => {
     /a heading that does not begin at column 0/);
 });
 
-test('a list inside a blockquote is refused, not flattened into one unit', () => {
-  // Two directives were read as one paragraph, so one row disposed of both.
-  const found = refused('> - Do first.\n> - Do second.');
-  assert.equal(found.match(/a blockquote/g).length, 2);
+test('a list inside a blockquote is one block, and its digest names the list', () => {
+  // Two directives were read as one paragraph carrying its own markers, so one
+  // row disposed of both and the words inside could change under it. The quote
+  // is a block now, on the terms a table and a fenced block already have: one
+  // unit, named by a digest of its contents, so editing a line inside it stops
+  // the row matching. Issue #99.
+  const text = '> - Do first.\n> - Do second.';
+  assert.equal(refused(text), '');
+  const blocks = (t) => contentUnits(`${SKILL}\n## Later\n\n${t}\n`).filter((u) => u.block);
+  const units = blocks(text);
+  assert.equal(units.length, 1);
+  assert.match(units[0].text, /^\[quote [0-9a-f]{8}\]$/);
+  assert.notEqual(blocks('> - Do first.\n> - Do third.')[0].text, units[0].text);
 });
 
 test('a list item indented under another is refused', () => {
@@ -1070,8 +1079,25 @@ test('a list item indented under another is refused', () => {
     /a list item that does not begin at column 0/);
 });
 
-test('a fence inside a blockquote is refused', () => {
-  assert.match(refused('> ```js\n> const x = 1;\n> ```'), /a blockquote/);
+test('a fence inside a blockquote is the quote\'s contents, not a block of its own', () => {
+  // The marker carries the quote, so the walk never reads the fence as an
+  // opener. One block, and the fence closes nothing outside it.
+  const text = '> ```js\n> const x = 1;\n> ```\n\nAlways preserve safety.';
+  assert.equal(refused(text), '');
+  const units = contentUnits(`${SKILL}\n## Later\n\n${text}\n`)
+    .filter((u) => u.anchor === 'Later');
+  assert.equal(units.filter((u) => u.block).length, 1);
+  assert.ok(units.some((u) => u.text === 'Always preserve safety.'));
+});
+
+test('a line directly under a blockquote is refused, because a reader may keep it', () => {
+  // A reader continues the quote over a line that carries prose, and ends it at
+  // a construct that interrupts a paragraph. Which one depends on the block open
+  // INSIDE the quote, and this walk holds no container state, so it names the
+  // line instead of guessing.
+  assert.match(refused('> Quoted.\nAlways preserve safety.'),
+    /a line directly under a blockquote/);
+  assert.equal(refused('> Quoted.\n\nAlways preserve safety.'), '');
 });
 
 test('a table indented under a list item is refused', () => {
@@ -1125,8 +1151,10 @@ test('an empty list marker opens a list, so its child block is refused', () => {
 
 test('a container prefix is refused before the line becomes a table', () => {
   // `> A | B` over `--- | ---` reached the table branch first and became a
-  // designator, so a blockquote passed the guard with no refusal at all.
-  assert.match(refused('> A | B\n--- | ---\n> c | d'), /a blockquote/);
+  // designator, so a blockquote passed the guard with no refusal at all. The
+  // quote is read as a quote now, and the delimiter under it is the line a
+  // reader may keep inside that quote.
+  assert.match(refused('> A | B\n--- | ---\n> c | d'), /a line directly under a blockquote/);
   assert.match(refused('  ## A | B\n--- | ---'),
     /a heading that does not begin at column 0/);
   assert.equal(refused('| a | b |\n|---|---|\n| c | d |'), '');
@@ -1403,7 +1431,7 @@ test('a refusal carries a remedy the author can follow', () => {
   }).find((f) => f.code === 'unmodelled-construct').message;
 
   for (const [text, remedy] of [
-    ['> quoted', /fenced block/],
+    ['> quoted\nProse under it.', /Leave a blank line under the quote/],
     ['#', /Give the heading its text/],
     ['-', /Give the item its words/],
     ['- A | B\n--- | ---', /Move the table out of the list/],
@@ -1428,9 +1456,10 @@ test('an indented construct with no list above it is code, and stands', () => {
 });
 
 test('a refusal names the line in the file, front matter counted', () => {
-  const skillText = `${SKILL}\n> Quoted.\n`;
-  const line = skillText.split('\n').indexOf('> Quoted.') + 1;
-  assert.deepEqual(unmodelled(skillText), [{ line, shape: 'a blockquote' }]);
+  const skillText = `${SKILL}\n  > Quoted.\n`;
+  const line = skillText.split('\n').indexOf('  > Quoted.') + 1;
+  assert.deepEqual(unmodelled(skillText),
+    [{ line, shape: 'a blockquote that does not begin at column 0' }]);
   assert.ok(check({ skillText, matrixText: MATRIX })
     .some((f) => f.code === 'unmodelled-construct' && f.message.startsWith(`line ${line}:`)));
 });
@@ -1743,4 +1772,137 @@ test('what a skill directory may ship passes, and the shipped catalogue does', a
   assert.deepEqual(Object.entries(all)
     .flatMap(([name, fs]) => fs.filter((f) => f.code === 'ungoverned-shipped-file')
       .map((f) => `${name}: ${f.message}`)), []);
+});
+
+// A skill carries more than one graded file. `SKILL.md` was the only one, and
+// `references/` shipped beside it with nothing disposing of a line. ADR-0025
+// settled that they are graded rather than evicted, and ADR-0030 says how: one
+// matrix per file, at the path that mirrors the file, so no row can claim an
+// occurrence in a file it was not written for.
+
+/** A copy of the fixture repository, with a reference file planted in it. */
+async function withReference(t, text, name = 'patterns.md') {
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-ref-'));
+  t.after(() => fsp.rm(repo, { recursive: true, force: true }));
+  await fsp.cp(REPO, repo, { recursive: true });
+  const dir = path.join(repo, 'skills', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(dir, { recursive: true });
+  await fsp.writeFile(path.join(dir, name), text);
+  return repo;
+}
+
+const REFERENCE = `# Patterns
+
+## Rules
+
+- Use no more than 20 words in a sentence.
+`;
+
+const REFERENCE_MATRIX = `# Grounding: references/patterns.md
+
+${DECLARED}
+
+${PINNED}
+
+| ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
+|---|---|---|---|---|---|---|
+| N-01 | Patterns | Patterns |  |  | Section title |  |
+| N-02 | Rules | Rules |  |  | Section title |  |
+| G-01 | Use no more than 20 words in a sentence. | Rules | DEMO-4 | unquoted | The Demo Standard, clause 4 | unaudited |
+`;
+
+test('a reference file with no matrix is refused, and the refusal names the path', async (t) => {
+  const repo = await withReference(t, REFERENCE);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'no-matrix');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.equal(refusal.file, 'references/patterns.md');
+  assert.match(refusal.message,
+    /grounding[\\/]standards[\\/]demo-standard[\\/]references[\\/]patterns\.md/);
+});
+
+test('a reference file graded by its own matrix passes, and its findings name it', async (t) => {
+  const repo = await withReference(t, REFERENCE);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  await fsp.writeFile(path.join(matrix, 'patterns.md'), REFERENCE_MATRIX);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.deepEqual(errors(found), []);
+  // The coverage note is per matrix, so the reference file gets its own.
+  const notes = found.filter((f) => f.file === 'references/patterns.md');
+  assert.deepEqual(notes.map((f) => f.code), ['audit-coverage', 'quote-coverage']);
+  assert.ok(found.some((f) => f.file === 'SKILL.md'), 'the skill keeps its own findings');
+
+  // The row space is separate, which is the whole reason for a second file. The
+  // reference file carries a heading `Rules` too, and the sentence under it is
+  // the sentence `SKILL.md` carries, so one shared space would let either
+  // matrix claim the other's occurrence.
+  await fsp.writeFile(path.join(matrix, 'patterns.md'),
+    REFERENCE_MATRIX.replace('| N-01 | Patterns | Patterns |  |  | Section title |  |\n', ''));
+  const after = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.deepEqual(errors(after).map((f) => [f.file, f.code]),
+    [['references/patterns.md', 'uncovered-statement']]);
+});
+
+test('a matrix that grades no file the skill ships is refused', async (t) => {
+  // The mirror of the file with no matrix. A reference file renamed under its
+  // matrix leaves rows nothing opens, and no check here reads a file nobody
+  // names, so it would pass forever.
+  const repo = await withReference(t, REFERENCE);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  await fsp.writeFile(path.join(matrix, 'patterns.md'), REFERENCE_MATRIX);
+  await fsp.writeFile(path.join(matrix, 'withdrawn.md'), REFERENCE_MATRIX);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'matrix-grades-nothing');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.match(refusal.message, /withdrawn\.md/);
+});
+
+test('a reference file that is not a plain file is refused and never read', async (t) => {
+  // `readFile` resolves a link, so grading one would read bytes from wherever
+  // it points, and a FIFO at a graded path would hang the run rather than fail
+  // it. The refusal is the finding, and it fails the gate either way.
+  const repo = await withReference(t, REFERENCE);
+  const dir = path.join(repo, 'skills', 'standards', 'demo-standard', 'references');
+  const outside = path.join(repo, 'outside.md');
+  await fsp.writeFile(outside, '# Outside\n');
+  await fsp.rm(path.join(dir, 'patterns.md'));
+  try {
+    await fsp.symlink(outside, path.join(dir, 'patterns.md'));
+  } catch {
+    return t.skip('this platform does not let the test create a symbolic link');
+  }
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.ok(found.some((f) => f.code === 'shipped-file-not-regular'));
+  assert.deepEqual(found.filter((f) => f.file === 'references/patterns.md'), []);
+  return undefined;
+});
+
+test('a reference file no Markdown walk can read is refused by name', async (t) => {
+  // The allowlist admits the directory. A matrix disposes of what the walk
+  // reads, and the walk reads Markdown, so a file of another kind there ships
+  // with nothing able to grade it.
+  const repo = await withReference(t, 'interface:\n', 'agents.yaml');
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'reference-not-markdown');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.equal(refusal.level, 'error');
+  assert.match(refusal.message, /^references\/agents\.yaml/);
+});
+
+test('every file the shipped catalogue grades has a matrix', async () => {
+  // Issue #99 in the shape it was reported: the two STE reference files ship on
+  // every install pathway, and no row disposed of a line in either.
+  const all = await checkAll(path.join(import.meta.dirname, '..'), { now: NOW });
+  assert.deepEqual(Object.entries(all)
+    .flatMap(([name, found]) => found
+      .filter((f) => ['no-matrix', 'matrix-grades-nothing', 'reference-not-markdown'].includes(f.code))
+      .map((f) => `${name}: ${f.message}`)), []);
+  const graded = all['simplified-technical-english'].map((f) => f.file);
+  for (const rel of ['SKILL.md', 'references/examples.md', 'references/rule-navigation.md']) {
+    assert.ok(graded.includes(rel), `${rel} was read`);
+  }
 });

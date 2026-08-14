@@ -20,6 +20,14 @@ This file stays in the repository. It does not install with the skill.
   continued publication on 2026-08-04. The approval holds while the skill
   reproduces no rule text and no substantial part of the standard. A change
   that crosses either line reopens the decision.
+- Reference files, 2026-08-14: the two files under `references/` gained matrices
+  of their own, at `grounding/standards/simplified-technical-english/references/`.
+  They carry six `G` rows between them, and every one reads `unquoted` and
+  `unaudited`. Both matrices declare quotation forbidden, in the words the
+  skill's matrix uses, so the publication decision below governs them without
+  change. Nobody read the copyright page or any rule on this date. The rule
+  identifiers those rows cite came from the reading of 2026-07-26 recorded here,
+  and no row claims that anybody has checked one.
 - Quotation check, 2026-08-06: the grounding matrix gained a `Source text`
   column on this date, under ADR-0020. Nothing was quoted into it. This record
   was read first, and the publication decision above forbids it: reproducing a
