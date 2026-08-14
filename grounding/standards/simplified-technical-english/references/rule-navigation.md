@@ -22,7 +22,12 @@ designator attributed every recommendation in it to Rules 1.1 through 9.4. The
 file now carries two tables. The first states where the standard answers each
 question, and it is the `G` row. The second is our advice about when to read
 there, and it is an `E` row. The questions repeat across both, which is the
-cost of splitting them, and no row mixes the two.
+cost of splitting them.
+
+The `G` row claims the LOCATION and not the label. Its `Question` column is our
+own paraphrase of a topic, as row `E-01` says of every topic label in this
+file, and no paraphrase of ours becomes the standard's by sitting beside a rule
+number. What the row traces to the source is where each question is answered.
 
 The `G` row's rule cell names the whole range its table covers, because the
 table covers a range. The row cites the reading recorded in
@@ -51,7 +56,7 @@ the skill moves to a new issue, and every audit here goes stale at once.
 | N-01 | ASD-STE100 Issue 9 Rule Navigation | ASD-STE100 Issue 9 Rule Navigation |  |  | Section title, asserts no rule |  |
 | E-01 | Use this map to find relevant material in the official standard. The topic labels below are paraphrases, not rule text. Search the [official Issue 9 PDF](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf) by rule identifier and confirm the complete rule, explanation, and applicable dictionary entries there. | ASD-STE100 Issue 9 Rule Navigation |  |  | Our own routing instruction, not a rule of the standard |  |
 | N-02 | Writing-rule map | Writing-rule map |  |  | Section title, asserts no rule |  |
-| N-03 | The first table states where the standard answers each question. The second table is our own advice about when to read there. The questions repeat across both, so each table carries one kind of claim and no row mixes the two. | Writing-rule map |  |  | Describes how this file is laid out, asserts no rule |  |
+| N-03 | The first table states where the standard answers each question. The second table is our own advice about when to read there. | Writing-rule map |  |  | Describes how this file is laid out, asserts no rule |  |
 | G-01 | [table 42e8c66c] | Writing-rule map | Rules 1.1 through 9.4, and Part 2 | unquoted | Part 1, Sections 1 to 9, and Part 2 | unaudited |
 | N-04 | When to read there | When to read there |  |  | Section title, asserts no rule |  |
 | E-02 | [table 11979737] | When to read there |  |  | Our own advice about when to open the standard |  |

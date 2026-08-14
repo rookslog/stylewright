@@ -27,9 +27,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   because the walk reads Markdown alone. A front matter block outside `SKILL.md`
   is refused, because the harness that reads one is the whole warrant for the
   exemption, and `checkSkill` takes the file it grades as `subject` with no
-  default. Every finding names the file it came from, beside the skill.
-  ADR-0030 records the decision, and it amends ADR-0025's count from a note to
-  an error. Issue #99.
+  default. Every finding names the file it came from, beside the skill. The
+  report is keyed prototype-safely, so a skill directory or a stray matrix at a
+  name JavaScript owns reaches a reader rather than emptying the report or
+  ending the run. A matrix and a stray are compared by the filesystem's own
+  identity where two spellings resolve to one file, so a miscased matrix is the
+  matrix rather than a stray to delete. ADR-0030 records the decision, and it
+  amends ADR-0025's count from a note to an error. Issue #99.
 - `skills/standards/simplified-technical-english/references/rule-navigation.md`
   carries two tables where it carried one. A table is one unit, so a table is
   one authority class, and the single table mixed source locations with our own

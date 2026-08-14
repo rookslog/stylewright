@@ -256,7 +256,10 @@ export async function run(argv, ctx) {
     // that matters most: `ground --check` is a CI gate, and a name it does not
     // know contributed no findings and reported "Grounding clean." A gate that
     // fails open on a typo or a renamed skill is worse than no gate.
-    const unknown = names.filter((n) => !(n in all));
+    // `Object.hasOwn`, so a name the object inherits is unknown here whatever
+    // prototype the result carries. `constructor in all` answered true on a
+    // plain object, and the loop below then spread a function.
+    const unknown = names.filter((n) => !Object.hasOwn(all, n));
     if (unknown.length) {
       say(`Unknown skill: ${unknown.join(', ')}.`);
       say(`Available: ${Object.keys(all).sort().join(', ')}.`);

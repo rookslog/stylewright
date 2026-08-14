@@ -1275,11 +1275,16 @@ const BROKEN = new Set([
  * description out of it, and never shows it to a writer. That is the whole
  * warrant for leaving it out of the units, and it is a fact about `SKILL.md`
  * rather than about Markdown. A reference file has no harness, so a closed
- * `---` block there is read by nobody: `test/gfm-render.test.js` puts one
- * through the parser, and a reader gets a thematic break and a setext HEADING
- * carrying every line of the block. The walk removed those lines instead, so a
- * directive written there shipped visible to the reader and invisible to the
- * check. ADR-0030.
+ * `---` block there is metadata to nobody.
+ *
+ * What a reader sees instead depends on the lines. `test/gfm-render.test.js`
+ * puts five shapes through the parser: a mapping renders as a thematic break
+ * and a setext heading, a list renders as a list, a fenced block as code, and a
+ * table as a table. Naming one of those as the reason would be a claim the
+ * parser refutes for the other four. What holds across all of them is what this
+ * refusal rests on: a reader sees the block's contents, and the walk reads no
+ * unit from any line of it. So a directive written there shipped visible to the
+ * reader and invisible to the check. ADR-0030.
  */
 const HARNESS_READS_FRONT_MATTER = 'SKILL.md';
 
@@ -1553,10 +1558,10 @@ export function checkSkill({
       level: 'error',
       code: 'front-matter-outside-skill-md',
       message: `line 1: ${subject} opens with a front matter block, and no harness reads one `
-        + 'here. A GFM reader sees a thematic break and a heading carrying every line of it, '
-        + 'and this check reads none of them, so a rule written there is disposed of by '
-        + 'nothing. Delete the block, or write its contents as ordinary Markdown below the '
-        + 'first heading.',
+        + 'here. This check reads no unit from those lines, and a reader sees their contents '
+        + 'as whatever the lines make. So a rule written there is disposed of by nothing. '
+        + 'Delete the block, or write its contents as ordinary Markdown below the first '
+        + 'heading.',
     });
   }
 
@@ -1935,6 +1940,15 @@ export function checkShippedFiles({ files, irregular = [], tier, name }) {
  *
  * `ENOTDIR` reads as nothing, because a file standing where a directory belongs
  * leaves no matrix at the path below it. The stray scan names that file.
+ *
+ * This answers for the LAST component of the path and no other. A symbolic link
+ * standing as an intermediate directory still lets `readFile` resolve out of
+ * the tree, and the findings printed would come from a record that is not
+ * ours. What stops that being a green run is the scan below: `walk` reports a
+ * linked directory as a file entry, because `isDirectory` is false for a link,
+ * so the component is a stray and the run is red. The gate holds and the
+ * reading is wrong, which is why this is written down rather than left to be
+ * rediscovered. ADR-0030 records the limit.
  */
 const MATRIX_ABSENT = 'absent';
 const MATRIX_IRREGULAR = 'irregular';
@@ -1946,8 +1960,40 @@ async function matrixAt(file) {
     if (['ENOENT', 'ENOTDIR'].includes(err.code)) return { state: MATRIX_ABSENT };
     throw err;
   }
-  if (!stat.isFile()) return { state: MATRIX_IRREGULAR };
+  // What stands there is named, because the remedy differs. A link is followed
+  // and a directory cannot be written into, and one message about links told
+  // the author of a directory the wrong thing.
+  if (stat.isDirectory()) return { state: MATRIX_IRREGULAR, kind: 'a directory' };
+  if (stat.isSymbolicLink()) return { state: MATRIX_IRREGULAR, kind: 'a symbolic link' };
+  if (!stat.isFile()) return { state: MATRIX_IRREGULAR, kind: 'not a plain file' };
   return { state: 'read', text: await fs.readFile(file, 'utf8') };
+}
+
+/**
+ * What the filesystem calls this file, rather than what the path spells.
+ *
+ * Two spellings can be one file. A case-folding filesystem resolves
+ * `references/Patterns.md` and `references/patterns.md` to the same bytes, so
+ * the matrix was read at the held spelling AND reported as a stray at the
+ * spelling the walk returned, with a remedy telling the author to delete the
+ * file the check had just used. The install engine already answers this by
+ * asking the filesystem whether a destination is still the file the statement
+ * named, and this is that question one directory over.
+ *
+ * `lstat`, so a link never answers for its target: a link beside the matrix it
+ * points at is two files, and the stray scan is what names it.
+ *
+ * An inode of zero identifies nothing, and some filesystems report one, so the
+ * identity is withheld there and the comparison falls back to the spelling.
+ */
+async function identityOf(file) {
+  try {
+    const stat = await fs.lstat(file);
+    return stat.ino ? `${stat.dev}:${stat.ino}` : null;
+  } catch (err) {
+    if (['ENOENT', 'ENOTDIR'].includes(err.code)) return null;
+    throw err;
+  }
 }
 
 /** Where a stray matrix is reported, when its path names no skill. */
@@ -1993,8 +2039,23 @@ async function strayMatrices(repoRoot, held) {
     if (['ENOENT', 'ENOTDIR'].includes(err.code)) return [];
     throw err;
   }
-  return found
-    .filter((rel) => !held.has(path.join(root, ...rel.split('/'))))
+  // The spelling first, and the filesystem's own answer where the spelling
+  // misses. A matrix the check just read must never be reported as a stray for
+  // being spelled with another case.
+  const ids = new Set();
+  for (const file of held) {
+    const id = await identityOf(file);
+    if (id) ids.add(id);
+  }
+  const stray = [];
+  for (const rel of found) {
+    const file = path.join(root, ...rel.split('/'));
+    if (held.has(file)) continue;
+    const id = await identityOf(file);
+    if (id && ids.has(id)) continue;
+    stray.push(rel);
+  }
+  return stray
     .map((rel) => ({
       name: skillNamed(rel),
       finding: {
@@ -2008,7 +2069,15 @@ async function strayMatrices(repoRoot, held) {
 }
 
 export async function checkAll(repoRoot, { now } = {}) {
-  const out = {};
+  // Keyed by skill name, in a `Map`, and prototype-safely for the reason the
+  // install statement's `keep` is built that way. A skill directory may be
+  // called `__proto__`, and assigning that on an ordinary object invokes the
+  // inherited setter rather than creating a property, so the skill would leave
+  // the report without a word. A stray matrix supplies the other half: its name
+  // comes from a path, so `grounding/standards/constructor/` reads back a
+  // FUNCTION rather than `undefined`, and appending to it threw a `TypeError`
+  // that took the report for every other skill with it.
+  const out = new Map();
   // Every matrix path the catalogue answers to. The stray scan below compares
   // the grounding tree against this, so a path is held by the file EXISTING and
   // not by the check being able to read it: a graded file refused for not being
@@ -2053,10 +2122,10 @@ export async function checkAll(repoRoot, { now } = {}) {
           level: 'error',
           code: 'matrix-not-regular',
           file: rel,
-          message: `${shown} is not a plain file. A matrix is identified by its path, so `
-            + 'following a link there lets two files share one audit record, or lets this '
-            + 'check read a record from outside the grounding tree. Replace it with the '
-            + 'matrix itself.',
+          message: `${shown} is ${matrix.kind}, and a matrix is a plain file. Identity here `
+            + 'is the path, so following a link lets two files share one audit record, or '
+            + 'lets this check read a record from outside the grounding tree. Put the matrix '
+            + 'for this file at that path.',
         });
         continue;
       }
@@ -2068,12 +2137,17 @@ export async function checkAll(repoRoot, { now } = {}) {
         matrixPath: shown,
       }).map((f) => ({ ...f, file: rel })));
     }
-    out[skill.name] = findings;
+    out.set(skill.name, findings);
   }
   // Last, and over the whole tree rather than per skill. A matrix whose skill
   // is gone sits under a directory the catalogue cannot name.
   for (const stray of await strayMatrices(repoRoot, held)) {
-    out[stray.name] = [...(out[stray.name] ?? []), stray.finding];
+    out.set(stray.name, [...(out.get(stray.name) ?? []), stray.finding]);
   }
-  return out;
+  // The object the callers read, with no prototype. `Object.fromEntries` gives
+  // `__proto__` an own property rather than invoking a setter, and the null
+  // prototype is what stops a caller's `name in all` answering for
+  // `constructor` or `toString`. Both halves are needed: one fixes the write,
+  // and the other fixes every read.
+  return Object.assign(Object.create(null), Object.fromEntries(out));
 }

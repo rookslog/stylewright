@@ -313,7 +313,8 @@ grounding/standards/demo/references/examples.md
 Write the reference matrix the way you write the skill's own. It carries the
 same seven columns, its own quotation declaration, and its own source version
 when it holds a `G` row. A reference file with no matrix fails the check, and
-so does a matrix that grades no file. ADR-0030 gives the reason.
+so does a file under `grounding/` that grades no file any skill ships. ADR-0030
+gives the reason.
 
 A file under `references/` is Markdown. The walk reads Markdown alone, so
 nothing can grade a file of another kind, and the check refuses one by name.

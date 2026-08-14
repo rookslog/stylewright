@@ -1973,6 +1973,84 @@ test('a matrix whose skill is gone is found, under the name its path implies', a
   assert.deepEqual(all['demo-standard'].filter((f) => f.code === 'matrix-grades-nothing'), []);
 });
 
+test('a directory at a matrix path is named for what it is', async (t) => {
+  // One message about links told the author of a directory the wrong thing,
+  // and the "write one at" remedy went with it. The type found is named now.
+  const repo = await withReference(t, REFERENCE);
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(path.join(matrix, 'patterns.md'), { recursive: true });
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  const refusal = found.find((f) => f.code === 'matrix-not-regular');
+  assert.ok(refusal, `no refusal among: ${JSON.stringify(found)}`);
+  assert.match(refusal.message, /is a directory/);
+  assert.doesNotMatch(refusal.message, /Write one at/);
+});
+
+/** Whether this filesystem resolves two spellings of one name to one file. */
+async function foldsCase(dir) {
+  await fsp.writeFile(path.join(dir, 'case-probe.tmp'), 'x');
+  try {
+    await fsp.stat(path.join(dir, 'CASE-PROBE.tmp'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await fsp.rm(path.join(dir, 'case-probe.tmp'), { force: true });
+  }
+}
+
+test('a miscased matrix is the matrix, not a stray to delete', async (t) => {
+  // Two spellings can be one file. The check read the matrix at the held
+  // spelling and then reported it as a stray at the walked one, telling the
+  // author to delete the file it had just used. The install engine asks the
+  // filesystem this question already.
+  const repo = await withReference(t, REFERENCE);
+  if (!await foldsCase(repo)) return t.skip('this filesystem does not fold case');
+  const matrix = path.join(repo, 'grounding', 'standards', 'demo-standard', 'references');
+  await fsp.mkdir(matrix, { recursive: true });
+  await fsp.writeFile(path.join(matrix, 'Patterns.md'), REFERENCE_MATRIX);
+  const found = (await checkAll(repo, { now: NOW }))['demo-standard'];
+  assert.deepEqual(found.filter((f) => f.code === 'matrix-grades-nothing'), [],
+    'the matrix the check read is not a stray');
+  assert.deepEqual(errors(found), [], `the file is graded: ${JSON.stringify(errors(found))}`);
+  return undefined;
+});
+
+test('a name JavaScript owns is a skill name like any other', async (t) => {
+  // A stray's name comes from a path, so `grounding/standards/constructor/`
+  // read back a FUNCTION rather than nothing, and appending to it threw and
+  // took the report for every other skill with it. A skill directory called
+  // `__proto__` is the other half: assigning that on an ordinary object
+  // invokes the inherited setter, so the skill left the report in silence.
+  // `keep` in the install statement is built prototype-safely for that reason.
+  const repo = await fsp.mkdtemp(path.join(os.tmpdir(), 'sw-proto-'));
+  t.after(() => fsp.rm(repo, { recursive: true, force: true }));
+  await fsp.cp(REPO, repo, { recursive: true });
+  for (const name of ['constructor', 'toString', '__proto__']) {
+    const gone = path.join(repo, 'grounding', 'standards', name, 'references');
+    await fsp.mkdir(gone, { recursive: true });
+    await fsp.writeFile(path.join(gone, 'guide.md'), REFERENCE_MATRIX);
+  }
+  const owned = path.join(repo, 'skills', 'craft', '__proto__');
+  await fsp.mkdir(owned, { recursive: true });
+  await fsp.writeFile(path.join(owned, 'SKILL.md'),
+    '---\nname: __proto__\ndescription: A skill at a name JavaScript owns.\n---\n\n# Owned\n');
+
+  const all = await checkAll(repo, { now: NOW });
+  for (const name of ['constructor', 'toString']) {
+    assert.ok(Object.hasOwn(all, name), `${name} reached the report`);
+    assert.ok(all[name].some((f) => f.code === 'matrix-grades-nothing'));
+  }
+  // `__proto__` is both a stray matrix and a real skill here, so its entry
+  // carries the skill's own findings and the stray beside them.
+  assert.ok(Object.hasOwn(all, '__proto__'), 'the skill reached the report');
+  assert.ok(all['__proto__'].some((f) => f.code === 'no-matrix'));
+  assert.ok(all['__proto__'].some((f) => f.code === 'matrix-grades-nothing'));
+  // Nothing the object merely inherits reads as a skill.
+  assert.ok(!Object.hasOwn(all, 'hasOwnProperty'));
+  assert.equal(all.valueOf, undefined, 'the result carries no prototype');
+});
+
 test('every file the shipped catalogue grades has a matrix', async () => {
   // Issue #99 in the shape it was reported: the two STE reference files ship on
   // every install pathway, and no row disposed of a line in either.

@@ -90,14 +90,24 @@ review found all three at once.
 
 *Front matter is metadata.* True of `SKILL.md`, whose block the harness parses
 and never shows a writer. No harness reads a reference file's prefix, so a
-closed `---` block there was removed from the units and reported by nothing,
-while `micromark` renders a thematic break and a setext heading carrying every
-line of it. A rule written there shipped visible to the reader and invisible to
-the check. The block is refused in any subject but `SKILL.md`, and it is still
-removed from the units rather than graded, because reading three lines as prose
-would ground a paragraph no reader sees. `checkSkill` takes `subject` with no
+closed `---` block there was removed from the units and reported by nothing. A
+rule written there shipped visible to the reader and invisible to the check. The
+block is refused in any subject but `SKILL.md`, and it is still removed from the
+units rather than graded, because a reader does not see those lines as the
+paragraph the walk would make of them. `checkSkill` takes `subject` with no
 default, so a caller that does not name the file it grades cannot be handed the
 exemption. That is the rule `now` obeys, for its reason.
+
+What the block renders as depends on the lines, and the reason stated here has
+to survive every shape. `micromark` gives a thematic break and a setext heading
+for a mapping, a list for a list, code for a fenced block, and a table for a
+table. This ADR first named the mapping's render as the reason, and AGENTS.md,
+the code and the author-facing message repeated it, so one shape's render stood
+in four places as a fact about all of them. That is the comment explaining away
+what the parser was never asked, which this repository forbids by name. The
+oracle carries all five shapes now, and every one of those places states the
+property they share: a reader sees the block's contents, and the walk reads no
+unit from any line of it.
 
 *The grounding tree is reachable from the catalogue.* It is not. A matrix whose
 skill was deleted or renamed sits under a directory no catalogue entry names, so
@@ -112,7 +122,27 @@ path, so following a link there lets two graded files share one physical audit
 record, or lets the check read a record from outside the grounding tree. The
 stray scan cannot see either, because the link stands at exactly the pathname
 the scan holds. This is the disposition the shipped-file allowlist already gives
-a link at an allowed name.
+a link at an allowed name. The type found is named in the finding, because a
+directory at a matrix path and a link at one need different remedies.
+
+That `lstat` answers for the LAST component and no other. A link standing as an
+intermediate directory still lets the read resolve out of the tree, so the
+findings printed would come from a foreign record. It is not a green run: `walk`
+reports a linked directory as a file entry, so the component is a stray and the
+gate fails. The limit is stated rather than closed, because closing it needs
+`realpath` on both sides of a containment test, and a checkout reached through a
+linked path — `/tmp` on macOS is one — would then be refused for its own layout.
+The reading is wrong there and the verdict is not, and this is where a reader
+finds that out.
+
+*A spelling names a file.* Only where the filesystem agrees. A case-folding
+filesystem resolves two spellings to one file, so a miscased matrix was read at
+the held spelling and reported as a stray at the walked one, with a remedy
+telling the author to delete the file the check had just used. The scan compares
+the spelling first and the filesystem's own identity where the spelling misses,
+which is the question the install engine already asks of a destination. The
+identity comes from `lstat`, so a link never answers for its target, and it is
+withheld where an inode reads zero.
 
 ## The count was a note, and it is an error now
 
@@ -144,7 +174,14 @@ carried one table whose `Read when` column is our own advice, and a `G` row over
 that designator attributed every recommendation in it to Rules 1.1 through 9.4.
 The designator cannot be split, so the FILE was: it carries a table of source
 locations graded `G`, and a table of our advice graded `E`. The questions repeat
-across both, which is the cost, and no row mixes the two.
+across both, which is the cost.
+
+The `G` row claims the location and not the label. Its `Question` column stays
+our own paraphrase of a topic, which the file says of itself, and a paraphrase
+does not become the standard's by sitting beside a rule number. That is true of
+every `G` row here: the guidance cell is always our words, and what the row
+traces is the claim, not the wording. Splitting further would grade our own
+question text against a rule, which is the defect pointing the other way.
 
 ## What this does not claim
 

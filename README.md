@@ -319,7 +319,8 @@ matrix that mirrors its path, such as
 `grounding/standards/simplified-technical-english/references/examples.md`. A
 row names a heading, and two files in one skill can carry the same heading, so
 a shared row space would let a row claim the wrong occurrence. A file with no
-matrix fails the check, and so does a matrix that grades no file. ADR-0030
+matrix fails the check, and so does a file under `grounding/` that grades no
+file any skill ships. ADR-0030
 records the decision.
 
 Rows come in three kinds:

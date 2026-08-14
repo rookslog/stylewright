@@ -5,8 +5,7 @@ Use this map to find relevant material in the official standard. The topic label
 ## Writing-rule map
 
 The first table states where the standard answers each question. The second
-table is our own advice about when to read there. The questions repeat across
-both, so each table carries one kind of claim and no row mixes the two.
+table is our own advice about when to read there.
 
 | Question | Official location | Search in the PDF |
 |---|---|---|

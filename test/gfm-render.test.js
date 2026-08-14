@@ -452,18 +452,31 @@ test('a table a reader sees without a pipe is refused, and a heading is not', ()
 test('front matter is invisible to this check and visible to a reader', () => {
   // The exemption's whole warrant is that a harness consumes the block as
   // metadata, which is true of `SKILL.md` and of no reference file. This is
-  // what a reader gets for the same bytes where no harness reads them: a
-  // thematic break, and a setext HEADING carrying every line of the block. The
-  // walk yields no unit for any of it, so a rule written there was disposed of
-  // by nothing. `ground --check` refuses the block in a reference file, and
-  // this render is why the refusal is the honest answer rather than grading
-  // three lines a reader never sees as prose.
-  const text = '---\nnote: Always preserve safety.\n---\n\n# Heading\n';
-  const html = renderBlocks(text);
-  assert.match(html, /<hr \/>/);
-  assert.match(html, /<h2>note: Always preserve safety\.<\/h2>/);
-  assert.deepEqual(contentUnits(text).map((u) => u.text), ['Heading']);
-  assert.deepEqual(unmodelled(text), []);
+  // what a reader gets for the same bytes where no harness reads them.
+  //
+  // The property is stated as one rule over many shapes, and not as the render
+  // of any one of them. A first draft asserted a thematic break and a setext
+  // heading, which is what the first shape below produces and what three of the
+  // others do not: a list inside the block renders as a list, a fenced block as
+  // code, and a table as a table. Writing that one render into four documents
+  // as the reason for the refusal was the comment explaining away what the
+  // parser had not been asked. What holds across every shape is the thing the
+  // refusal actually rests on: a reader sees the block's contents, and this
+  // check reads no unit from any line of it.
+  const shapes = {
+    'a mapping': '---\nnote: Always preserve safety.\n---\n\n# Heading',
+    'a list': '---\n- Always preserve safety.\n---\n\n# Heading',
+    'a fenced block': '---\n```\nAlways preserve safety.\n```\n---\n\n# Heading',
+    'a blank line inside': '---\na: b\n\nc: Always preserve safety.\n---\n\n# Heading',
+    'a table': '---\n| Always preserve safety. | b |\n|---|---|\n---\n\n# Heading',
+  };
+  for (const [name, text] of Object.entries(shapes)) {
+    assert.match(renderBlocks(text), /Always preserve safety\./,
+      `a reader sees the block's contents in ${name}`);
+    assert.deepEqual(contentUnits(text).map((u) => u.text), ['Heading'],
+      `the walk reads no unit from the block in ${name}`);
+    assert.deepEqual(unmodelled(text), [], `and refuses no line of it in ${name}`);
+  }
 });
 
 /**

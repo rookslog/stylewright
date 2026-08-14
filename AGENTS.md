@@ -41,7 +41,8 @@ skill can carry the same heading, and a shared space let a row claim an
 occurrence in the file nobody wrote it for while every cell still matched. The
 file identity sits in the matrix's own path, where a filesystem holds it rather
 than a cell, so no column moved and no digest changed. A graded file with no
-matrix is refused, and so is a matrix that grades no file. `references/` holds
+matrix is refused, and so is a file under `grounding/` that grades no file any
+skill ships. `references/` holds
 Markdown, because the walk reads Markdown alone and nothing can grade a file it
 cannot read. ADR-0030 records the decision.
 
@@ -90,14 +91,21 @@ thing outside the check, because it is metadata for the harness.
 That exemption belongs to `SKILL.md` and to no other file. The harness parses a
 skill's front matter and never shows it to a writer, which is the whole warrant,
 and no harness reads a reference file's prefix. A closed `---` block there was
-removed from the units and reported by nothing, while a reader saw a thematic
-break and a heading carrying every line of it, so a rule written there shipped
+removed from the units and reported by nothing, so a rule written there shipped
 visible to the reader and invisible to the check. `checkSkill` takes the file it
 is grading as `subject`, with no default, because a caller that does not say
 which file it grades may not be handed the exemption. A block in any other file
-is refused by name. The render is in `test/gfm-render.test.js`, by ADR-0028's
-rule, and it decided the disposition: three lines a reader sees as a break and a
-heading are not graded as prose nobody wrote.
+is refused by name.
+
+State what that block renders as carefully, because it depends on the lines.
+`test/gfm-render.test.js` puts five shapes through the parser, by ADR-0028's
+rule: a mapping gives a thematic break and a setext heading, a list gives a
+list, a fenced block gives code, and a table gives a table. An earlier draft of
+this paragraph named the first render as the reason, in four documents at once,
+which the parser refutes for the other four shapes. The property that holds
+across all of them is the one the refusal rests on, and it is the one to state:
+a reader sees the block's contents, and the walk reads no unit from any line of
+it.
 
 Each row claims one occurrence. A skill that repeats a sentence needs a row for
 each time it says it.
