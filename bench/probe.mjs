@@ -352,29 +352,47 @@ function keyPaths(value, prefix = '') {
 }
 
 /**
- * Problems with the flag set the probe ran under. An unknown flag is refused
- * rather than ignored, because the acceptance test is that the probe ran the
- * acceptance flag set, plus at most the trace flag. A flag outside that is a
- * configuration surface the arm never opened, and a probe that needed one has
- * failed the test it exists to run.
- */
-/**
  * The flag walk, in two readings.
  *
- * `isolationProblems` is the ACCEPTANCE TEST: it reads the values too, so a
- * record whose arm ran the wrong `--setting-sources` fails it. `deriveOutcome`
- * asks this one.
+ * `isolationProblems` is the ACCEPTANCE TEST. It reads the flag NAMES and the
+ * VALUES: which flags the arm ran, which required ones it omitted, and what
+ * each one carried. `deriveOutcome` asks this one, and reports the answer as
+ * `isolated`.
  *
- * `flagShapeProblems` is the RECORD CHECK: it reads the structure and leaves the
- * values alone. `checkRecord` asks this one, and the difference matters because
- * of what the two questions are for.
+ * `flagShapeProblems` is the RECORD CHECK, and it reads structural
+ * impossibility alone. `armFlags` returns a LITERAL array and `runArms` builds
+ * one of them above the loop, so a record carries a list of strings that
+ * alternates flags with their values, each flag stated once, and no element
+ * floating between them. That much holds under any revision. So the shape
+ * reading keeps six refusals: flags that are not a non-empty array, an entry
+ * that is not a string, an element that is neither a flag nor a flag's value
+ * named by position alone, a flag stated twice whatever its name, a
+ * value-taking flag at the end of the list, and a flag sitting where another
+ * flag's value belongs. `checkRecord` asks this one.
  *
- * Both were one function, and `checkRecord` asked the acceptance test. That made
- * a probe which ran the wrong flags a MALFORMED RECORD rather than a FAILED
- * PROBE — so the repository could not keep one, and the design's own rule that a
- * recorded failure is a result did not hold for the isolation failure. It became
- * visible when the acceptance flag set moved on 2026-08-07: the record of the
- * probe that motivated the move could not survive it. ADR-0024.
+ * The line between them is stable identity against versioned protocol, and the
+ * flag walk carries it twice over. A check may refuse a record on a fact about
+ * the collector that does not move. The pathway combination is one, because no
+ * run could have written a pathway no runner drives, and the INVOCATION GRAMMAR
+ * is another, because the array is constructed rather than parsed. A check may
+ * not refuse a record on the NAMED SET, which this repository versions. Which
+ * flags a probe arm runs is such a choice, and so is `TRACE_LINE_LIMIT`. The set
+ * moved on 2026-08-07 and it will move again, and a check that refuses on it
+ * retires committed evidence every time it moves. So a versioned choice decides
+ * a READING and never a record's validity.
+ *
+ * Both readings were one function, and `checkRecord` asked the acceptance test.
+ * That made a probe which ran the wrong flags a MALFORMED RECORD rather than a
+ * FAILED PROBE — so the repository could not keep one, and the design's own
+ * rule that a recorded failure is a result did not hold for the isolation
+ * failure. It became visible when the acceptance flag set moved on 2026-08-07:
+ * the record of the probe that motivated the move could not survive it.
+ * ADR-0024.
+ *
+ * The first split fixed the VALUE case alone. Membership and presence stayed on
+ * the shape side, so a record omitting `--strict-mcp-config`, or carrying a
+ * flag this repository has never heard of, was still a broken file. Issue 113
+ * reports it, and both readings now sit with the values.
  *
  * Nothing is weakened. A record under the wrong flags still derives FAIL,
  * `check:probes` still prints it as one, and no such record can ever read as a
@@ -395,6 +413,11 @@ export function flagShapeProblems(flags) {
  * `includes`, because a flag sitting in a value position is not a flag the arm
  * ran. One walk answers both questions, so no second reading of an invocation
  * can drift from the one the acceptance test uses.
+ *
+ * It holds every flag the walk read in a flag position, and not every ALLOWED
+ * one. A flag outside the set is still a flag the arm ran, and the duplicate
+ * check has to see it — reading membership first let `--verbose --verbose` past
+ * a rule that names no flag.
  */
 export function flagsSeen(flags) {
   return flagProblems(flags, false).seen;
@@ -420,15 +443,35 @@ function flagProblems(flags, values) {
       i += 1;
       continue;
     }
-    if (!ALLOWED_FLAGS.includes(flag)) {
-      problems.push(flag.startsWith('-')
-        ? `${flag} is not a flag a probe arm runs.`
-        : `"${flag}" at position ${i} is not part of a probe arm's invocation.`);
+    if (!flag.startsWith('-')) {
+      // A floating element, which is the GRAMMAR and not the named set. The
+      // array is CONSTRUCTED rather than parsed, so every element is a flag or
+      // the value of the flag before it under any revision, whatever the set
+      // becomes. So this stays a shape refusal.
+      //
+      // It names the position and never the element. The old message quoted it,
+      // and a credential-shaped positional then withheld the whole line through
+      // `redact` — safe, and unreadable. A position carries nothing of the
+      // record, so the diagnostic survives.
+      problems.push(`the entry at position ${i} is not part of a probe arm's invocation.`);
       i += 1;
       continue;
     }
+    // Duplication is read BEFORE membership, and it is name-agnostic. `runArms`
+    // builds one flag set, so NO flag is stated twice under any revision, and
+    // reading the duplicate only for a flag this repository currently knows let
+    // `--verbose --verbose` through the shape check.
     if (seen.has(flag)) problems.push(`${flag} appears twice, so the arm's surface is unclear.`);
     seen.add(flag);
+    if (!ALLOWED_FLAGS.includes(flag)) {
+      // A flag outside the set is a configuration surface the arm never opened,
+      // so the ACCEPTANCE test refuses it. The shape reading passes it over,
+      // because the set is a protocol choice this repository versions. Either
+      // way it consumes one element, so both readings walk the list alike.
+      if (values) problems.push(`${flag} is not a flag a probe arm runs.`);
+      i += 1;
+      continue;
+    }
     if (!FLAGS_TAKING_A_VALUE.includes(flag)) {
       i += 1;
       continue;
@@ -460,8 +503,15 @@ function flagProblems(flags, values) {
   }
   // Presence is read from what the walk SAW, not from `includes`. A flag
   // sitting in a value position is not a flag the arm ran.
-  for (const required of REQUIRED_FLAGS) {
-    if (!seen.has(required)) problems.push(`flags omit ${required}.`);
+  //
+  // It is the ACCEPTANCE test's question. An arm that omitted a required flag
+  // ran without the isolation that flag buys, which is a probe that failed
+  // rather than a file that is broken, and the required set moves whenever this
+  // repository amends the protocol.
+  if (values) {
+    for (const required of REQUIRED_FLAGS) {
+      if (!seen.has(required)) problems.push(`flags omit ${required}.`);
+    }
   }
   return { problems, seen };
 }
@@ -812,6 +862,8 @@ export function checkRecord(record, name = 'record') {
   // is a probe that failed, and `deriveOutcome` says so through `isolated`.
   // Refusing it here made it a broken file instead, which is how the design's
   // "a recorded failure is a result" stopped holding for isolation failures.
+  // That covers an omitted flag and an unknown one as well as a wrong value,
+  // because the flag set is a protocol choice this repository versions.
   for (const p of flagShapeProblems(record.flags)) say(p);
 
   // The probe authenticates from a credential in the environment, by either

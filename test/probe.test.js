@@ -311,7 +311,7 @@ test('a stray positional is refused, not skipped', () => {
   const stray = ['-p', 'extra-prompt', '--model', 'opus', '--setting-sources', '',
     '--strict-mcp-config', '--output-format', 'json'];
   assert.match(isolationProblems(stray).join(' '),
-    /"extra-prompt" at position 1 is not part of a probe arm's invocation/);
+    /the entry at position 1 is not part of a probe arm's invocation/);
   assert.equal(deriveOutcome({ ...record(), flags: stray }).isolated, false);
 });
 
@@ -489,14 +489,13 @@ test('the environment class names the home, not the route', () => {
 // The refusal below the flag check promises nothing is quoted. The flag check
 // above it quoted its value verbatim, so a credential-shaped flag leaked.
 test('a credential-shaped value in any message is withheld at emission', () => {
-  // A stray positional is quoted back by the refusal that names it, so it is
-  // the shape that proves redaction happens at emission. The refusal for a
-  // fixed-value flag used to quote too, and no longer does: `checkRecord` reads
-  // the flag SHAPE now and leaves the values to the acceptance test.
-  const leaky = record({
-    flags: ['-p', '--model', 'opus', '--setting-sources', 'user',
-      'sk-ant-oat01-LEAKEDCREDENTIAL0123', '--strict-mcp-config', '--output-format', 'json'],
-  });
+  // The build-disagreement refusal names both builds, so it is the message
+  // `checkRecord` still emits from the record's own bytes, and the shape that
+  // proves redaction happens at emission. The flag refusals used to quote too,
+  // and no longer do: `checkRecord` reads the flag SHAPE now, and the names,
+  // the presence and the values all belong to the acceptance test.
+  const leaky = record();
+  leaky.installed.model_id = 'sk-ant-oat01-LEAKEDCREDENTIAL0123';
   const problems = checkRecord(leaky, 'r.json');
   const joined = problems.join(' ');
   assert.equal(joined.includes('LEAKEDCREDENTIAL'), false, 'no message may quote it');
@@ -962,6 +961,102 @@ test('a record under the old flag spelling is well formed, and derives a failure
   assert.equal(deriveOutcome(old).isolated, false,
     'the acceptance test reads the value, so the old spelling is not isolated');
   assert.equal(deriveOutcome(old).passes, false);
+});
+
+// Issue 113. The first split fixed the wrong-VALUE case alone, and membership
+// and presence stayed on the shape side — so a set that moves by ADDING or
+// REMOVING a flag name still made every committed record a broken file. Three
+// cases, and the third is the one that already worked, pinned beside them so a
+// later reader sees one rule rather than an exception.
+test('a record whose arm omitted a required flag is well formed, and derives a failure', () => {
+  const omitted = record({
+    flags: ['-p', '--model', 'opus', '--setting-sources', 'user', '--output-format', 'json'],
+  });
+  assert.deepEqual(checkRecord(omitted), [],
+    'presence is a protocol choice, so an omitted flag is a failed probe');
+  assert.match(isolationProblems(omitted.flags).join(' '), /flags omit --strict-mcp-config/);
+  assert.equal(deriveOutcome(omitted).isolated, false);
+  assert.equal(deriveOutcome(omitted).passes, false);
+});
+
+test('a record naming a flag outside the set is well formed, and derives a failure', () => {
+  const extra = record({ flags: [...armFlags('opus'), '--verbose'] });
+  assert.deepEqual(checkRecord(extra), [],
+    'the allowlist is a protocol choice, so an unknown flag is a failed probe');
+  assert.match(isolationProblems(extra.flags).join(' '),
+    /--verbose is not a flag a probe arm runs/);
+  assert.equal(deriveOutcome(extra).isolated, false);
+  assert.equal(deriveOutcome(extra).passes, false);
+});
+
+test('a record carrying the wrong value for a flag is well formed, and derives a failure', () => {
+  const wrong = record({
+    flags: ['-p', '--model', 'opus', '--setting-sources', '', '--strict-mcp-config',
+      '--output-format', 'json'],
+  });
+  assert.deepEqual(checkRecord(wrong), []);
+  assert.match(isolationProblems(wrong.flags).join(' '), /--setting-sources carried ""/);
+  assert.equal(deriveOutcome(wrong).isolated, false);
+  assert.equal(deriveOutcome(wrong).passes, false);
+});
+
+// The shape reading keeps what no revision of the collector could produce.
+// `runArms` builds one flag set above the loop, so a duplicated flag, a
+// non-string entry, and a value-taking flag with nothing after it each describe
+// a file this tool could not have written.
+test('the shape reading keeps the structural impossibilities, and only those', () => {
+  assert.match(flagShapeProblems('not a list').join(' '), /non-empty array/);
+  assert.match(flagShapeProblems([]).join(' '), /non-empty array/);
+  assert.match(flagShapeProblems(['-p', 7]).join(' '), /position 1 is not a string/);
+  assert.match(flagShapeProblems([...armFlags('opus'), '--strict-mcp-config']).join(' '),
+    /--strict-mcp-config appears twice/);
+  assert.match(flagShapeProblems([...armFlags('opus'), TRACE_FLAG]).join(' '),
+    /--debug-file carries no value/);
+  assert.match(flagShapeProblems(['-p', '--model', '--setting-sources', 'user',
+    '--strict-mcp-config', '--output-format', 'json']).join(' '), /--model carries no value/);
+});
+
+// The named set moves by amendment, so it cannot decide validity. The
+// invocation GRAMMAR does not move: `armFlags` returns a literal array, so no
+// revision of this collector can float an element between a flag and its value,
+// or state one flag twice. Both stay on the shape side, and neither reads the
+// flag's name to decide.
+test('a floating element is refused by shape, and named by position alone', () => {
+  const stray = ['-p', 'extra-prompt', '--model', 'opus', '--setting-sources', 'user',
+    '--strict-mcp-config', '--output-format', 'json'];
+  const problems = flagShapeProblems(stray).join(' ');
+  assert.match(problems, /the entry at position 1 is not part of a probe arm's invocation/);
+  assert.equal(problems.includes('extra-prompt'), false,
+    'the message names the position, never the element');
+  assert.match(checkRecord(record({ flags: stray })).join(' '), /position 1/);
+});
+
+test('a duplicated flag is refused by shape whatever its name', () => {
+  // The name is unknown, so membership is the acceptance test's to report. The
+  // duplication is not: one flag set can never state one flag twice.
+  const twice = [...armFlags('opus'), '--verbose', '--verbose'];
+  assert.match(flagShapeProblems(twice).join(' '), /--verbose appears twice/);
+  assert.match(checkRecord(record({ flags: twice })).join(' '), /--verbose appears twice/);
+  const problems = isolationProblems(twice).join(' ');
+  assert.match(problems, /--verbose appears twice/);
+  assert.match(problems, /--verbose is not a flag a probe arm runs/);
+});
+
+// The positional refusal was the original demonstration of redaction at
+// emission, and it moved value-side for one round. It is back, and it now names
+// the position rather than the element, so nothing is withheld and nothing
+// leaks. Both properties are asserted here.
+test('a credential-shaped positional is refused without being quoted', () => {
+  const leaky = record({
+    flags: ['-p', 'sk-ant-oat01-LEAKEDCREDENTIAL0123', '--model', 'opus',
+      '--setting-sources', 'user', '--strict-mcp-config', '--output-format', 'json'],
+  });
+  const problems = checkRecord(leaky, 'r.json');
+  const joined = problems.join(' ');
+  assert.match(joined, /the entry at position 1 is not part of a probe arm's invocation/,
+    'a floating element is a shape problem, so `checkRecord` reports it');
+  assert.equal(joined.includes('LEAKEDCREDENTIAL'), false, 'no message may quote it');
+  assert.ok(problems.every((line) => line.startsWith('r.json: ')));
 });
 
 // The trace, which section 4.1 asks for and no record carried until now.
