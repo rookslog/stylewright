@@ -42,6 +42,7 @@ Install one tier, the other, or both.
 | `navigable-references` | craft | None. The rule is ours, and no measurement stands behind it yet. See `source/craft/navigable-references.md`. | Not applicable. Nothing is reproduced. |
 | `proportionate-execution` | craft | None. Anthropic documents the behaviours, and every rule answering them is ours. See `source/craft/proportionate-execution.md`. | No source wording is reproduced, so no reproduction right is relied on. See the same record. |
 | `de-slop` | craft | None. Every rule is ours, and no measurement stands behind it yet. See `source/craft/de-slop.md`. | Not applicable. Nothing is reproduced. |
+| `subagent-returns` | craft | None. The skill came out of an operator request, and every rule is ours. See `source/craft/subagent-returns.md`. | Not applicable. Nothing is reproduced. |
 
 A craft skill has no standard behind it, so measurement is the only evidence its
 rules can have. `bench/` holds that protocol, and `bench/README.md` states the
@@ -50,8 +51,9 @@ clean, which is how we learned the skill we were about to write would have been
 aimed at the wrong thing.
 
 That is the evidence a craft rule can have, and not the evidence each one
-already has. `navigable-references` and `de-slop` ship with none, and each source record
-says so in those words. Read both as discipline that we assert.
+already has. `navigable-references`, `de-slop` and `subagent-returns` ship with
+none, and each source record says so in those words. Read all three as
+discipline that we assert.
 
 `de-slop` gives a shape to write toward, and names the departures from it. It
 governs rhetorical moves and never words. No skill here ships a list of
@@ -65,6 +67,10 @@ rules govern a session of many steps, and the bench runner drives one prompt.
 ADR-0005 accepted that gap when it admitted operating discipline to this tier,
 so no rule in that skill claims a measured effect until the runner can drive a
 session.
+
+`subagent-returns` sits behind the same wall. It governs the one message a
+subagent returns to the agent that spawned it, so an arm has to drive a
+delegation and keep what came back. The runner cannot do that either.
 
 More skills are in progress. See `CONTRIBUTING.md` to add one.
 
