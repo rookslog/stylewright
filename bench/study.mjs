@@ -478,11 +478,11 @@ export function commandProblems(command, { studyDir, repoRoot = REPO }) {
     // spelled path resolves inside the study on Windows and reads as one
     // filename on every other platform, so without this the same bytes get two
     // verdicts and the POSIX one says `is not inside this study`. `commandPath`
-    // in `bench/retain.mjs` is the writer that never produces this, and this is
-    // the reader that refuses it: a study promoted on one platform has to
-    // re-run on any other, or the evidence is local to the machine that made
-    // it. A study path is built from a `STUDY_NAME` directory and `NAME` arms
-    // and scenarios, so no legitimate argument carries a backslash.
+    // above is the writer that never produces this spelling, and this is the
+    // reader that refuses it: a study promoted on one platform has to re-run on
+    // any other, or the evidence is local to the machine that made it. A study
+    // path is built from a `STUDY_NAME` directory and `NAME` arms and
+    // scenarios, so no legitimate argument carries a backslash.
     if (arg.includes('\\')) {
       problems.push(`spells ${arg} with a backslash. A retained path carries one separator, `
         + '`/`, or a study promoted on one platform cannot be re-run on another.');
