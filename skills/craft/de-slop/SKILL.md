@@ -32,8 +32,8 @@ against.
 - **Earned structure.** A heading over two sentences, and a sentence announcing that a point is important, each perform a thoroughness the content has not reached.
 - **The end.** A closing paragraph that re-says the page gives the reader a second reading of the first.
 
-One test settles most of them. Remove the sentence, read the passage again, and
-keep the sentence only if something changed.
+Remove the sentence, read the passage again, and keep the sentence only if
+something changed.
 
 ## Compression has a cost, so name it
 
@@ -48,18 +48,9 @@ in.
 
 ## No part of this matches a word
 
-This skill ships no word list.
-
-A word that one setting overuses is countable, and that makes it tempting to
-ship. Two things argue against carrying it in a skill. A list of forbidden
-words teaches an agent to swap each one for its nearest neighbour, which leaves
-the defect and cleans the surface. A word may also recur in a setting rather
-than in a model, which is the live reading here rather than a finding. On that
-reading a shipped list dates faster than the shape above.
-
-Counting belongs in `bench/score.mjs` in the stylewright repository, where a
-scorer counts and asserts nothing. A word becomes a rule in a skill only after
-a promoted study says it should.
+This skill ships no word list. A list of forbidden words teaches an agent to
+swap each one for its nearest neighbour, which leaves the defect and cleans the
+surface.
 
 ## What a check can see
 
@@ -67,25 +58,12 @@ Nothing here, today. `stylewright lint` carries no check for any part of the
 shape above, because a triad, a restatement and an invented objection are
 judgments about content rather than shapes a program recognises.
 
-So this skill is the generative half on its own.
-
-## What stands behind this shape
-
-Nothing measured. A craft rule has no standard behind it, so measurement is the
-only evidence it can ever have, and no arm has been run for this skill.
-
-Read the shape here as discipline that we assert. Do not read any of it as an
-effect that we observed, and do not let a later summary say that this skill
-works.
-
 ## How this differs from the other skills here
 
 `plain-language` and `simplified-technical-english` each distil a published
-standard, and each writes for a named reader. This skill has no standard and no
-named reader.
-
-The disagreement is about repetition. Both standards ask a writer to repeat, in
-a summary, in a heading, or in one term used for one thing. This skill ends a
+standard and write for a named reader. This skill does neither, and the
+disagreement is about repetition. Both standards ask a writer to repeat, in a
+summary, in a heading, or in one term used for one thing. This skill ends a
 passage at its last load-bearing sentence. A procedure and a safety notice
 repeat on purpose, so the standard wins there and this skill yields.
 
@@ -97,7 +75,12 @@ three. They do not disagree.
 
 ## Boundary
 
-This skill has no external standard behind it. Every rule in it is our own
-editorial guidance, and the trace marks the rest as narrative that asserts no
-rule. The trace lives in the stylewright repository at
-`grounding/craft/de-slop.md`. It is not installed with this skill.
+This skill has no external standard behind it, and no arm has been run for it.
+Every rule in it is our own editorial guidance, and measurement is the only
+evidence a craft rule can ever have. The trace marks the rest as narrative that
+asserts no rule. It lives in the stylewright repository at
+`grounding/craft/de-slop.md`, and it is not installed with this skill.
+
+Read the shape here as discipline that we assert. Do not read any of it as an
+effect that we observed, and do not let a later summary say that this skill
+works.

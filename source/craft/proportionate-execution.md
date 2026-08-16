@@ -47,10 +47,10 @@ land near one in substance. None is copied, and none claims authority from one.
 A rule that reads like vendor guidance is still an `E` row, because the vendor
 wrote guidance for its own product and not a standard for anybody to cite.
 
-`compressed-deliberation` cites the same two pages, and its own record at
-`source/craft/compressed-deliberation.md` carries a wider register including the
-system card and the counterevidence. Read that record with this one. Neither skill supersedes the
-other.
+The record for `compressed-deliberation` cites the same two pages, and that
+record at `source/craft/compressed-deliberation.md` carries a wider register
+including the system card and the counterevidence. Read that record with this
+one. Neither skill supersedes the other.
 
 ## What this record does not carry
 

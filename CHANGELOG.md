@@ -195,6 +195,25 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `de-slop` and `compressed-deliberation` say less about themselves. A reading
+  of the craft tier with both skills open found each file spending about half
+  its words on its own provenance and its own limits. Neither loses a rule.
+  `de-slop` keeps one clause of the reason it ships no word list, and the
+  repository-governance case behind that decision moves to
+  `source/craft/de-slop.md`. Its `What stands behind this shape` section merges
+  into `Boundary`, which already stated the same no-standard proposition.
+  `compressed-deliberation` loses the seven bullets that described Claude Opus
+  5, and keeps the sentence a reader acts on, which is that the rules aim at
+  the whole stack rather than at the model alone. Those bullets move to
+  `source/craft/compressed-deliberation.md`, beside the URLs and read dates
+  that already held them, so the provenance survives the move. One clause is
+  cut rather than moved. It said that files written to disk are the case the
+  vendor documents most clearly, and it attributed that to a record which never
+  said it. Two headings over two bullets each become labelled bullets under
+  `The shape of a reply`.
+  The `compressed-deliberation` matrix therefore carries no `G` row, and it
+  drops its `Source version` line, because ADR-0026 refuses that line in a
+  matrix that cites nothing. Both matrices renumber in document order.
 - `proportionate-execution` says how it differs from `de-slop`. Three of the
   four craft skills already related themselves to a neighbour, and `de-slop`
   has named this one since 0.3.0, so the closest pair was cross-referenced

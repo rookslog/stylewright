@@ -9,38 +9,39 @@ Disposes of every unit of content in
   claims no authority at all. Its rule cell is empty.
 
 The `Audited` cell of a `G` row says whether a person has read that row against
-the source. Every row starts at `unaudited`, and no run of the checker raises
-it. A person who checks a row writes the date and the row's digest in place of
-the word. Editing any other cell changes that digest, so the audit goes stale
-and the check says so. So does moving the source version this file declares,
-because an audit answers to one reading of the source.
+the source. The `Source text` cell carries the words of the rule it cites.
+There is no `G` row here, so every cell in both columns is empty, and both are
+waiting for the first row that cites anything.
 
-The `Source text` cell of a `G` row carries the words of the rule it cites, in
-quotation marks. Every row below reads `unquoted`, and that is not a backlog.
-
-**Quotation:** forbidden. The source record states that nobody has read the
-governing terms of the vendor pages these rows cite, so no sentence of one may
-be carried here. Read those terms and record the check, then edit this line.
+**Quotation:** forbidden. Nobody has read the governing terms of the vendor
+pages behind this skill, so no sentence of one may be carried here. The source
+record at `source/craft/compressed-deliberation.md` names those pages. Read
+their terms, record the check there, and edit this line in the same pass.
 
 This file stays in the repository. It does not install with the skill.
 
 Checked by `stylewright ground --check --skill compressed-deliberation`.
 
-## What the `G` rows are, and what they are not
+## The vendor material left the skill, and the `G` rows went with it
 
-The seven `G` rows below trace to Anthropic's own documentation of Claude Opus
-5. They are the **problem statement** of this skill and nothing else. A vendor
-saying that its model writes at length licenses a description of the model. It
-licenses no rule about how anybody should write.
+Seven `G` rows used to carry Anthropic's documentation of Claude Opus 5 into
+the skill as its problem statement. They described a model, they licensed no
+rule, and a paragraph beside them said so. Together they were most of one
+section and none of the guidance.
 
-Every prescription here is therefore an `E` row, including the ones that read as
-obvious consequences of a `G` row. The citations look authoritative, and that is
-why the line has to hold.
+That description now sits in `source/craft/compressed-deliberation.md`, which
+already held the URLs, the sections read, the read date and the expiry
+conditions. The skill keeps the sentence a reader acts on, which is that the
+rules aim at the whole stack rather than at the model alone. So no row here
+cites anything, and this file declares no source version, because a pin no row
+answers to is a line nobody maintains.
 
-The source record at `source/craft/compressed-deliberation.md` carries the
-URLs, the sections read, the read date, and the expiry conditions.
+Read that as a change of scope rather than a retraction. The vendor pages still
+say what they said, and the source record still cites them. A contributor who
+wants one cited here again adds the `G` row, the source version and the
+quotation check in one pass.
 
-## Why no `G` row supports a word budget
+## Why no rule here sets a word budget
 
 Anthropic also published a postmortem in which brevity instructions to an
 earlier Claude Code build reduced coding quality. That report is `A6` in the
@@ -72,7 +73,7 @@ Read that as a fact about a harness, not about a model. `claude -p` is the
 Claude Code headless path, so "no operator instructions" is not "the stock
 model", and one author's rule stack is not operator instructions in general.
 Nothing here was measured in the agentic, tool-using, or file-writing regimes
-that `G-02` and `G-03` name as the defect's worst ground, and those are the
+that the source record names as the defect's worst ground, and those are the
 regimes the skill is meant for.
 
 **What did not survive.** Two adversarial reviews on 2026-07-27 struck more of
@@ -92,7 +93,7 @@ this record than they left.
 - *Cost fell without cutting findings.* Weakened. Detection of the seeded bug
   is five of five in every arm, but the skill's samples raise one distinct issue
   where the unguided samples raise two or three. What it drops is secondary and
-  arguably out of scope under `E-09`. That judgment was made after seeing the
+  arguably out of scope under `E-13`. That judgment was made after seeing the
   divergence, so it is not evidence.
 - *One rule carried most of the cost.* Holds for the largest contributor only.
   The ordering among the remaining five rules is one draw from overlapping
@@ -102,50 +103,33 @@ Five runs per cell, medians with no dispersion statistic, four prompts written
 by the person who wrote the rules, one seeded bug in one scenario. Nothing here
 is a controlled trial, and no `E` row should be read as one.
 
-**Source version:** Anthropic's documentation of Claude Opus 5, model id
-`claude-opus-5`, released 2026-07-24, as read up to the evidence cutoff of
-2026-07-27. The target is a model build rather than a standard, so the build
-and the cutoff are what a reading of these pages is a reading of.
-
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|
-| G-01 | Claude Opus 5 writes longer visible responses than earlier Opus models. | What this corrects | Response length and verbosity | unquoted | A1, Prompting Claude Opus 5 | unaudited |
-| G-02 | It writes longer reports, summaries, and files to disk. | What this corrects | Written deliverable length | unquoted | A1, Prompting Claude Opus 5 | unaudited |
-| G-03 | It announces what it is about to do more often during agentic work. | What this corrects | User-facing progress updates | unquoted | A1, Prompting Claude Opus 5 | unaudited |
-| G-04 | It verifies its own work without being asked. | What this corrects | Task scope and over-verification | unquoted | A1, Prompting Claude Opus 5 | unaudited |
-| G-05 | It narrates its own corrections more often. | What this corrects | Self-correction | unquoted | A1, Prompting Claude Opus 5 | unaudited |
-| G-06 | It can widen a task past what the reader asked for. | What this corrects | Task scope and over-verification | unquoted | A1, and A5 System Card pp. 86 to 87 | unaudited |
-| G-07 | A lower effort setting does not reliably shorten the visible answer. | What this corrects | Response length and verbosity | unquoted | A1, and A3 migration guide | unaudited |
-| E-01 | Lead with the result, and not with the route you took to it. | The shape of a reply |  |  | Our own guidance |  |
-| E-02 | Put the item that changes the reader's decision first, and let the rest go unsaid. | The shape of a reply |  |  | Our own guidance |  |
-| E-03 | Say each thing once, in the place where the reader can act on it. | The shape of a reply |  |  | Our own guidance |  |
-| E-04 | Write a claim as a sentence, and never as a section. | The shape of a reply |  |  | Our own guidance |  |
-| E-05 | Do not restate the request, the context, or anything the reader just supplied. | The shape of a reply |  |  | Our own guidance |  |
-| E-06 | Stop when the result and the support it rests on are on the page. | The shape of a reply |  |  | Our own guidance |  |
-| E-07 | Report a finished change as the result, and then the evidence that the result holds. | Reporting finished work |  |  | Our own guidance |  |
-| E-08 | Name what you verified in one clause, and not under a heading. | Reporting finished work |  |  | Our own guidance |  |
-| E-09 | Report an unchecked risk only when it could bite, and lead with it. | Reporting finished work |  |  | Our own guidance |  |
-| E-10 | Concede in the first sentence, and do not argue the point again. | Conceding a correction |  |  | Our own guidance |  |
-| E-11 | Say what the correction changes downstream, and then stop. | Conceding a correction |  |  | Our own guidance |  |
-| E-12 | Surface a decision only when you will stop and wait for the answer. | Surfacing a decision |  |  | Our own guidance |  |
-| E-13 | Give the options, the recommendation, and the belief the recommendation rests on. | Surfacing a decision |  |  | Our own guidance |  |
+| E-01 | Read the rules below as aimed at the whole stack you are running inside, and not at the model alone. Our own baseline found an unguided run already clean, and an operator instruction stack above it was what inflated the reply. The source record carries the vendor's documentation of the defaults this skill answers, and that documentation describes a model rather than prescribing anything. | What this corrects |  |  | Our own guidance, and it instructs the reader what the rules aim at |  |
+| E-02 | Apply the rules to an agentic session, or to a file written to disk, on their reasoning and not on our evidence. What we measured is single-turn replies, one prompt each, five runs, so those two cases are the ones we have tested least. | What this corrects |  |  | Our own guidance, and it states the evidence the rules rest on |  |
+| E-03 | Lead with the result, and not with the route you took to it. | The shape of a reply |  |  | Our own guidance |  |
+| E-04 | Put the item that changes the reader's decision first, and let the rest go unsaid. | The shape of a reply |  |  | Our own guidance |  |
+| E-05 | Say each thing once, in the place where the reader can act on it. | The shape of a reply |  |  | Our own guidance |  |
+| E-06 | Write a claim as a sentence, and never as a section. | The shape of a reply |  |  | Our own guidance |  |
+| E-07 | Do not restate the request, the context, or anything the reader just supplied. | The shape of a reply |  |  | Our own guidance |  |
+| E-08 | Stop when the result and the support it rests on are on the page. | The shape of a reply |  |  | Our own guidance |  |
+| E-09 | **Conceding a correction.** Concede in the first sentence, do not argue the point again, say what the correction changes downstream, and then stop. | The shape of a reply |  |  | Our own guidance, for one situation a reply is written in |  |
+| E-10 | **Surfacing a decision.** Surface one only when you will stop and wait for the answer. Give the options, the recommendation, and the belief it rests on. | The shape of a reply |  |  | Our own guidance, for one situation a reply is written in |  |
+| E-11 | Report a finished change as the result, and then the evidence that the result holds. | Reporting finished work |  |  | Our own guidance |  |
+| E-12 | Name what you verified in one clause, and not under a heading. | Reporting finished work |  |  | Our own guidance |  |
+| E-13 | Report an unchecked risk only when it could bite, and lead with it. | Reporting finished work |  |  | Our own guidance |  |
 | E-14 | Do not set a word budget, because a budget cuts substance before it cuts scaffolding. | What this skill does not ask for |  |  | Our own guidance |  |
 | E-15 | Do not drop a finding to make a reply shorter. | What this skill does not ask for |  |  | Our own guidance |  |
 | E-16 | Do not suppress the narration that a reader uses to intervene. | What this skill does not ask for |  |  | Our own guidance |  |
-| N-01 | Deliberation is not the product. Monitoring, qualifying, verifying, managing scope and correcting course are all real work, and a reader wants the edited result of that work rather than a transcript of it. | Purpose |  |  | Purpose framing, asserts no rule |  |
-| N-02 | This skill is pinned to one model build. The record of what it targets, and of when it expires, lives in the stylewright repository at `source/craft/compressed-deliberation.md`. It is not installed with this skill. | Purpose |  |  | Points at the source record, asserts no rule |  |
-| N-03 | Anthropic publishes these as differences in Claude Opus 5. They describe the model. They prescribe nothing, and no rule below inherits their authority. | What this corrects |  |  | States what the G rows do NOT license |  |
-| E-17 | Those are the documented defaults. What our own baseline found is narrower and partly different: an unguided run was already clean, and an operator instruction stack above it was what inflated the reply. So read the rules below as aimed at the whole stack you are running inside, and not at the model alone. | What this corrects |  |  | Records our baseline, and instructs how to read the rules |  |
-| E-18 | Where the rules have been measured: single-turn replies, one prompt each, five runs. Not agentic sessions, and not files written to disk. The second is the case that record names as the one the vendor documents most clearly, and the one we have tested least, so apply the rules there on their reasoning, not on our evidence. | What this corrects |  |  | States the evidence, and instructs where to apply the rules |  |
-| E-19 | `de-slop` treats prose that reads as machine-written, whatever produced it. This skill treats one model's documented defaults, and it expires when that model does. Follow both. They do not disagree. | How this differs from de-slop |  |  | Relates two skills, and instructs the reader to follow both |  |
-| N-07 | compressed-deliberation | compressed-deliberation |  |  | Section title, asserts no rule |  |
-| N-08 | Purpose | Purpose |  |  | Section title, asserts no rule |  |
-| N-09 | What this corrects | What this corrects |  |  | Section title, asserts no rule |  |
-| N-10 | The shape of a reply | The shape of a reply |  |  | Section title, asserts no rule |  |
-| N-11 | Reporting finished work | Reporting finished work |  |  | Section title, asserts no rule |  |
-| N-12 | Conceding a correction | Conceding a correction |  |  | Section title, asserts no rule |  |
-| N-13 | Surfacing a decision | Surfacing a decision |  |  | Section title, asserts no rule |  |
-| N-14 | What this skill does not ask for | What this skill does not ask for |  |  | Section title, asserts no rule |  |
-| N-15 | How this differs from de-slop | How this differs from de-slop |  |  | Section title, asserts no rule |  |
-| N-16 | Boundary | Boundary |  |  | Section title, asserts no rule |  |
-| N-17 | Only the section named "What this corrects" traces to a published source, and it traces for description alone. Every rule in this skill is our own editorial guidance. The trace lives in the stylewright repository at `grounding/craft/compressed-deliberation.md`. It is not installed with this skill. | Boundary |  |  | Describes the trace, asserts no rule |  |
+| E-17 | `de-slop` treats prose that reads as machine-written, whatever produced it. This skill treats one model's documented defaults, and it expires when that model does. Follow both. They do not disagree. | How this differs from de-slop |  |  | Our own guidance, and it instructs the reader to follow both |  |
+| N-01 | compressed-deliberation | compressed-deliberation |  |  | Section title, asserts no rule |  |
+| N-02 | Purpose | Purpose |  |  | Section title, asserts no rule |  |
+| N-03 | Deliberation is not the product. Monitoring, qualifying, verifying, managing scope and correcting course are all real work, and a reader wants the edited result of that work rather than a transcript of it. | Purpose |  |  | Purpose framing, asserts no rule |  |
+| N-04 | This skill is pinned to one model build. The record of what it targets, and of when it expires, lives in the stylewright repository at `source/craft/compressed-deliberation.md`. It is not installed with this skill. | Purpose |  |  | Points at the source record, asserts no rule |  |
+| N-05 | What this corrects | What this corrects |  |  | Section title, asserts no rule |  |
+| N-06 | The shape of a reply | The shape of a reply |  |  | Section title, asserts no rule |  |
+| N-07 | Reporting finished work | Reporting finished work |  |  | Section title, asserts no rule |  |
+| N-08 | What this skill does not ask for | What this skill does not ask for |  |  | Section title, asserts no rule |  |
+| N-09 | How this differs from de-slop | How this differs from de-slop |  |  | Section title, asserts no rule |  |
+| N-10 | Boundary | Boundary |  |  | Section title, asserts no rule |  |
+| N-11 | Every rule in this skill is our own editorial guidance, and no part of it traces to a published source. The trace lives in the stylewright repository at `grounding/craft/compressed-deliberation.md`. It is not installed with this skill. | Boundary |  |  | Describes the trace, asserts no rule |  |

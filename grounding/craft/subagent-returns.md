@@ -30,9 +30,9 @@ as obvious.
 
 A vendor page reporting how much a model writes would not change that. Such a
 page describes a model and prescribes nothing, which is the distinction
-`grounding/craft/compressed-deliberation.md` records for the seven `G` rows it
-does carry. A contributor who finds a real source for a rule here adds the
-source record before adding the row.
+`grounding/craft/compressed-deliberation.md` records for the vendor material
+its own skill used to carry. A contributor who finds a real source for a rule
+here adds the source record before adding the row.
 
 ## Where the line between an `E` row and an `N` row falls here
 
