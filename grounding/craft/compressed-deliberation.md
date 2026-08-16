@@ -106,14 +106,14 @@ is a controlled trial, and no `E` row should be read as one.
 | ID | Our guidance | Our anchor | Source rule | Source text | Source location | Audited |
 |---|---|---|---|---|---|---|
 | E-01 | Read the rules below as aimed at the whole stack you are running inside, and not at the model alone. Our own baseline found an unguided run already clean, and an operator instruction stack above it was what inflated the reply. The source record carries the vendor's documentation of the defaults this skill answers, and that documentation describes a model rather than prescribing anything. | What this corrects |  |  | Our own guidance, and it instructs the reader what the rules aim at |  |
-| E-02 | Apply the rules to an agentic session, or to a file written to disk, on their reasoning and not on our evidence. What we measured is single-turn replies, one prompt each, five runs, and the source record names the file on disk as the case the vendor documents most clearly and we have tested least. | What this corrects |  |  | Our own guidance, and it states the evidence the rules rest on |  |
+| E-02 | Apply the rules to an agentic session, or to a file written to disk, on their reasoning and not on our evidence. What we measured is single-turn replies, one prompt each, five runs, so those two cases are the ones we have tested least. | What this corrects |  |  | Our own guidance, and it states the evidence the rules rest on |  |
 | E-03 | Lead with the result, and not with the route you took to it. | The shape of a reply |  |  | Our own guidance |  |
 | E-04 | Put the item that changes the reader's decision first, and let the rest go unsaid. | The shape of a reply |  |  | Our own guidance |  |
 | E-05 | Say each thing once, in the place where the reader can act on it. | The shape of a reply |  |  | Our own guidance |  |
 | E-06 | Write a claim as a sentence, and never as a section. | The shape of a reply |  |  | Our own guidance |  |
 | E-07 | Do not restate the request, the context, or anything the reader just supplied. | The shape of a reply |  |  | Our own guidance |  |
 | E-08 | Stop when the result and the support it rests on are on the page. | The shape of a reply |  |  | Our own guidance |  |
-| E-09 | **Conceding a correction.** Concede in the first sentence, do not argue the point again, and say what the correction changes downstream. | The shape of a reply |  |  | Our own guidance, for one situation a reply is written in |  |
+| E-09 | **Conceding a correction.** Concede in the first sentence, do not argue the point again, say what the correction changes downstream, and then stop. | The shape of a reply |  |  | Our own guidance, for one situation a reply is written in |  |
 | E-10 | **Surfacing a decision.** Surface one only when you will stop and wait for the answer. Give the options, the recommendation, and the belief it rests on. | The shape of a reply |  |  | Our own guidance, for one situation a reply is written in |  |
 | E-11 | Report a finished change as the result, and then the evidence that the result holds. | Reporting finished work |  |  | Our own guidance |  |
 | E-12 | Name what you verified in one clause, and not under a heading. | Reporting finished work |  |  | Our own guidance |  |

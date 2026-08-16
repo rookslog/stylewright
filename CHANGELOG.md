@@ -206,8 +206,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   5, and keeps the sentence a reader acts on, which is that the rules aim at
   the whole stack rather than at the model alone. Those bullets move to
   `source/craft/compressed-deliberation.md`, beside the URLs and read dates
-  that already held them, so the provenance survives the move. Two headings
-  over two bullets each become labelled bullets under `The shape of a reply`.
+  that already held them, so the provenance survives the move. One clause is
+  cut rather than moved. It said that files written to disk are the case the
+  vendor documents most clearly, and it attributed that to a record which never
+  said it. Two headings over two bullets each become labelled bullets under
+  `The shape of a reply`.
   The `compressed-deliberation` matrix therefore carries no `G` row, and it
   drops its `Source version` line, because ADR-0026 refuses that line in a
   matrix that cites nothing. Both matrices renumber in document order.

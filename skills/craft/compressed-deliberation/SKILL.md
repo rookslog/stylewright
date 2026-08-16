@@ -26,8 +26,7 @@ anything.
 
 Apply the rules to an agentic session, or to a file written to disk, on their
 reasoning and not on our evidence. What we measured is single-turn replies, one
-prompt each, five runs, and the source record names the file on disk as the
-case the vendor documents most clearly and we have tested least.
+prompt each, five runs, so those two cases are the ones we have tested least.
 
 ## The shape of a reply
 
@@ -37,7 +36,7 @@ case the vendor documents most clearly and we have tested least.
 - Write a claim as a sentence, and never as a section.
 - Do not restate the request, the context, or anything the reader just supplied.
 - Stop when the result and the support it rests on are on the page.
-- **Conceding a correction.** Concede in the first sentence, do not argue the point again, and say what the correction changes downstream.
+- **Conceding a correction.** Concede in the first sentence, do not argue the point again, say what the correction changes downstream, and then stop.
 - **Surfacing a decision.** Surface one only when you will stop and wait for the answer. Give the options, the recommendation, and the belief it rests on.
 
 ## Reporting finished work

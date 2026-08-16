@@ -18,8 +18,9 @@ below is what makes the dating visible.
   reproduction right. The governing terms of those pages have not been read, and
   no claim is made about what they permit. Anyone adding a quotation must read
   them first and replace this line with the check. Recorded 2026-07-27. The
-  grounding matrix gained a `Source text` column on 2026-08-06 under ADR-0020,
-  and every row reads `unquoted`. This unperformed check is the reason.
+  grounding matrix gained a `Source text` column on 2026-08-06 under ADR-0020.
+  It carries no `G` row now, so no cell there quotes anything, and this
+  unperformed check is why the first new one would read `unquoted`.
 
 ## What the vendor documents
 
@@ -47,6 +48,16 @@ here whole, so the provenance survives the move. The skill keeps the sentence a
 reader acts on, and its grounding matrix now carries no `G` row and names no
 source version. Restoring a citation to the skill takes a `G` row, a source
 version and the reproduction check above, in one pass.
+
+One claim did not come here whole. The skill used to say that files written to
+disk are the case the vendor documents most clearly, and it attributed that to
+this record. This record never said it, and nobody here has re-read `A1` to
+settle it, so it stands here unverified and it is out of the skill. The claim
+is also a judgment about coverage across pages rather than a rule, so no `G`
+row could carry it: the `Source rule` cell would have to name an identifier
+that says no such thing. What this repository does know is that it has tested
+the file case and the agentic case least, and the skill now says that in its
+own words.
 
 ## What the sources are, and what each one licenses
 
