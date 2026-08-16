@@ -21,6 +21,11 @@ runner over a stand-in `claude` and skips where zsh is absent, so what
 continuous integration exercises is the runner's own control flow and never a
 model call. The scorer is plain Node and runs anywhere.
 
+**An arm is slow, and silence is not failure.** The first review arm on issue
+#109 took about three hours to collect eight samples, unaudited, and it printed
+nothing between them. Read a running arm by the files it has written, and give
+a claim that one died the evidence such a claim needs.
+
 ```
 bench/run.sh control                       # no guidance at all
 bench/run.sh with-skill --system skills/craft/compressed-deliberation/SKILL.md

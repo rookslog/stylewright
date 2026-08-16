@@ -853,6 +853,10 @@ Do not read a green pipeline as coverage of this one.
   could give it. It says nothing about the real CLI, its flags, or the
   credential the calling shell supplies, and it skips entirely on a host with
   no zsh. Read a green run as evidence about the runner's control flow.
+  It says nothing about DURATION either, and that is the reading this hole
+  cost. The stand-in answers at once, where a real arm is quiet for hours, so
+  an arm that had merely not finished was read here as an arm that had died —
+  and the artifacts of the two are identical while the call is open.
 - **An editorial stamp is a claim, and the suite checks its form alone.**
   `test/editorial.test.js` covers the record's table, the day, the digest and
   both notes. Nothing can tell a row a person wrote after reading from a row an

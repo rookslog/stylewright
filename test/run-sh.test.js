@@ -12,12 +12,13 @@ import { NAME } from '../bench/arm-manifest.mjs';
  *
  * Everything else that touches an arm builds one by writing the FILES an arm
  * holds — `test/bench-helpers.js` does exactly that, and so the runner that
- * produces them had no exercise anywhere. The first real review arm then hit a
- * failure on its first line of work that no smoke run could have seen: a fresh
- * arm directory matches no sidecar, and the resume check asked the question
- * with a glob whose NOMATCH zsh reports. Building the output skips the runner,
- * so the smoke path and the real path diverged on the one step only the runner
- * takes.
+ * produces them had no exercise anywhere. The first real review arm on issue
+ * #109 then printed `no matches found` on its first line of work, from a
+ * resume check asking a glob about a fresh directory zsh answers NOMATCH for.
+ * That arm was healthy and finished every sample hours later. Nobody could say
+ * so at the time, which is what the hole actually cost: with the runner
+ * unexercised, a slow run and a dead one produce the same evidence, and the
+ * benign reading is the one that goes unconsidered.
  *
  * The stand-in echoes one fixed JSON run, so this costs no model call. It is
  * the same trick `bench/review-arms.mjs` gets from an injected `git`.
@@ -85,8 +86,9 @@ test('a fresh arm directory runs clean, and writes a sample, a sidecar and a man
     const { arm, armDir, binDir, prompts } = await scaffold(t);
     const run = await runArm([arm, '--prompts', prompts, '--reps', '2'], binDir);
     assert.equal(run.code, 0, run.stderr);
-    // The failure this test exists for. It printed here and the run carried on,
-    // so the arm read as broken to the person watching it.
+    // The line this test exists for. The run carried on correctly under it,
+    // which is why a passing check has to be silent: the operator has nothing
+    // but the output to tell a working arm from a stopped one.
     assert.ok(!run.stderr.includes('no matches found'), run.stderr);
     const held = (await fs.readdir(armDir)).sort();
     assert.deepEqual(held, [

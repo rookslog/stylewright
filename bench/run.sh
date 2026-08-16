@@ -137,12 +137,17 @@ trap "$CLEAN_UP" EXIT
 #
 # The comparison reads whatever sidecars are there, and a FRESH arm has none.
 # `ls` over an unmatched glob is how that was asked, and zsh answers NOMATCH:
-# the substitution failed, `no matches found` printed over a run that then
-# proceeded correctly, and an operator read the first real review arm as broken
-# on its first line of work. The message is what cost the run, so a check that
-# passes has to be silent as well as harmless — the arm went on to spend a live
-# call under it. `(N)` is the null-glob qualifier, so no match gives no words. The
-# first element is the sidecar to compare against, and an empty array leaves
+# the substitution fails and `no matches found` prints, over a run that then
+# proceeds correctly with `existing` empty. The first review arm on issue #109
+# printed it and went on to collect all eight of its samples three hours later.
+# So the message cost nobody a sample and it cost the operator the run anyway:
+# an arm that prints a failure on its first line of work and then says nothing
+# for hours cannot be told from a dead one, and it was read as dead. A check
+# that passes has to be SILENT as well as harmless, because silence is the only
+# thing the next line of output is measured against.
+#
+# `(N)` is the null-glob qualifier, so no match gives no words. The first
+# element is the sidecar to compare against, and an empty array leaves
 # `existing` empty, which is the state that skips the block below.
 sidecars=("$HERE/out/$ARM"/*.meta(N))
 existing="${sidecars[1]}"
