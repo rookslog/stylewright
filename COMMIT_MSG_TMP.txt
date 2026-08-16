@@ -1,0 +1,14 @@
+test: an arm this test collects is named for nothing else (#122)
+
+`run.sh` writes under its own `bench/out/`, so a literal arm name here is a
+directory in the operator's tree. Two test processes on one checkout collide
+there, and anything already standing at the name would be resumed by the fresh
+-arm test and then removed by its cleanup. The name now comes from the
+per-test temporary directory, which is unique to the run, and the test asserts
+it is a name `arm-manifest.mjs` accepts.
+
+Two more from reading the file back. zsh is asked for by name through `PATH`
+rather than at `/bin/zsh`, which is macOS's path and would have skipped the
+whole file on Linux while `execFile` used it anyway. And the header no longer
+says CI does not run this, which the corrected workflow comment already
+contradicts.

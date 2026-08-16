@@ -5,6 +5,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { NAME } from '../bench/arm-manifest.mjs';
+
 /**
  * The runner itself, driven end to end over a stand-in `claude`.
  *
@@ -20,11 +22,11 @@ import path from 'node:path';
  * The stand-in echoes one fixed JSON run, so this costs no model call. It is
  * the same trick `bench/review-arms.mjs` gets from an injected `git`.
  *
- * The runner writes under `bench/out/`, which is where it always writes, so
- * these arms are named for this test and removed after it. CI does not run
- * this: `bench/run.sh` needs zsh, and a host without it skips rather than
- * fails, which `bench/README.md` already states for every command in that
- * directory.
+ * A host with zsh runs this and a host without one skips it, which is the
+ * disposition `bench/README.md` already gives every command in that directory.
+ * zsh is asked for by name through `PATH` rather than at `/bin/zsh`, because
+ * that path is macOS's and Linux keeps it elsewhere — testing the wrong one
+ * skips the whole file on a host that could have run it.
  */
 
 const REPO = path.dirname(import.meta.dirname);
@@ -37,18 +39,33 @@ cat <<'JSON'
 JSON
 `;
 
-const hasZsh = await fs.stat('/bin/zsh').then(() => true, () => false);
+const hasZsh = await new Promise((resolve) => {
+  execFile('zsh', ['-c', ':'], (err) => resolve(!err));
+});
 
 function runArm(args, binDir) {
   return new Promise((resolve) => {
-    execFile('/bin/zsh', [RUN, ...args], {
+    execFile('zsh', [RUN, ...args], {
       cwd: REPO, env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH}` },
     }, (err, stdout, stderr) => resolve({ code: err ? err.code ?? 1 : 0, stdout, stderr }));
   });
 }
 
-async function scaffold(t, arm) {
+/**
+ * The arm name comes from the temporary directory, because the arm directory
+ * does not.
+ *
+ * `run.sh` writes under its own `bench/out/`, and that is the operator's tree
+ * where real samples live. A name written here as a literal is a name this
+ * test would resume if anything already stood at it, and then delete on the
+ * way out — two processes sharing one checkout is enough to produce it. The
+ * name `mkdtemp` gives is unique to this run and is already a name
+ * `arm-manifest.mjs` accepts.
+ */
+async function scaffold(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sw-run-'));
+  const arm = path.basename(root);
+  assert.ok(NAME.test(arm), `${arm} must be a name the arm manifest accepts`);
   const armDir = path.join(REPO, 'bench', 'out', arm);
   t.after(() => Promise.all([
     fs.rm(root, { recursive: true, force: true }),
@@ -60,13 +77,12 @@ async function scaffold(t, arm) {
   await fs.mkdir(prompts);
   await fs.writeFile(path.join(binDir, 'claude'), STANDIN, { mode: 0o755 });
   await fs.writeFile(path.join(prompts, 'pr-1-r1.txt'), 'Say something.\n');
-  return { armDir, binDir, prompts };
+  return { arm, armDir, binDir, prompts };
 }
 
 test('a fresh arm directory runs clean, and writes a sample, a sidecar and a manifest',
   { skip: hasZsh ? false : 'zsh is not installed, and bench/run.sh is zsh' }, async (t) => {
-    const arm = 'test-fresh-arm';
-    const { armDir, binDir, prompts } = await scaffold(t, arm);
+    const { arm, armDir, binDir, prompts } = await scaffold(t);
     const run = await runArm([arm, '--prompts', prompts, '--reps', '2'], binDir);
     assert.equal(run.code, 0, run.stderr);
     // The failure this test exists for. It printed here and the run carried on,
@@ -84,8 +100,7 @@ test('an arm resumed under a changed configuration is still refused',
   { skip: hasZsh ? false : 'zsh is not installed, and bench/run.sh is zsh' }, async (t) => {
     // The refusal the glob was asking for. A fresh directory must not reach it,
     // and a collected one must, or an arm silently holds two conditions.
-    const arm = 'test-resume-arm';
-    const { binDir, prompts } = await scaffold(t, arm);
+    const { arm, binDir, prompts } = await scaffold(t);
     assert.equal((await runArm([arm, '--prompts', prompts, '--reps', '2'], binDir)).code, 0);
     const again = await runArm(
       [arm, '--prompts', prompts, '--reps', '2', '--system', 'bench/review-contract.md'], binDir);
