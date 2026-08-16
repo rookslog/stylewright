@@ -9,20 +9,48 @@ below is what makes the dating visible.
 - Evidence cutoff: 2026-07-27.
 - Rights holder of the sources below: Anthropic PBC.
 - Transformation: the problem statement is a digest of published vendor
-  documentation, in our own words. The prescriptions are ours and cite nothing.
+  documentation, in our own words, and it lives in this record. The
+  prescriptions are ours, they live in the skill, and they cite nothing.
 - Reproduction check: **not performed.** No sentence from any source below is
-  carried into the skill — the seven `G` rows are one-line paraphrases of
-  behaviour the documentation reports, written here from scratch — so nothing
-  in this skill depends on a reproduction right. The governing terms of those
-  pages have not been read, and no claim is made about what they permit. Anyone
-  adding a quotation must read them first and replace this line with the check.
-  Recorded 2026-07-27. The grounding matrix gained a `Source text` column on
-  2026-08-06 under ADR-0020, and every row reads `unquoted`. This unperformed
-  check is the reason.
+  carried into the skill or into this record — the seven statements under "What
+  the vendor documents" are one-line paraphrases of behaviour the documentation
+  reports, written here from scratch — so nothing in this skill depends on a
+  reproduction right. The governing terms of those pages have not been read, and
+  no claim is made about what they permit. Anyone adding a quotation must read
+  them first and replace this line with the check. Recorded 2026-07-27. The
+  grounding matrix gained a `Source text` column on 2026-08-06 under ADR-0020,
+  and every row reads `unquoted`. This unperformed check is the reason.
+
+## What the vendor documents
+
+These seven statements are what `A1`, `A3` and `A5` below report about the
+target build. They describe the model. They prescribe nothing, and no rule in
+the skill inherits their authority.
+
+- Claude Opus 5 writes longer visible responses than earlier Opus models.
+  `A1`, Response length and verbosity.
+- It writes longer reports, summaries, and files to disk. `A1`, Written
+  deliverable length.
+- It announces what it is about to do more often during agentic work. `A1`,
+  User-facing progress updates.
+- It verifies its own work without being asked. `A1`, Task scope and
+  over-verification.
+- It narrates its own corrections more often. `A1`, Self-correction.
+- It can widen a task past what the reader asked for. `A1`, Task scope and
+  over-verification, and `A5` pages 86 to 87.
+- A lower effort setting does not reliably shorten the visible answer. `A1`,
+  Response length and verbosity, and `A3`.
+
+The skill carried these seven as `G` rows until the 2026-08-16 editorial pass,
+which found them to be half of one section and none of the guidance. They moved
+here whole, so the provenance survives the move. The skill keeps the sentence a
+reader acts on, and its grounding matrix now carries no `G` row and names no
+source version. Restoring a citation to the skill takes a `G` row, a source
+version and the reproduction check above, in one pass.
 
 ## What the sources are, and what each one licenses
 
-A `G` row in the grounding matrix may trace only to the first group. A vendor
+A `G` row in a grounding matrix may trace only to the first group. A vendor
 saying that its model is verbose licenses a **description**, never a rule.
 
 ### Vendor documentation of the defaults

@@ -17,27 +17,17 @@ when it expires, lives in the stylewright repository at
 
 ## What this corrects
 
-Anthropic publishes these as differences in Claude Opus 5. They describe the
-model. They prescribe nothing, and no rule below inherits their authority.
+Read the rules below as aimed at the whole stack you are running inside, and
+not at the model alone. Our own baseline found an unguided run already clean,
+and an operator instruction stack above it was what inflated the reply. The
+source record carries the vendor's documentation of the defaults this skill
+answers, and that documentation describes a model rather than prescribing
+anything.
 
-- Claude Opus 5 writes longer visible responses than earlier Opus models.
-- It writes longer reports, summaries, and files to disk.
-- It announces what it is about to do more often during agentic work.
-- It verifies its own work without being asked.
-- It narrates its own corrections more often.
-- It can widen a task past what the reader asked for.
-- A lower effort setting does not reliably shorten the visible answer.
-
-Those are the documented defaults. What our own baseline found is narrower and
-partly different: an unguided run was already clean, and an operator instruction
-stack above it was what inflated the reply. So read the rules below as aimed at
-the whole stack you are running inside, and not at the model alone.
-
-Where the rules have been measured: single-turn replies, one prompt each, five
-runs. Not agentic sessions, and not files written to disk. The second is the
-case that record names as the one the vendor documents most clearly, and the one
-we have tested least, so apply the rules there on their reasoning, not on our
-evidence.
+Apply the rules to an agentic session, or to a file written to disk, on their
+reasoning and not on our evidence. What we measured is single-turn replies, one
+prompt each, five runs, and the source record names the file on disk as the
+case the vendor documents most clearly and we have tested least.
 
 ## The shape of a reply
 
@@ -47,22 +37,14 @@ evidence.
 - Write a claim as a sentence, and never as a section.
 - Do not restate the request, the context, or anything the reader just supplied.
 - Stop when the result and the support it rests on are on the page.
+- **Conceding a correction.** Concede in the first sentence, do not argue the point again, and say what the correction changes downstream.
+- **Surfacing a decision.** Surface one only when you will stop and wait for the answer. Give the options, the recommendation, and the belief it rests on.
 
 ## Reporting finished work
 
 - Report a finished change as the result, and then the evidence that the result holds.
 - Name what you verified in one clause, and not under a heading.
 - Report an unchecked risk only when it could bite, and lead with it.
-
-## Conceding a correction
-
-- Concede in the first sentence, and do not argue the point again.
-- Say what the correction changes downstream, and then stop.
-
-## Surfacing a decision
-
-- Surface a decision only when you will stop and wait for the answer.
-- Give the options, the recommendation, and the belief the recommendation rests on.
 
 ## What this skill does not ask for
 
@@ -78,7 +60,6 @@ does. Follow both. They do not disagree.
 
 ## Boundary
 
-Only the section named "What this corrects" traces to a published source, and it
-traces for description alone. Every rule in this skill is our own editorial
-guidance. The trace lives in the stylewright repository at
+Every rule in this skill is our own editorial guidance, and no part of it
+traces to a published source. The trace lives in the stylewright repository at
 `grounding/craft/compressed-deliberation.md`. It is not installed with this skill.

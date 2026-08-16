@@ -98,13 +98,23 @@ recipe was followed. The departures are what keep a named failure in view, and
 ## Why no word list ships with this skill
 
 A word that one setting overuses is the most countable part of the defect this
-skill treats, and ADR-0021 keeps it out of every skill directory. The signature
-layer lives in `bench/score.mjs` instead, as a `signatures` metric that starts
-empty.
+skill treats, and that is what makes a list tempting to ship. ADR-0021 keeps it
+out of every skill directory. The signature layer lives in `bench/score.mjs`
+instead, as a `signatures` metric that starts empty.
 
-A word becomes a rule in a skill only after it clears a promoted study under
-the measurement design. Until then a scorer counts it and the product asserts
-nothing about it.
+Two arguments carry the decision. A list of forbidden words teaches an agent to
+swap each one for its nearest neighbour, which leaves the defect and cleans the
+surface. A word may also recur in a setting rather than in a model, which is the
+live reading here rather than a finding, and on that reading a shipped list
+dates faster than the shape the skill states.
+
+Counting therefore belongs in `bench/score.mjs`, where a scorer counts and the
+product asserts nothing. A word becomes a rule in a skill only after it clears
+a promoted study under the measurement design.
+
+The skill states the first argument in one clause and leaves the rest here. The
+2026-08-16 editorial pass moved it, because the argument is about what this
+repository ships rather than about how a reader writes.
 
 ## Where a measurement would live
 

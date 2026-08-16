@@ -30,9 +30,9 @@ row, including the ones that read as obvious.
 
 A vendor page reporting that its own model writes at length would not change
 that. Such a page describes a model and prescribes nothing, which is the
-distinction `grounding/craft/compressed-deliberation.md` records for the seven
-`G` rows it does carry. A contributor who finds a real source for a rule here
-adds the source record before adding the row.
+distinction `grounding/craft/compressed-deliberation.md` records for the vendor
+material its own skill used to carry. A contributor who finds a real source for
+a rule here adds the source record before adding the row.
 
 `E-16` is the row where the `G` question was live, and it is the one row here
 that carries a fact we did not establish. Anthropic reported the Claude Code
@@ -43,13 +43,18 @@ the defect the `Audited` column exists to catch, one column over. So the row is
 `E`, the unit states the report as a report, and the source record states where
 it came from and what it would take to promote the row.
 
-## The body was rewritten, so the IDs start again
+## The IDs restart whenever the body is rewritten
 
 An earlier draft of this skill was a list of prohibitions, and the owner ruled
 that this failure type takes a positive recipe instead. Almost no unit survived
-that rewrite unchanged, so the numbering restarts in document order rather than
-preserving the gaps an earlier two-row edit had left. A reviewer holding IDs
-from the prohibition draft should read this table fresh.
+that rewrite unchanged, so the numbering restarted in document order rather
+than preserving the gaps an earlier two-row edit had left.
+
+A later editorial pass cut the word-list argument back to one paragraph, merged
+`What stands behind this shape` into `Boundary`, and merged two paragraphs of
+the comparison section into one. The numbering restarted again, on the same
+rule. A reviewer holding IDs from either earlier draft should read this table
+fresh.
 
 ## Where the line between an `E` row and an `N` row falls here
 
@@ -62,11 +67,12 @@ is each departure beside them, because a departure names a defect in the
 reader's passage even though it is written as description rather than as a
 prohibition. The form changed and the authority did not.
 
-And `No part of this matches a word` grades almost entirely `N`, because it
-argues for a decision about this repository rather than telling a writer
-anything. `E-19` is the exception, because "a word becomes a rule in a skill
-only after a promoted study says it should" is a rule this repository follows,
-and ADR-0021 is where it was decided.
+And `No part of this matches a word` grades `N` throughout, because what
+survives there describes this skill and argues for a decision about this
+repository rather than telling a writer anything. The rule that a word becomes
+a rule in a skill only after a promoted study says it should is a rule this
+repository follows, and it now lives in `source/craft/de-slop.md`, beside
+ADR-0021 where it was decided.
 
 ## No measurement stands behind these rows
 
@@ -96,28 +102,22 @@ status.
 | E-10 | **The claim.** An invented counterposition gives an answer the shape of an argument without the substance of one. A stack of qualifications buries the one that would change what the reader does. A passive verb with no actor leaves nobody holding the claim. | What a departure looks like |  |  | Our own guidance, the departure from E-03 |  |
 | E-11 | **Earned structure.** A heading over two sentences, and a sentence announcing that a point is important, each perform a thoroughness the content has not reached. | What a departure looks like |  |  | Our own guidance, the departure from E-04 |  |
 | E-12 | **The end.** A closing paragraph that re-says the page gives the reader a second reading of the first. | What a departure looks like |  |  | Our own guidance, the departure from E-05 |  |
-| E-13 | One test settles most of them. Remove the sentence, read the passage again, and keep the sentence only if something changed. | What a departure looks like |  |  | Our own guidance, and it is the one mechanical test here |  |
+| E-13 | Remove the sentence, read the passage again, and keep the sentence only if something changed. | What a departure looks like |  |  | Our own guidance, and it is the one mechanical test here |  |
 | E-14 | Compression has a cost, so name it | Compression has a cost, so name it |  |  | Our own guidance, written as a section title |  |
 | E-15 | The shape above is not a shorter passage. It is a passage whose length is its content. | Compression has a cost, so name it |  |  | Our own guidance, and it refuses a reading of the shape |  |
-| E-16 | Anthropic reported in April 2026 that a system instruction imposing strict brevity in Claude Code reduced coding quality, and reverted it. That is a first-party report of compression paid for in correctness. So the shape above sets no length, and a finding that a shorter passage would have dropped stays in. | Compression has a cost, so name it |  |  | Our own guidance, on a report SOURCE.md records as unread here |  |
-| E-17 | Counting belongs in `bench/score.mjs` in the stylewright repository, where a scorer counts and asserts nothing. A word becomes a rule in a skill only after a promoted study says it should. | No part of this matches a word |  |  | Our own guidance, and ADR-0021 decided it |  |
-| E-18 | Read the shape here as discipline that we assert. Do not read any of it as an effect that we observed, and do not let a later summary say that this skill works. | What stands behind this shape |  |  | Our own guidance, and it instructs the reader how to read the skill |  |
-| E-19 | The disagreement is about repetition. Both standards ask a writer to repeat, in a summary, in a heading, or in one term used for one thing. This skill ends a passage at its last load-bearing sentence. A procedure and a safety notice repeat on purpose, so the standard wins there and this skill yields. | How this differs from the other skills here |  |  | Our own guidance, and it rules on which skill wins |  |
-| E-20 | `compressed-deliberation` treats one model's documented defaults, and it expires when that model does. `proportionate-execution` governs a session, so it holds what an agent does as well as what it writes. This skill treats one passage of prose, whatever produced it, and it carries no model pin. Follow all three. They do not disagree. | How this differs from the other skills here |  |  | Our own guidance, and it instructs the reader to follow all three |  |
+| E-16 | Anthropic reported in April 2026 that a system instruction imposing strict brevity in Claude Code reduced coding quality, and reverted it. That is a first-party report of compression paid for in correctness. So the shape above sets no length, and a finding that a shorter passage would have dropped stays in. | Compression has a cost, so name it |  |  | Our own guidance, on a report the source record records as unread here |  |
+| E-17 | `plain-language` and `simplified-technical-english` each distil a published standard and write for a named reader. This skill does neither, and the disagreement is about repetition. Both standards ask a writer to repeat, in a summary, in a heading, or in one term used for one thing. This skill ends a passage at its last load-bearing sentence. A procedure and a safety notice repeat on purpose, so the standard wins there and this skill yields. | How this differs from the other skills here |  |  | Our own guidance, and it rules on which skill wins |  |
+| E-18 | `compressed-deliberation` treats one model's documented defaults, and it expires when that model does. `proportionate-execution` governs a session, so it holds what an agent does as well as what it writes. This skill treats one passage of prose, whatever produced it, and it carries no model pin. Follow all three. They do not disagree. | How this differs from the other skills here |  |  | Our own guidance, and it instructs the reader to follow all three |  |
+| E-19 | Read the shape here as discipline that we assert. Do not read any of it as an effect that we observed, and do not let a later summary say that this skill works. | Boundary |  |  | Our own guidance, and it instructs the reader how to read the skill |  |
 | N-01 | de-slop | de-slop |  |  | Section title, asserts no rule |  |
 | N-02 | Purpose | Purpose |  |  | Section title, asserts no rule |  |
 | N-03 | The defect this skill treats is a rhetorical move rather than a word, so this skill gives a shape to write toward rather than a vocabulary to avoid. A move survives a model release. Whether a word does is not settled. | Purpose |  |  | States what this skill treats and what form it takes, asserts no rule |  |
 | N-04 | The shape of a finished passage | The shape of a finished passage |  |  | Section title, asserts no rule |  |
 | N-05 | What a departure looks like | What a departure looks like |  |  | Section title, asserts no rule |  |
 | N-06 | No part of this matches a word | No part of this matches a word |  |  | Section title, asserts no rule |  |
-| N-07 | This skill ships no word list. | No part of this matches a word |  |  | Describes this skill, asserts no rule |  |
-| N-08 | A word that one setting overuses is countable, and that makes it tempting to ship. Two things argue against carrying it in a skill. A list of forbidden words teaches an agent to swap each one for its nearest neighbour, which leaves the defect and cleans the surface. A word may also recur in a setting rather than in a model, which is the live reading here rather than a finding. On that reading a shipped list dates faster than the shape above. | No part of this matches a word |  |  | Argues for the decision above at the strength ADR-0021 states it, asserts no rule |  |
-| N-09 | What a check can see | What a check can see |  |  | Section title, asserts no rule |  |
-| N-10 | Nothing here, today. `stylewright lint` carries no check for any part of the shape above, because a triad, a restatement and an invented objection are judgments about content rather than shapes a program recognises. | What a check can see |  |  | States what the tool does not do, asserts no rule |  |
-| N-11 | So this skill is the generative half on its own. | What a check can see |  |  | Describes how this skill reaches a reader, asserts no rule |  |
-| N-12 | What stands behind this shape | What stands behind this shape |  |  | Section title, asserts no rule |  |
-| N-13 | Nothing measured. A craft rule has no standard behind it, so measurement is the only evidence it can ever have, and no arm has been run for this skill. | What stands behind this shape |  |  | States the evidence, asserts no rule |  |
-| N-14 | How this differs from the other skills here | How this differs from the other skills here |  |  | Section title, asserts no rule |  |
-| N-15 | `plain-language` and `simplified-technical-english` each distil a published standard, and each writes for a named reader. This skill has no standard and no named reader. | How this differs from the other skills here |  |  | Relates three skills, asserts no rule |  |
-| N-16 | Boundary | Boundary |  |  | Section title, asserts no rule |  |
-| N-17 | This skill has no external standard behind it. Every rule in it is our own editorial guidance, and the trace marks the rest as narrative that asserts no rule. The trace lives in the stylewright repository at `grounding/craft/de-slop.md`. It is not installed with this skill. | Boundary |  |  | Describes the trace, asserts no rule |  |
+| N-07 | This skill ships no word list. A list of forbidden words teaches an agent to swap each one for its nearest neighbour, which leaves the defect and cleans the surface. | No part of this matches a word |  |  | Describes this skill and argues for the decision at the strength ADR-0021 states it, asserts no rule |  |
+| N-08 | What a check can see | What a check can see |  |  | Section title, asserts no rule |  |
+| N-09 | Nothing here, today. `stylewright lint` carries no check for any part of the shape above, because a triad, a restatement and an invented objection are judgments about content rather than shapes a program recognises. | What a check can see |  |  | States what the tool does not do, asserts no rule |  |
+| N-10 | How this differs from the other skills here | How this differs from the other skills here |  |  | Section title, asserts no rule |  |
+| N-11 | Boundary | Boundary |  |  | Section title, asserts no rule |  |
+| N-12 | This skill has no external standard behind it, and no arm has been run for it. Every rule in it is our own editorial guidance, and measurement is the only evidence a craft rule can ever have. The trace marks the rest as narrative that asserts no rule. It lives in the stylewright repository at `grounding/craft/de-slop.md`, and it is not installed with this skill. | Boundary |  |  | States the evidence and describes the trace, asserts no rule |  |
