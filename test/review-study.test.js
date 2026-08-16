@@ -81,6 +81,14 @@ test('a review study retains its ground truth and re-runs against it', async (t)
   // the bytes this study holds.
   assert.match(manifest.analyses[0].command.join(' '),
     new RegExp(`--review [^ ]*${study}/verdicts`));
+  // Every path in it carries ONE separator, on the platform that promoted it.
+  // This assertion is platform-independent on purpose: it is what a Windows
+  // job reports, and `path.relative` there spelled all three arguments with a
+  // backslash, so a study promoted on Windows was refused on Linux with a
+  // message naming the wrong cause.
+  for (const arg of manifest.analyses[0].command) {
+    assert.ok(!arg.includes('\\'), `a retained command path carries one separator: ${arg}`);
+  }
 
   // The check a stranger runs, over the promoted bytes, with the spawn it
   // implies. It re-runs the retained command and compares.

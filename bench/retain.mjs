@@ -52,7 +52,7 @@ import {
 } from './arm-manifest.mjs';
 import { digest as sidecarDigest, readMeta } from './score.mjs';
 import {
-  SCORER, STUDY_MANIFEST, STUDY_NAME, checkStudy, contentProblems, rerunEnv,
+  SCORER, STUDY_MANIFEST, STUDY_NAME, checkStudy, commandPath, contentProblems, rerunEnv,
 } from './study.mjs';
 import { loadCorpus, readRecords } from './verdicts.mjs';
 
@@ -454,16 +454,17 @@ async function main(argv, now) {
   for (const prompt of prompts) {
     const files = arms.flatMap((arm) => arm.samples
       .filter((rel) => rel.startsWith(`${prompt.scenario}-`))
-      .map((rel) => path.relative(REPO, path.join(studyDir, `arms/${arm.name}`, rel))))
+      .map((rel) => commandPath(path.join(studyDir, `arms/${arm.name}`, rel))))
       .sort();
     if (!files.length) continue;
     const args = [
       SCORER,
-      '--prompt', path.relative(REPO, path.join(studyDir, 'prompts', `${prompt.scenario}.txt`)),
+      '--prompt', commandPath(path.join(studyDir, 'prompts', `${prompt.scenario}.txt`)),
       // The PROMOTED corpus, never the live one, so the re-run reads the bytes
-      // this study holds. Both paths are spelled relative to the repository,
-      // which is where `commandProblems` resolves them from.
-      ...(verdicts.length ? ['--review', path.relative(REPO, path.join(studyDir, 'verdicts'))] : []),
+      // this study holds. Every path here goes through `commandPath`, which is
+      // where the one-separator rule lives: `commandProblems` resolves these
+      // relative to the repository, on whatever platform reads the study next.
+      ...(verdicts.length ? ['--review', commandPath(path.join(studyDir, 'verdicts'))] : []),
       ...(arms.length > 1 ? ['--compare'] : []),
       ...files,
     ];

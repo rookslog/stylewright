@@ -520,6 +520,17 @@ number published in `bench/README.md`.
   killed and refused by name at a deadline, because a hung re-run takes
   the whole gate with it. ADR-0023 carries the reasoning and the flip
   condition.
+- **A retained command spells every path with one separator, `/`.**
+  `commandPath` in `bench/study.mjs` states them and `commandProblems`
+  refuses the other spelling by name, so the writer and the reader sit in
+  one file. `path.relative` spells a path `bench\samples\...` on Windows,
+  and that spelling travels: the same command resolved inside the study
+  there and read as one filename everywhere else, so a study promoted on
+  Windows was refused on Linux and the message named containment rather
+  than the separator. The separator is checked BEFORE containment, and the
+  containment message is withheld, because it is the artifact. This is the
+  rule `src/manifest.js` and `src/tree.js` already state for a manifest
+  key, and `SCORER` already states for the program name.
 - A study that is already refused for any reason is never re-run. The
   narrower gate read the command's own problems alone, and containment
   here is a string predicate over `path.resolve`, which resolves no

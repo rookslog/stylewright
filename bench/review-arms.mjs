@@ -49,7 +49,10 @@ import { fileURLToPath } from 'node:url';
 
 import { destinationState, ensureDir, isBelow } from '../src/tree.js';
 import { chainProblems } from './collect-probe.mjs';
-import { contentProblems, rerunEnv } from './study.mjs';
+// `commandPath` is the one-separator rule, imported rather than spelled again.
+// A second copy is a second thing to drift, and drift here means one surface
+// printing a command a shell can read and the other printing one it cannot.
+import { commandPath, contentProblems, rerunEnv } from './study.mjs';
 import { deriveDispositions, readRecords, recordProblems } from './verdicts.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -337,9 +340,12 @@ async function main(argv) {
     + `Two arms at ${opts.reps} repetitions is ${scenarios.length * opts.reps * 2} live calls.\n`);
   if (!opts.write) process.stdout.write('Nothing written. Add --write to materialise them.\n');
   process.stdout.write('\n');
+  // Spelled with `/` for the reason a retained command is. These lines are
+  // commands a person pastes, and `bench/run.sh` is zsh, which reads a
+  // backslash as an escape rather than as a separator.
   for (const line of plan({
-    promptsRel: path.relative(REPO, outDir),
-    verdictsRel: path.relative(REPO, verdictsDir),
+    promptsRel: commandPath(outDir),
+    verdictsRel: commandPath(verdictsDir),
     reps: opts.reps,
   })) process.stdout.write(`${line}\n`);
   // A refused round is a corpus decision, and the exit status says so rather

@@ -165,6 +165,15 @@ test('a retained command is checked before anything re-runs it', () => {
   // over bytes the study does not hold.
   assert.match(say(['node', SCORER, 'bench/out/control/report-1.txt']), /is not inside this study/);
   assert.match(say(['node', SCORER, 's/arms/../../elsewhere/x.txt']), /is not inside this study/);
+  // A backslash-spelled path resolves INSIDE the study on Windows and reads as
+  // one filename everywhere else, so the same bytes got two verdicts and the
+  // POSIX one named the wrong cause. The separator is checked first, and the
+  // containment message is withheld, because it is the artifact and not the
+  // cause. `commandPath` is the writer that never produces this spelling.
+  const wrong = say(['node', SCORER, '--review', 's\\verdicts']);
+  assert.match(wrong, /carries one separator/);
+  assert.ok(!wrong.includes('is not inside this study'),
+    'the message names the real cause rather than an artifact of it');
   assert.match(say(['sh', SCORER, 's/x.txt']), /does not run node/);
   assert.match(say(['node', SCORER, '--rm-rf', 's/x.txt']), /which the promotion never passes/);
   assert.match(say(['node', SCORER, '--prompt']), /ends on a flag that needs a path/);
