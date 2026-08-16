@@ -45,6 +45,11 @@ jobs:
       - name: Check every probe record
         run: npm run check:probes
 
+      # Fails when a mined verdict record is malformed or states its own
+      # disposition. What it counts, and what it withheld, prints as a note.
+      - name: Check every verdict record
+        run: npm run check:verdicts
+
       # Fails when the resident fragment and the skill it comes from disagree.
       # One rule has two delivery forms, and two forms of one rule drift.
       - name: Check the resident fragment against its skill

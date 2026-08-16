@@ -276,6 +276,26 @@ export function studyProblems(manifest, name = STUDY_MANIFEST) {
       }
     }
   }
+  // The ground truth a review study scored against, retained inside the study
+  // and digested, for the reason the prompts are. `--review` names this
+  // directory on the scorer's own command line, and `commandProblems` refuses a
+  // path outside the study — so a study that pointed at the live corpus would
+  // re-run against bytes a later mine could change, and reproduce a figure from
+  // evidence the study does not hold. An empty list is an ordinary style study.
+  //
+  // The key is `verdicts` and never `verdict`. The singular is on the refused
+  // list above, because a record that states one is the author's summary, and
+  // the plural here names retained bytes rather than a state.
+  if (!Array.isArray(manifest.verdicts)) {
+    say('verdicts lists the verdict records the study retains, and an empty list is a study '
+      + 'that scored against none.');
+  } else {
+    for (const v of manifest.verdicts) {
+      if (!isText(v?.record) || !isText(v?.path) || !HEX.test(String(v?.digest))) {
+        say('each verdict record names itself, its path, and its digest.');
+      }
+    }
+  }
   if (!Array.isArray(manifest.analyses)) {
     say('analyses retains the scorer command and its output, per scenario.');
   } else {
@@ -388,7 +408,7 @@ export function disqualify(results, reasons) {
  * flag nobody writes is an allowlist describing something other than the thing
  * it guards.
  */
-const SCORER_FLAGS = { '--compare': false, '--prompt': true };
+const SCORER_FLAGS = { '--compare': false, '--prompt': true, '--review': true };
 
 /**
  * Everything wrong with a retained command, before anything re-runs it.
@@ -597,12 +617,25 @@ export async function checkStudy(dir, name = path.basename(dir)) {
     }
   }
 
+  const verdictPaths = [];
+  for (const entry of Array.isArray(manifest.verdicts) ? manifest.verdicts : []) {
+    const abs = inside(entry?.path, 'verdicts[].path');
+    if (!abs) continue;
+    verdictPaths.push(entry.path);
+    const bytes = await fs.readFile(abs).catch(() => null);
+    if (!bytes) say(`${entry.path} is named by the study and is not here.`);
+    else if (digestBytes(bytes) !== entry.digest) {
+      say(`${entry.path} does not match its recorded digest.`);
+    }
+  }
+
   // Every file that is actually here is accounted for. Scanning a file's
   // contents says nothing about whether the study claims to hold it, so an
   // unaccounted file could sit in a promoted tree indefinitely.
   for (const rel of retained) {
     const accounted = rel === STUDY_MANIFEST
       || promptPaths.includes(rel)
+      || verdictPaths.includes(rel)
       || armPaths.some((p) => rel === p || rel.startsWith(`${p}/`));
     if (!accounted) say(`${rel} is here and the study does not account for it.`);
   }

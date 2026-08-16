@@ -1,0 +1,138 @@
+{
+  "kind": "verdict-record",
+  "identity": {
+    "repo": "rookslog/stylewright",
+    "pr": 110,
+    "base_sha": "a7444f0c102aed2a33bfbf9e6b12a9c2731b60d9",
+    "head_sha": "54b7a73ee9a4a400af9fc80eff1596fdc9296c64",
+    "merge_commit_sha": "fee6bd0b6671d2125ba47633eb2bcf654a337c67",
+    "merged_at": "2026-08-13T22:41:26Z"
+  },
+  "mined_at": "2026-08-16T05:16:11.819Z",
+  "rounds": [
+    {
+      "round": 1,
+      "scenario": "pr-110-r1",
+      "review_commit": "2defdf295481ee59b2599daa4ae0ff62e646b0da",
+      "threads": [
+        {
+          "id": 3778384951,
+          "review_id": 4930754941,
+          "path": "bench/probe.mjs",
+          "side": "RIGHT",
+          "line": null,
+          "original_line": 473,
+          "start_line": null,
+          "original_start_line": 471,
+          "commit_id": "2defdf295481ee59b2599daa4ae0ff62e646b0da",
+          "original_commit_id": "2defdf295481ee59b2599daa4ae0ff62e646b0da",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Refuse truncated traces before deriving a pass**\n\nWhen an arm emits more than 40 matching skill-loading lines, `skillTraceLines` in `bench/collect-probe.mjs` silently drops the tail via `TRACE_LINE_LIMIT`, but this new `every(...)` check treats the retained prefix as the complete trace. For example, 20 sessions that load one skill followed by a 21st that loads zero produce a 40-line retained prefix and `traceAgrees` returns `true`, despite the later disagreement; this can certify an invalid probe result. Preserve all relevant lines or record truncation and prevent a truncated trace from passing.\n\nAGENTS.md reference: [AGENTS.md:L451-L459](https://github.com/rookslog/stylewright/blob/2defdf295481ee59b2599daa4ae0ff62e646b0da/AGENTS.md#L451-L459)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3778674492,
+              "review_id": 4931093265,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: d35b7241ad4a68a7692558e7aac08ee1a1bed2ba\nfinding_category: truncated-trace-certifies-pass\nreviewer: chatgpt-codex-connector\nnotes: Recorded truncation rather than preserving all lines, and withheld rather than blocked. A trace standing at TRACE_LINE_LIMIT reads trace_agrees=null with trace_withheld=truncated, because a cut is the record's own bound and not the harness disagreeing. The constant moved from bench/collect-probe.mjs into bench/probe.mjs so the reader owns it, and traceProblems now refuses a record carrying more lines than the collector would write, which makes the cut the only place a reading is lost. That correction generalised: unreadable evidence is now always withheld with a named cause, so the earlier reading that blocked on a trace naming no loading is reversed.\n```"
+            }
+          ]
+        },
+        {
+          "id": 3778384959,
+          "review_id": 4930754941,
+          "path": "bench/probe.mjs",
+          "side": "RIGHT",
+          "line": null,
+          "original_line": 472,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "2defdf295481ee59b2599daa4ae0ff62e646b0da",
+          "original_commit_id": "2defdf295481ee59b2599daa4ae0ff62e646b0da",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Exclude managed skills from the agreement gate**\n\nOn a machine with a global managed skill, an otherwise valid pair can report totals such as installed `2` (`managed: 1, user: 1`) and control `1` (`managed: 1, user: 0`). Requiring the control's total count to be zero makes `trace_agrees` false and blocks the probe solely because of the managed skill, even though `managed_seen` is explicitly non-blocking because the redirected home cannot control that path. Derive agreement from the relevant per-source counts, rather than the aggregate total that includes managed skills.\n\nAGENTS.md reference: [AGENTS.md:L460-L462](https://github.com/rookslog/stylewright/blob/2defdf295481ee59b2599daa4ae0ff62e646b0da/AGENTS.md#L460-L462)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3778674625,
+              "review_id": 4931093435,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: d35b7241ad4a68a7692558e7aac08ee1a1bed2ba\nfinding_category: managed-skills-in-agreement-gate\nreviewer: chatgpt-codex-connector\nnotes: Agreement now reads one per-source count rather than the aggregate, as suggested, but the column comes from the record's own identity.pathway instead of being fixed to user. Hardcoding user: would repeat this defect one column over on a project-scope pathway, which the collector accepts. SCOPES in src/targets.js and the harness's source names coincide, so the lookup is exact, and managed is excluded by construction rather than by subtracting it from the total. A line that names no per-scope count is withheld as unscoped rather than falling back to the total.\n```"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "scenario": "pr-110-r2",
+      "review_commit": "c302b54a20c4bd5fc5624bc83b2a186992181335",
+      "threads": [
+        {
+          "id": 3779414926,
+          "review_id": 4931961645,
+          "path": "bench/probe.mjs",
+          "side": "RIGHT",
+          "line": null,
+          "original_line": 672,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "c302b54a20c4bd5fc5624bc83b2a186992181335",
+          "original_commit_id": "c302b54a20c4bd5fc5624bc83b2a186992181335",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Reject pathways the collector cannot run**\n\nValidating the two halves independently admits pathways the collector cannot produce: for example, `codex:user` passes `checkRecord` even though `parsePathway` rejects Codex because no runner exists, while `cowork:project` and `agents:project` pass here but are rejected by `resolveTarget`. Such a manually added record is treated as well formed and counted with a derived outcome instead of being marked unreadable; validate supported platform/scope combinations and available runners using the collector's rules.\n\nAGENTS.md reference: [AGENTS.md:L496-L502](https://github.com/rookslog/stylewright/blob/c302b54a20c4bd5fc5624bc83b2a186992181335/AGENTS.md#L496-L502)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3779468642,
+              "review_id": 4932021678,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: 54b7a73\nfinding_category: pathway-combination-unvalidated\nreviewer: chatgpt-codex-connector\nnotes: Validated the combination rather than adding a second list, and put the rule in one place instead of in the checker. targetProblems in src/targets.js now holds the platform-and-scope rules, and resolveTarget, parsePathway and the new pathwayProblems all read it -- the finding surfaced that parsePathway itself passed cowork:project and let resolveTarget throw two steps later, so the checker was not the only site that disagreed. HARNESS_FOR moved from bench/collect-probe.mjs into bench/probe.mjs, because the record check must consult it and that module may not import the collector. A test asserts the checker and the collector agree over every platform-scope pair. On ADR-0024: this is not the wrong-flags rule loosening. A wrong-flag record is a run that happened and stays readable, and a pathway no runner drives is a file no run of this collector could have written, because parsePathway throws before the first call is paid for. Stated residue: these tables can shrink, and dropping a platform would retire committed records naming it -- the corpus pin makes that loud rather than silent, which is a mitigation and not a guarantee.\n```"
+            }
+          ]
+        },
+        {
+          "id": 3779414928,
+          "review_id": 4931961645,
+          "path": "bench/probe.mjs",
+          "side": "RIGHT",
+          "line": 890,
+          "original_line": 819,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "54b7a73ee9a4a400af9fc80eff1596fdc9296c64",
+          "original_commit_id": "c302b54a20c4bd5fc5624bc83b2a186992181335",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Withhold managed counts from unrequested traces**\n\nWhen a record carries trace arrays but its flags omit `--debug-file`, `traceReading` correctly returns `trace_withheld='unrequested'`, but this unconditional call still parses those same lines; for example, the output can report `trace_agrees=null trace_withheld=unrequested managed_seen=7`. Because `checkRecord` deliberately permits this state, `check:probes` publishes a managed count from evidence that the recorded invocation could not have produced, so `managed_seen` should also be withheld for an unrequested trace.\n\nAGENTS.md reference: [AGENTS.md:L496-L502](https://github.com/rookslog/stylewright/blob/c302b54a20c4bd5fc5624bc83b2a186992181335/AGENTS.md#L496-L502)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3779468761,
+              "review_id": 4932021799,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED\ncommit: 54b7a73\nfinding_category: managed-count-from-unrequested-trace\nreviewer: chatgpt-codex-connector\nnotes: managedSeen withholds on the same condition, through a named traceUnrequested predicate both readers ask. The docstring that argued the opposite is corrected to distinguish the two states: under truncation the bytes are evidence and the bound can only hide a larger count, so the number is a floor; under unrequested the question is whether the bytes are evidence at all.\n```"
+            }
+          ]
+        },
+        {
+          "id": 3779414932,
+          "review_id": 4931961645,
+          "path": "bench/probe.mjs",
+          "side": "RIGHT",
+          "line": 968,
+          "original_line": 897,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "54b7a73ee9a4a400af9fc80eff1596fdc9296c64",
+          "original_commit_id": "c302b54a20c4bd5fc5624bc83b2a186992181335",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Print the unread census before exiting**\n\nWhenever this branch increments `unread`, it also adds a problem, and the CLI calls `process.exit(1)` before `summarise(outcomes)`. Consequently, running `check:probes` on an unreadable or malformed record prints its individual `derives NOTHING` line but never the new total such as `2 checked: 1 derives PASS, 1 unread`, so the user-facing census still omits its unread denominator; print the summary before setting a failing exit status.\n\nAGENTS.md reference: [AGENTS.md:L485-L489](https://github.com/rookslog/stylewright/blob/c302b54a20c4bd5fc5624bc83b2a186992181335/AGENTS.md#L485-L489)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3779468872,
+              "review_id": 4932021905,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED\ncommit: 54b7a73\nfinding_category: unread-census-never-printed\nreviewer: chatgpt-codex-connector\nnotes: The summary prints before the exit status is decided. Pinned by a test that runs the CLI as a subprocess over a directory holding one good record and one unreadable one, and asserts exit status 1 together with the census total on stdout -- the mutation being the summary moved back after the exit, which was watched fail and restored.\n```"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

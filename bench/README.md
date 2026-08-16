@@ -128,6 +128,43 @@ Add a scenario by dropping a `.txt` file in `prompts/`. Keep one position per
 file, and keep the reader's own words in it, because the echo measure below
 compares the reply against the prompt.
 
+### The review arms
+
+Issue #109 runs two arms over pull request diffs rather than over the four
+positions above. The question is whether a fixed per-finding shape buys more
+real findings per thousand output tokens, and what it drops to get them.
+
+Every other scenario here is scored on shape alone. This one has a right
+answer, and the answer is already in this repository. AGENTS.md disposes of
+every review finding with a fenced verdict block, so a person has already said
+which findings described a real defect. `bench/verdicts/` mines those blocks
+and `bench/verdicts/README.md` carries the protocol. ADR-0032 records the
+design.
+
+```
+node bench/review-arms.mjs --pr 112 --pr 118 --write
+bench/run.sh review-baseline --prompts bench/review-prompts --reps 5
+bench/run.sh review-compact --prompts bench/review-prompts --reps 5 \
+  --system bench/review-contract.md
+```
+
+A scenario is one review round, and a round is one commit a reviewer read.
+`review-arms.mjs` rebuilds that diff and writes the scenario file. It spends
+nothing, it prints the byte size of each prompt before you buy it, and it
+prints the commands rather than running them.
+
+A run names its pull requests. Mining says which ones are eligible, and `--pr`
+says which ones this run buys. The two are separate because each scenario costs
+two arms of live calls.
+
+Read the arms with `--review`, which needs the corpus:
+
+```
+node bench/score.mjs --compare --review bench/verdicts \
+  --prompt bench/review-prompts/pr-118-r1.txt \
+  bench/out/review-{baseline,compact}/pr-118-r1-*.txt
+```
+
 ## Half two, the field
 
 The bench cannot reach the two places the length problem is worst: long agentic
@@ -163,6 +200,28 @@ sample, a median row, and a range row.
 | `signatures` | Listed words and short phrases, counted per occurrence. | Zero on every sample, because the list ships empty. See below. |
 | `echo` | Share of the reply's prose word pairs that appear in the prompt's prose. | See the warning below. Not a restatement measure. |
 | `noise` | Harness lines stripped from an older sample. | Non-zero means that arm may not be comparable to one scored at zero. |
+
+`--review DIR` prints five more columns and needs the mined corpus. Without the
+flag the table is exactly the one above, because a column of empty cells reads
+as a measurement of nothing rather than as a mode nobody asked for.
+
+| Metric | What it counts | Read it as |
+|---|---|---|
+| `anchors` | Distinct `path:line` places the reply names. | How much the arm claimed, whatever shape it claimed it in. |
+| `confirmed` | Confirmed findings of that round the anchors reached. | A ceiling on agreement. See below. |
+| `missed` | The rest of that round's confirmed findings. | A floor on what the arm dropped. It sums with `confirmed`. |
+| `outTokens` | Output tokens the sidecar recorded. | Empty means the harness reported none, and the rate is withheld. |
+| `perKtok` | `confirmed` per thousand output tokens. | Issue #109's primary metric. |
+
+**Both counts are bounds, and neither identifies a finding.** A match is a file
+path and a line within ten lines of the mined anchor, so two confirmed findings
+close together in one file are not separable. Pull request #118 is that case:
+three of its confirmed findings anchor within seven lines of each other, so one
+stated line reaches all three. ADR-0032 states the rule and this failure mode.
+
+The counterweight is the difference between the two arms' `missed` rows. It is
+not a cell, because a cell would have to pick which baseline sample to subtract
+and would then hide that choice inside one number.
 
 Everything but `words` reads prose with fenced code removed, because a heading or
 a bullet quoted inside a fence is the reader's material, not the writer's shape.

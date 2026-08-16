@@ -16,6 +16,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { anchorsIn, loadCorpus, matchDispositions } from './verdicts.mjs';
+
 // No entry is CONTAINED in a later one. `hedges` consumes each match, so "it
 // is worth noting" must be found as one hedge before "worth noting" and "it is
 // worth" can each claim it. Scored in the wrong order, that phrase counted
@@ -246,6 +248,53 @@ export function score(raw, prompt, legacy = false) {
 }
 
 /**
+ * The review metrics, for an arm that reviewed a diff rather than answered a
+ * prompt. Issue #109, and ADR-0032 records the definitions.
+ *
+ * These are a second family beside the shape metrics, and they stay out of
+ * `score` on purpose. `score` measures a piece of text against nothing. These
+ * measure it against a ground truth that a corpus supplies, so a run with no
+ * corpus prints no column here rather than printing an empty one that reads as
+ * a measurement of zero.
+ *
+ * Three counts and a rate.
+ *
+ * `anchors` is how many distinct `<path>:<line>` places the reply names. It
+ * reads both arms with one instrument, because the baseline fixes no shape.
+ *
+ * `confirmed` is how many of the round's confirmed findings those anchors
+ * reached, counted per FINDING, so five anchors on one defect count once.
+ * `missed` is the rest of that ground truth, and the two always sum to it.
+ *
+ * `perKtok` is `confirmed` per thousand output tokens, which is issue #109's
+ * primary metric. It is WITHHELD, rather than computed as zero, when the
+ * sidecar carries no usable token count: a rate over an unknown denominator is
+ * the wrong number rather than a missing one, and a withheld cell derives no
+ * figure at all. That is the disposition `trace_agrees` already gets.
+ *
+ * The counterweight issue #109 asks for is the difference between the two
+ * arms' `missed` rows. It is not a cell here, because a cell would have to
+ * choose which baseline sample to subtract, and every such choice is arbitrary
+ * in a way the number would then hide. Two arms, two medians, and a reader does
+ * the subtraction with both spreads in front of them.
+ */
+export function reviewMetrics(text, meta, confirmed) {
+  const anchors = anchorsIn(text);
+  const matched = matchDispositions(anchors, confirmed);
+  const tokens = Number(meta?.output_tokens);
+  // Zero is withheld beside absent. A run that emitted no output tokens is a
+  // run whose rate has no denominator, and dividing anyway prints Infinity.
+  const usable = Number.isFinite(tokens) && tokens > 0;
+  return {
+    anchors: anchors.length,
+    confirmed: matched.size,
+    missed: confirmed.length - matched.size,
+    outTokens: usable ? tokens : '',
+    perKtok: usable ? Number((matched.size / (tokens / 1000)).toFixed(3)) : '',
+  };
+}
+
+/**
  * Read the `.meta` sidecar a sample was collected with.
  *
  * Absent metadata is not a formatting problem. It means nothing recorded which
@@ -291,6 +340,19 @@ export function digest(buf) {
 const REQUIRED = ['arm', 'scenario', 'rep', 'reps', 'prompt_sha', 'system_sha',
   'user_rules_sha', 'model_id', 'cli'];
 
+/**
+ * What `--review` additionally reads, and therefore additionally requires.
+ *
+ * The rule above is that a field a check reads is a field the check requires,
+ * and this is that rule under a mode. PRESENCE is what is required. The VALUE
+ * may be `absent`, which is `bench/extract.mjs` saying the harness reported no
+ * usage for that run, and `reviewMetrics` withholds the rate rather than
+ * refusing the sample. Requiring the field and admitting that value are the two
+ * halves ADR-0024 separates: a protocol choice decides a reading, and a missing
+ * field is a sidecar nobody can read at all.
+ */
+const REQUIRED_FOR_REVIEW = ['output_tokens'];
+
 // Constant within one arm. In --compare mode the treatment fields are expected
 // to differ, because differing IS the comparison, so only the shared ground has
 // to hold still.
@@ -314,6 +376,8 @@ const SHARED_GROUND = ['prompt_sha', 'model_id', 'cli'];
  * @param opts.compare    true to permit a treatment difference between arms
  * @param opts.promptSha  digest of the file passed to --prompt, to catch a
  *                        scenario scored against the wrong prompt text
+ * @param opts.review     `{ confirmed, problems }` from `loadCorpus`, when the
+ *                        review metrics are being computed
  */
 export async function auditable(files, metas, opts = {}) {
   const reasons = [];
@@ -326,9 +390,26 @@ export async function auditable(files, metas, opts = {}) {
   // Presence before agreement. Comparing only the values that exist meant a set
   // where every sidecar lacked model_id produced an empty comparison, no
   // reason, and an exit code that read as audited.
-  for (const key of REQUIRED) {
+  for (const key of [...REQUIRED, ...(opts.review ? REQUIRED_FOR_REVIEW : [])]) {
     const absent = present.filter((m) => !m[key]).length;
     if (absent) reasons.push(`${absent} of ${present.length} sidecars have no ${key}`);
+  }
+
+  if (opts.review) {
+    // A corpus this run could not read whole is refused rather than scored
+    // around. The ground truth is a DENOMINATOR, so a corpus missing one record
+    // turns every `missed` count into a statement about a corpus nobody has,
+    // which is the defect the withheld matrix count exists to prevent one
+    // directory over.
+    for (const p of opts.review.problems) {
+      reasons.push(`the verdict corpus does not check out: ${p}`);
+    }
+    const uncovered = [...new Set(present.map((m) => m.scenario).filter(Boolean))]
+      .filter((s) => !opts.review.confirmed.has(s));
+    if (uncovered.length) {
+      reasons.push(`no verdict record covers ${uncovered.join(', ')}, so nothing here says `
+        + 'which findings that round confirmed');
+    }
   }
 
   const constant = opts.compare ? SHARED_GROUND : Object.keys(WHY);
@@ -404,11 +485,15 @@ async function main(argv) {
   let promptSha = null;
   let unaudited = false;
   let compare = false;
+  let review = null;
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--prompt') {
       const buf = await fs.readFile(argv[i + 1]);
       prompt = buf.toString('utf8');
       promptSha = digest(buf);
+      i += 1;
+    } else if (argv[i] === '--review') {
+      review = await loadCorpus(argv[i + 1]);
       i += 1;
     } else if (argv[i] === '--unaudited') {
       unaudited = true;
@@ -420,7 +505,7 @@ async function main(argv) {
   }
   if (!files.length) {
     process.stdout.write(
-      'usage: score.mjs [--prompt FILE] [--compare] [--unaudited] SAMPLE...\n');
+      'usage: score.mjs [--prompt FILE] [--review DIR] [--compare] [--unaudited] SAMPLE...\n');
     return 2;
   }
 
@@ -429,7 +514,7 @@ async function main(argv) {
   // table that gets redirected or pasted loses anything written to stderr, and
   // an unaudited number must not be quotable as one that passed.
   const metas = await Promise.all(files.map(readMeta));
-  const reasons = await auditable(files, metas, { compare, promptSha });
+  const reasons = await auditable(files, metas, { compare, promptSha, review });
   if (reasons.length && !unaudited) {
     process.stderr.write('refusing to score: this set is not a comparison.\n');
     for (const r of reasons) process.stderr.write(`  - ${r}\n`);
@@ -447,16 +532,28 @@ async function main(argv) {
     // A sample with metadata came from the fixed runner, whose stderr never
     // reaches the sample, so denoising it could only ever damage it.
     const legacy = !metas[i];
+    const text = await fs.readFile(files[i], 'utf8');
     rows.push({
       audit: status,
       arm: metas[i]?.arm ?? '-',
       file: path.basename(files[i]),
-      ...score(await fs.readFile(files[i], 'utf8'), prompt, legacy),
+      ...score(text, prompt, legacy),
+      // The ground truth is per SCENARIO, because a round is what a reviewer
+      // read and what the arm reads. A sample whose scenario the corpus does
+      // not cover scores against the empty set here, and `auditable` has
+      // already refused the run for exactly that.
+      ...(review ? reviewMetrics(text, metas[i], review.confirmed.get(metas[i]?.scenario) ?? [])
+        : {}),
     });
   }
 
   const keys = ['noise', 'words', 'scaffold', 'bullets', 'longestList', 'hedges', 'menus',
-    'signatures', 'echo'];
+    'signatures', 'echo',
+    // Printed only under `--review`. A column of empty cells on every style run
+    // would read as a measurement of nothing rather than as a mode that was not
+    // asked for, and it would put five names into every derived identifier
+    // namespace that no figure could ever cite.
+    ...(review ? ['anchors', 'confirmed', 'missed', 'outTokens', 'perKtok'] : [])];
   process.stdout.write(`audit\tarm\tfile\t${keys.join('\t')}\n`);
   for (const r of rows) {
     process.stdout.write(`${r.audit}\t${r.arm}\t${r.file}\t${keys.map((k) => r[k] ?? '').join('\t')}\n`);

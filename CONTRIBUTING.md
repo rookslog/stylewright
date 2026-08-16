@@ -34,7 +34,7 @@ npm ci
 npm test
 ```
 
-Eight checks gate every pull request. `npm run check` runs all eight, and you
+Nine checks gate every pull request. `npm run check` runs all nine, and you
 can run any one of them on its own.
 
 ```
@@ -43,6 +43,7 @@ npm run lint:docs       # our own writing rules, applied to our own documents
 npm run check:ground    # every grounding matrix still matches its skill
 npm run check:docs      # every document's front matter fits the schema
 npm run check:probes    # every probe record carries what a reader derives from
+npm run check:verdicts  # every mined review thread states no disposition
 npm run check:resident  # the resident fragment still matches its skill
 npm run check:studies   # every promoted study still matches its own digests
 npm run check:editorial # the editorial audit record, and what it counts

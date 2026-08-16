@@ -43,14 +43,15 @@
   ],
   "scripts": {
     "test": "node --test",
-    "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md bench/README.md bench/samples/README.md bench/probes/README.md editorial/AUDITS.md docs/ skills/ source/",
+    "lint:docs": "node bin/stylewright.mjs lint README.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md bench/README.md bench/samples/README.md bench/probes/README.md bench/verdicts/README.md editorial/AUDITS.md docs/ skills/ source/",
     "check:ground": "node bin/stylewright.mjs ground --check --all",
     "check:docs": "node scripts/check-docs-meta.mjs",
     "check:probes": "node bench/probe.mjs",
+    "check:verdicts": "node bench/verdicts.mjs",
     "check:resident": "node scripts/check-resident.mjs",
     "check:studies": "node bench/study.mjs",
     "check:editorial": "node scripts/check-editorial.mjs",
-    "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs && npm run check:probes && npm run check:resident && npm run check:studies && npm run check:editorial"
+    "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs && npm run check:probes && npm run check:verdicts && npm run check:resident && npm run check:studies && npm run check:editorial"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0"

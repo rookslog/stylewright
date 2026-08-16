@@ -7,7 +7,7 @@ This repository ships writing skills. Its own documents are written under one of
 those skills, and continuous integration checks them with its own tool. Hold a
 change here to the standard the repository sells.
 
-## Run these eight before you claim a change is done
+## Run these nine before you claim a change is done
 
 ```bash
 npm test                # unit and conformance tests
@@ -15,12 +15,13 @@ npm run lint:docs       # our own writing rules, applied to our own documents
 npm run check:ground    # every grounding matrix still matches its skill
 npm run check:docs      # every document's front matter fits the schema
 npm run check:probes    # every probe record carries what a reader derives from
+npm run check:verdicts  # every mined review thread states no disposition
 npm run check:resident  # the resident fragment still matches its skill
 npm run check:studies   # every promoted study still matches its own digests
 npm run check:editorial # the editorial audit record, and what it counts
 ```
 
-`npm run check` runs all eight.
+`npm run check` runs all nine.
 
 ## What counts as a defect here
 
@@ -664,6 +665,51 @@ number published in `bench/README.md`.
   model as names and descriptions, and a body loads when the model invokes
   the skill. A body-planted nonce measured invocation with section 4.1's
   instrument, and its failure attributed to nothing.
+- A verdict record states no disposition. `bench/verdicts.mjs` derives one
+  from the thread the record retains, and `check:verdicts` prints what it
+  derived. A record that grades itself is refused. That is the probe
+  record's rule over a second corpus, and `bench/verdicts/README.md`
+  carries the protocol. ADR-0032.
+- **Two readings come off one thread, and each withholds on its own
+  cause.** The verdict withholds as `no-reply`, `no-verdict-block`,
+  `ambiguous-block` or `unrecognised-word`. The anchor withholds as
+  `left-side`, `no-path`, `no-line` or `inverted-range`. One cause for
+  both would tell a reader the wrong thing about whichever half was fine,
+  which is what `trace_withheld` fixed one file over. A withheld reading
+  contributes no disposition and fails nothing, and the census counts it.
+- **No message printed by the verdict reader carries a byte of a mined
+  body.** A body is third-party text about our code, some of it written by
+  an automated reviewer, and `bench/verdicts/README.md` declares the
+  directory untrusted data the way `bench/samples/README.md` does. An
+  unrecognised verdict word is named as a cause and never quoted, and
+  every message goes through `redact` at the point of emission.
+- **A round is a reviewed commit, and a run names its pull requests.** The
+  arm reads `git diff <base>...<review commit>`, which is the diff the
+  reviewer saw, so the mined anchors point at lines the arm can name. The
+  merged diff carries the fixes, so the ground truth is not in it.
+  Eligibility is the corpus rule and selection is `--pr`, because each
+  scenario costs two arms of live calls and only the operator buys those.
+- **The review counts are bounds, not identifications.** A match is a path
+  and a line within `MATCH_WINDOW`, so two confirmed findings close
+  together in one file are not separable. `confirmed` is a ceiling and
+  `missed` is a floor, and a document that states either as a count claims
+  a precision the rule does not have. Widening the window is not the fix.
+- **A study retains the ground truth it scored against.** The scorer's
+  `--review` names the promoted copy under `<study>/verdicts/`, because
+  `commandProblems` refuses a path outside the study and because a re-run
+  against the live corpus would reproduce a figure from bytes the study
+  does not hold. The prompts are retained for that reason, and the
+  argument transfers whole.
+- **A withheld output-token count withholds the rate.** `extract.mjs`
+  writes `absent` where the harness reported no usage, never a zero, and
+  `reviewMetrics` prints an empty cell rather than dividing. `--review`
+  requires the sidecar FIELD and admits `absent` as its VALUE, which is
+  ADR-0024's split: a field a check reads is required, and a protocol
+  choice about the value decides a reading.
+- Three of the five mined review rounds refuse promotion's content scan,
+  because the diffs under study are this repository's own and carry that
+  scan's own test fixtures. The scan is right and the corpus is smaller.
+  Do not narrow the scan to widen the corpus.
 
 ### A write into a file the user owns
 

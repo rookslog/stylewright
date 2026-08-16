@@ -118,6 +118,7 @@ const wellFormed = {
   arms: [{ arm: 'control', path: 'arms/control', manifest_digest: 'b'.repeat(64), abort: null }],
   arms_digest: 'c'.repeat(64),
   prompts: [{ scenario: 'report', path: 'prompts/report.txt', digest: 'd'.repeat(64) }],
+  verdicts: [],
   analyses: [{ scenario: 'report', command: ['node'], exit_code: 0, stdout: '', stderr: '' }],
   provenance_gaps: ['platform: no sidecar records it.'],
 };
@@ -137,6 +138,12 @@ test('a well formed study manifest passes, and each missing part is named', () =
   assert.match(say({ analyses: [{ scenario: 'report' }] }), /each analysis retains/);
   assert.match(say({ provenance_gaps: undefined }), /provenance_gaps names each field/);
   assert.match(say({ prompts: [{ scenario: 'report' }] }), /each prompt names its scenario/);
+  // The key is never absent. A study that dropped it would be one nothing could
+  // tell from a study that scored against no ground truth at all, which is the
+  // absent-versus-empty confusion the audit column already answers.
+  assert.match(say({ verdicts: undefined }), /verdicts lists the verdict records/);
+  assert.match(say({ verdicts: [{ record: 'pr-118.json' }] }),
+    /each verdict record names itself/);
   assert.match(
     say({ arms: [{ arm: 'a', path: 'arms/a', manifest_digest: 'b'.repeat(64) }] }),
     /repeats its manifest's abort/);

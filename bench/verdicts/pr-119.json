@@ -1,0 +1,65 @@
+{
+  "kind": "verdict-record",
+  "identity": {
+    "repo": "rookslog/stylewright",
+    "pr": 119,
+    "base_sha": "e44aa4f5f5bda50df888fed4a0859995b847ba77",
+    "head_sha": "a9b0429bc0dc700f559f80d1b9bc653f18984aee",
+    "merge_commit_sha": "d2c8443c71385ab715639e56caeb61e516de1442",
+    "merged_at": "2026-08-14T22:01:43Z"
+  },
+  "mined_at": "2026-08-16T05:16:11.819Z",
+  "rounds": [
+    {
+      "round": 1,
+      "scenario": "pr-119-r1",
+      "review_commit": "be793b7793e5ce1100103e000ce46293224e7a10",
+      "threads": [
+        {
+          "id": 3787230187,
+          "review_id": 4941277292,
+          "path": "bench/probe.mjs",
+          "side": "RIGHT",
+          "line": 466,
+          "original_line": 437,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "a9b0429bc0dc700f559f80d1b9bc653f18984aee",
+          "original_commit_id": "be793b7793e5ce1100103e000ce46293224e7a10",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Track unknown flags before skipping them**\n\nWhen a record repeats a historical or otherwise unknown flag, such as `--verbose --verbose`, this branch continues before adding the name to `seen`, so `flagShapeProblems` returns no problem and `checkRecord` accepts a structurally impossible record. Duplicate detection should apply before the allowlist-specific handling while membership itself remains an acceptance-test concern.\n\nAGENTS.md reference: [AGENTS.md:L492-L495](https://github.com/rookslog/stylewright/blob/be793b7793e5ce1100103e000ce46293224e7a10/AGENTS.md#L492-L495)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3787315731,
+              "review_id": 4941371465,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED\ncommit: a9b0429\nfinding_category: probe-record-shape-reading\nreviewer: chatgpt-codex-connector\n```\n\nDuplication is read before membership now, so it is name-agnostic.\n`bench/probe.mjs` and ADR-0024 carry it."
+            }
+          ]
+        },
+        {
+          "id": 3787230192,
+          "review_id": 4941277292,
+          "path": "bench/probe.mjs",
+          "side": "RIGHT",
+          "line": null,
+          "original_line": 445,
+          "start_line": null,
+          "original_start_line": 437,
+          "commit_id": "be793b7793e5ce1100103e000ce46293224e7a10",
+          "original_commit_id": "be793b7793e5ce1100103e000ce46293224e7a10",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Keep positional arguments in the shape check**\n\nWhen `flags` contains a stray positional string, such as an extra prompt after `-p`, this branch now suppresses the problem during `flagShapeProblems`, so `checkRecord` treats an invocation the collector cannot produce as well formed and includes it in the derived census. Moving unknown flag names into the acceptance reading should not also move non-flag positional arguments; retain the positional refusal in the record-shape reading.\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3787315859,
+              "review_id": 4941371673,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: a9b0429\nfinding_category: probe-record-shape-reading\nreviewer: chatgpt-codex-connector\nnotes: The positional refusal returns to the shape reading as reported. The message changed with it. It names the position and never the element, because quoting the element withheld the whole line through `redact` whenever that element was credential-shaped.\n```\n\n`armFlags` returns a literal array, which is what makes the invocation grammar a stable\nidentity fact while the named set stays versioned. ADR-0024 carries the distinction, and\n`test/probe.test.js` pins both halves."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

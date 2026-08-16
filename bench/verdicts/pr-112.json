@@ -1,0 +1,43 @@
+{
+  "kind": "verdict-record",
+  "identity": {
+    "repo": "rookslog/stylewright",
+    "pr": 112,
+    "base_sha": "fee6bd0b6671d2125ba47633eb2bcf654a337c67",
+    "head_sha": "74cf23131d8d9843cdc03ecb8d59ada12a541502",
+    "merge_commit_sha": "e44aa4f5f5bda50df888fed4a0859995b847ba77",
+    "merged_at": "2026-08-13T22:44:16Z"
+  },
+  "mined_at": "2026-08-16T05:16:11.819Z",
+  "rounds": [
+    {
+      "round": 1,
+      "scenario": "pr-112-r1",
+      "review_commit": "47be915cc8360e917dd9bb6a27d164263b0cc96f",
+      "threads": [
+        {
+          "id": 3779409265,
+          "review_id": 4931954390,
+          "path": "src/ground.js",
+          "side": "RIGHT",
+          "line": 825,
+          "original_line": 821,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "74cf23131d8d9843cdc03ecb8d59ada12a541502",
+          "original_commit_id": "47be915cc8360e917dd9bb6a27d164263b0cc96f",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Refuse colon-led table delimiters**\n\nWhen a list-item continuation is `- Context.\\n  :-`, `micromark` renders `:-` as the delimiter of a one-column GFM table, but this new allowlist admits the leading colon while `opensTable` only detects headers containing a pipe. Consequently, `ground --check` reports no `unmodelled-construct` and extracts the single prose unit `Context. :-` even though the reader sees a table, allowing the table contents to be grounded as unrelated prose. Either recognize this delimiter shape or remove `:` from the continuation allowlist.\n\nAGENTS.md reference: [AGENTS.md:L305-L312](https://github.com/rookslog/stylewright/blob/47be915cc8360e917dd9bb6a27d164263b0cc96f/AGENTS.md#L305-L312)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3779453062,
+              "review_id": 4932004845,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: 229c58f\nfinding_category: content-escape\nreviewer: chatgpt-codex-connector\n```\n\nConfirmed against the render, and the class is wider than the shape reported.\nBoth suggested exits were declined for the same reason: each closes one shape\nand leaves the rest.\n\nNeither `recognize this delimiter shape` nor `remove : from the continuation\nallowlist` is what landed. Reading the table needs a second row-recognition\nrule, because a one-column table has no pipe in its ROWS either, plus a\ndecision about where such a table ends, and it collides with the delimiter\ncell-count divergence issue #117 already carries. Removing the colon closes\n`- Context.` over `:-` and leaves six shapes at column 0 open, which never\nreach the continuation form at all.\n\nSo the check refuses the shape, by ADR-0016's rule: a construct the walk cannot\nmodel is named rather than read. One predicate, every indent.\n\n`:-:`, `-:`, `:---:`, `-|` and `|-` are tables to both parsers and are refused\nwith it. `---`, `-` and `--` are setext underlines and are not, because a colon\nor a pipe in the delimiter is the whole difference. A delimiter with no header\nabove it is no table to either reader.\n\nAccounting: this is on `main` unchanged, and the column-0 half does not depend\non the continuation grammar at all."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
