@@ -280,7 +280,14 @@ export function score(raw, prompt, legacy = false) {
  */
 export function reviewMetrics(text, meta, confirmed) {
   const anchors = anchorsIn(text);
-  const matched = matchDispositions(anchors, confirmed);
+  // DISTINCT dispositions, by the identifier that names one. `matchDispositions`
+  // returns a set of identifiers, so counting array entries against it mixed two
+  // units: a corpus holding one pull request twice reported a finding the arm
+  // HAD matched as dropped. `corpusProblems` refuses that corpus, and this makes
+  // the invariant `confirmed + missed == the ground truth` hold structurally
+  // rather than only while the refusal is in front of it.
+  const truth = [...new Map(confirmed.map((d) => [d.id, d])).values()];
+  const matched = matchDispositions(anchors, truth);
   const tokens = Number(meta?.output_tokens);
   // Zero is withheld beside absent. A run that emitted no output tokens is a
   // run whose rate has no denominator, and dividing anyway prints Infinity.
@@ -288,7 +295,7 @@ export function reviewMetrics(text, meta, confirmed) {
   return {
     anchors: anchors.length,
     confirmed: matched.size,
-    missed: confirmed.length - matched.size,
+    missed: truth.length - matched.size,
     outTokens: usable ? tokens : '',
     perKtok: usable ? Number((matched.size / (tokens / 1000)).toFixed(3)) : '',
   };
@@ -353,6 +360,24 @@ const REQUIRED = ['arm', 'scenario', 'rep', 'reps', 'prompt_sha', 'system_sha',
  */
 const REQUIRED_FOR_REVIEW = ['output_tokens'];
 
+/**
+ * The values `bench/extract.mjs` can write for the token count: the literal
+ * `absent`, or a non-negative integer.
+ *
+ * Presence alone was not enough. `garbage`, `-1` and `Infinity` all fail the
+ * `Number.isFinite(n) && n > 0` test in `reviewMetrics`, so each one WITHHELD
+ * the primary figure exactly as the supported `absent` does, while the run
+ * still read audited — a malformed sidecar could suppress `perKtok` and look
+ * like a harness that reported no usage.
+ *
+ * This is ADR-0024's split, not a new rule. `absent` is a protocol spelling
+ * this repository versions, so it decides a reading. A value the collector
+ * could never have written is a structural impossibility, so it refuses the
+ * record. `0` stays VALID and still withholds the rate: a run that emitted no
+ * output tokens is one the collector produces, and it has no denominator.
+ */
+const TOKEN_VALUE = /^(absent|\d+)$/;
+
 // Constant within one arm. In --compare mode the treatment fields are expected
 // to differ, because differing IS the comparison, so only the shared ground has
 // to hold still.
@@ -403,6 +428,13 @@ export async function auditable(files, metas, opts = {}) {
     // directory over.
     for (const p of opts.review.problems) {
       reasons.push(`the verdict corpus does not check out: ${p}`);
+    }
+    const wrong = present.filter((m) => m.output_tokens
+      && !TOKEN_VALUE.test(m.output_tokens)).length;
+    if (wrong) {
+      reasons.push(`${wrong} of ${present.length} sidecars record an output_tokens this `
+        + 'collector could not have written. It is `absent` or a count, and a value that is '
+        + 'neither withholds the primary figure while the run still reads audited');
     }
     const uncovered = [...new Set(present.map((m) => m.scenario).filter(Boolean))]
       .filter((s) => !opts.review.confirmed.has(s));

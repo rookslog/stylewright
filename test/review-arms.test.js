@@ -13,8 +13,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { NAME } from '../bench/arm-manifest.mjs';
 import {
-  BASELINE_ARM, CONTRACT, FRAMING, TREATMENT_ARM, buildScenarios, parseArgs, plan, writeScenario,
+  BASELINE_ARM, CONTRACT, FRAMING, TREATMENT_ARM, buildScenarios, parseArgs, plan,
+  selectionTag, writeScenario,
 } from '../bench/review-arms.mjs';
 
 const SHA = 'a'.repeat(40);
@@ -151,16 +153,41 @@ test('the selection is a list of numbers, and each is named once', () => {
 
 // --- the plan ---------------------------------------------------------------
 
+const planFor = (tag = '112-118') => plan({
+  tag, promptsRel: `bench/review-prompts/${tag}`, verdictsRel: 'bench/verdicts', reps: 5,
+}).join('\n');
+
 test('the plan names both arms, and only the treatment carries the contract', () => {
-  const lines = plan({ promptsRel: 'bench/review-prompts', verdictsRel: 'bench/verdicts', reps: 5 });
-  const text = lines.join('\n');
-  assert.match(text, new RegExp(`run\\.sh ${BASELINE_ARM} `));
-  assert.match(text, new RegExp(`run\\.sh ${TREATMENT_ARM} .*--system ${CONTRACT}`));
-  assert.ok(!new RegExp(`run\\.sh ${BASELINE_ARM} [^\\n]*--system`).test(text),
+  const text = planFor();
+  assert.match(text, new RegExp(`run\\.sh ${BASELINE_ARM}-112-118 `));
+  assert.match(text, new RegExp(`run\\.sh ${TREATMENT_ARM}-112-118 .*--system ${CONTRACT}`));
+  assert.ok(!new RegExp(`run\\.sh ${BASELINE_ARM}[^\\n]*--system`).test(text),
     'the baseline runs with no injected guidance, or the arms differ by nothing');
   // The promotion retains the ground truth inside the study, because the
   // re-run refuses a path outside it.
   assert.match(text, /--verdicts bench\/verdicts/);
+});
+
+test('every arm and directory a plan names carries its selection', () => {
+  // Traced before this fix: two selections wrote into one prompt directory, so
+  // the second run's plan covered both, the arm covered that larger plan
+  // legitimately, and `armState` saw nothing unexpected. ADR-0032 carries the
+  // correction. The tag is what keeps two selections apart.
+  const first = planFor('112');
+  const second = planFor('118');
+  assert.match(first, /review-baseline-112 --prompts bench\/review-prompts\/112 /);
+  assert.match(second, /review-baseline-118 --prompts bench\/review-prompts\/118 /);
+  assert.ok(!first.includes('review-prompts/118') && !second.includes('review-prompts/112'),
+    'neither selection can reach the other one\'s scenarios');
+  for (const arm of [`${BASELINE_ARM}-112`, `${TREATMENT_ARM}-112`]) {
+    assert.ok(NAME.test(arm), `${arm} must be a name the arm manifest accepts`);
+  }
+});
+
+test('the tag is the sorted pull requests, so the same selection resumes', () => {
+  assert.equal(selectionTag([118, 112]), '112-118');
+  assert.equal(selectionTag([112, 118]), '112-118');
+  assert.equal(selectionTag([118, 118, 112]), '112-118');
 });
 
 test('the contract this repository ships is the one the plan names', async () => {

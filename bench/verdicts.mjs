@@ -49,6 +49,9 @@ import { fileURLToPath } from 'node:url';
 // One question about a credential, asked where this repository already asks it.
 // A second copy of the pattern is a second thing to drift, and drift here means
 // one surface refusing a credential while another commits it.
+// One classification of what stands at a path, asked where every other write
+// and read surface here asks it. A fourth spelling is a fourth thing to drift.
+import { destinationState } from '../src/tree.js';
 import { redact } from './probe.mjs';
 import { contentProblems } from './study.mjs';
 
@@ -152,6 +155,19 @@ function keyPaths(value, prefix = '') {
  * `bench/probe.mjs` and `scripts/check-editorial.mjs` both read a fence this
  * way, and a shorter closing line reopening the file is the defect the length
  * comparison exists for.
+ *
+ * **A fence is indented at most three spaces, which is CommonMark's own
+ * bound.** Past that a reader sees an indented code block — an EXAMPLE of the
+ * form, with its backticks visible — and this reader saw a real disposition.
+ * Measured through `micromark`, which the render test already uses: a reply
+ * carrying a real `ACCEPTED` block and then a four-space-indented
+ * `review-verdict` example renders the second as `<pre><code>` holding the
+ * literal fence, while `verdictBlocks` read two blocks and the last-block rule
+ * below made the example the current verdict.
+ *
+ * So this is `row-indented` in a third place. An indented matrix row and an
+ * indented table are both refused for exactly this reason, and the bound is the
+ * parser's rather than a house guess. `test/gfm-render.test.js` pins it.
  */
 export function verdictBlocks(body) {
   const blocks = [];
@@ -160,7 +176,9 @@ export function verdictBlocks(body) {
   let kind = null;
   let words = [];
   for (const line of lines) {
-    const fence = /^\s*(`{3,}|~{3,})\s*(.*?)\s*$/.exec(line);
+    // ` {0,3}` and not `\s*`. A tab counts as four columns of indentation to
+    // CommonMark, so it opens no fence either, and matching `\s*` admitted both.
+    const fence = /^ {0,3}(`{3,}|~{3,})[ \t]*(.*?)[ \t]*$/.exec(line);
     if (open === null) {
       if (fence && /^review-verdict(-reconsidered)?$/.test(fence[2])) {
         open = fence[1];
@@ -200,7 +218,16 @@ export function readThread(thread) {
 function verdictOf(thread) {
   const replies = Array.isArray(thread?.replies) ? thread.replies : [];
   if (!replies.length) return { verdict: null, verdict_withheld: 'no-reply' };
-  const blocks = replies.flatMap((reply) => verdictBlocks(reply?.body));
+  // Chronology comes from the forge's own identifiers, never from the order the
+  // JSON happens to carry. The last block wins below, so an array a hand
+  // reordered would make an older disposition the current one — and the reading
+  // would be wrong rather than withheld, which is the outcome this file refuses
+  // everywhere else. `recordProblems` refuses an out-of-order record as well,
+  // because the collector always writes them sorted, and sorting here is what
+  // keeps the derivation right for any caller that reaches it first.
+  const blocks = [...replies]
+    .sort((a, b) => (Number(a?.id) || 0) - (Number(b?.id) || 0))
+    .flatMap((reply) => verdictBlocks(reply?.body));
   if (!blocks.length) return { verdict: null, verdict_withheld: 'no-verdict-block' };
   // The LAST block wins. A `review-verdict-reconsidered` supersedes what stands
   // above it, and order is total, so the latest block is the current
@@ -288,7 +315,8 @@ export function recordProblems(record, name = 'record') {
         say(`${at}.threads lists the review threads of this round.`);
         return;
       }
-      round.threads.forEach((thread, j) => threadProblems(thread, `${at}.threads[${j}]`, say));
+      round.threads.forEach((thread, j) => threadProblems(
+        thread, `${at}.threads[${j}]`, say, round.review_commit));
     });
   }
 
@@ -308,7 +336,7 @@ export function recordProblems(record, name = 'record') {
   return problems;
 }
 
-function threadProblems(thread, at, say) {
+function threadProblems(thread, at, say, reviewCommit) {
   if (!thread || typeof thread !== 'object' || Array.isArray(thread)) {
     say(`${at} is not a thread object.`);
     return;
@@ -319,8 +347,33 @@ function threadProblems(thread, at, say) {
   for (const field of ['line', 'original_line', 'start_line', 'original_start_line']) {
     if (!isIntOrNull(thread[field])) say(`${at}.${field} is a line number, or null.`);
   }
-  for (const field of ['commit_id', 'original_commit_id']) {
-    if (!isShaOrNull(thread[field])) say(`${at}.${field} is a commit, or null.`);
+  if (!isShaOrNull(thread.commit_id)) say(`${at}.commit_id is a commit, or null.`);
+  // A ROUND IS a reviewed commit, so a thread inside one names that commit and
+  // no other. `anchorOf` reads `original_line`, which is a line number in the
+  // tree of `original_commit_id`, and `bench/review-arms.mjs` builds the diff of
+  // `round.review_commit` — so a thread naming a third commit anchors its
+  // ground truth in a tree no arm ever reads, and `confirmed` and `missed` both
+  // describe the wrong file. `buildRecord` groups rounds BY this field and can
+  // never produce the mismatch, which is exactly why the check has to: a
+  // committed record is edited by hand or it is not edited at all.
+  //
+  // `null` is refused here rather than admitted, for the same reason. A thread
+  // whose reviewed commit is unknown has an anchor nothing can place.
+  if (!SHA.test(String(thread.original_commit_id))) {
+    say(`${at}.original_commit_id names the commit the reviewer read.`);
+  } else if (reviewCommit && thread.original_commit_id !== reviewCommit) {
+    say(`${at} names a different reviewed commit from its round. A round IS a reviewed `
+      + 'commit, so an anchor from another one points into a tree no arm reads.');
+  }
+  // The collector sorts replies by forge identifier, and `verdictOf` derives the
+  // current disposition from the LAST block. An out-of-order array is a record
+  // this tool could not have written, so it is a shape refusal rather than a
+  // reading — the identity-fact half of ADR-0024's split.
+  const ids = (Array.isArray(thread.replies) ? thread.replies : [])
+    .map((r) => r?.id).filter(Number.isInteger);
+  if (ids.some((id, i) => i > 0 && id < ids[i - 1])) {
+    say(`${at}.replies are out of forge order, and the collector writes them sorted. `
+      + 'The last block states the current disposition, so the order decides which one that is.');
   }
   if (!isText(thread.author)) say(`${at}.author names who wrote the finding.`);
   if (typeof thread.body !== 'string') say(`${at}.body retains the finding verbatim.`);
@@ -431,9 +484,13 @@ export function matchDispositions(anchors, dispositions, window = MATCH_WINDOW) 
 export async function loadCorpus(dir) {
   const problems = [];
   const confirmed = new Map();
-  for (const { name, record, unreadable } of await readRecords(dir)) {
+  const entries = await readRecords(dir);
+  problems.push(...corpusProblems(entries));
+  for (const { name, record, unreadable, state } of entries) {
     if (unreadable) {
-      problems.push(`${name}: not readable as JSON.`);
+      problems.push(state && state !== 'file'
+        ? `${name}: is a ${state}, and a record is a plain file.`
+        : `${name}: not readable as JSON.`);
       continue;
     }
     const found = recordProblems(record, name);
@@ -477,6 +534,50 @@ export function describe(name, record) {
     + `${record.rounds.map((r) => r.scenario).join(', ')}`;
 }
 
+/**
+ * The name a record of one pull request must have.
+ *
+ * The identity sits in the PATH, which is ADR-0030's rule for a grounding
+ * matrix arriving in a second corpus. A record whose filename does not follow
+ * its own `identity.pr` can be copied under a second name, and then one pull
+ * request labels a scenario twice.
+ */
+export const recordName = (pr) => `pr-${pr}.json`;
+
+/**
+ * What is wrong with a corpus as a SET, rather than with any record in it.
+ *
+ * One pull request, one record. Two copies of a valid record both pass
+ * `recordProblems`, and `loadCorpus` then appends both sets of dispositions to
+ * one scenario. Measured: `matchDispositions` deduplicates by thread
+ * identifier while `missed` counted array entries, so a duplicated corpus
+ * reported a finding the arm HAD matched as dropped — `{confirmed:1, missed:1}`
+ * where the truth is `{confirmed:1, missed:0}`. That inflates the counterweight,
+ * which is the direction that makes the compressed arm look worse than it is.
+ *
+ * Both halves ship. This refuses the duplicate, and `reviewMetrics` counts
+ * distinct dispositions so the invariant holds whatever it is handed.
+ */
+export function corpusProblems(entries) {
+  const problems = [];
+  const seen = new Map();
+  for (const { name, record, unreadable } of entries) {
+    if (unreadable || !record?.identity) continue;
+    const pr = record.identity.pr;
+    if (!Number.isInteger(pr)) continue;
+    if (name !== recordName(pr)) {
+      problems.push(`${name}: a record of pull request ${pr} is named ${recordName(pr)}. `
+        + 'The identity sits in the path, so one name cannot hold two pull requests and one '
+        + 'pull request cannot hold two names.');
+    }
+    if (seen.has(pr)) {
+      problems.push(`${name}: pull request ${pr} is already mined as ${seen.get(pr)}. `
+        + 'One pull request labels a scenario once, or its findings count twice.');
+    } else seen.set(pr, name);
+  }
+  return problems;
+}
+
 /** Reads every record under `dir`. A missing directory holds no records. */
 export async function readRecords(dir) {
   let names;
@@ -488,6 +589,19 @@ export async function readRecords(dir) {
   }
   const records = [];
   for (const name of names) {
+    // The filesystem is asked what stands at the name, with `lstat`, before
+    // anything reads it. `readFile` follows a symbolic link, so a link called
+    // `pr-118.json` serves bytes from outside the corpus that can change while
+    // the corpus entry does not — and `bench/review-arms.mjs` would then select
+    // commits and build prompts from them. This is the disposition `walkStudy`
+    // gives a study, the allowlist gives a skill directory, and `readMatrix`
+    // gives a matrix, so it reads through the same predicate rather than a
+    // fourth spelling of it.
+    const state = await destinationState(path.join(dir, name));
+    if (state !== 'file') {
+      records.push({ name, record: null, unreadable: true, state });
+      continue;
+    }
     const text = await fs.readFile(path.join(dir, name), 'utf8');
     try {
       records.push({ name, record: JSON.parse(text) });
@@ -513,11 +627,18 @@ export async function checkDirectory(dir) {
   const problems = [];
   const lines = [];
   const counts = { records: 0, unread: 0, threads: 0, derived: 0, confirmed: 0, withheld: 0 };
-  for (const { name, record, unreadable } of await readRecords(dir)) {
+  const entries = await readRecords(dir);
+  // The set-level problems, before the per-record ones. A duplicate and a
+  // misnamed record are properties of the corpus rather than of either file.
+  problems.push(...corpusProblems(entries));
+  for (const { name, record, unreadable, state } of entries) {
     counts.records += 1;
     if (unreadable) {
-      problems.push(`${name}: not readable as JSON.`);
-      lines.push(`${name}: derives NOTHING (the file is not readable as JSON)`);
+      const why = state && state !== 'file'
+        ? `is a ${state}, and a record is a plain file`
+        : 'not readable as JSON';
+      problems.push(`${name}: ${why}.`);
+      lines.push(`${name}: derives NOTHING (${why})`);
       counts.unread += 1;
       continue;
     }

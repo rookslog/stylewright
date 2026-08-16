@@ -48,7 +48,7 @@ import { destinationState, ensureDir, isBelow } from '../src/tree.js';
 import { chainProblems } from './collect-probe.mjs';
 import { contentProblems } from './study.mjs';
 import {
-  RECORD_KIND, deriveDispositions, readingsOf, recordProblems, scenarioOf,
+  RECORD_KIND, deriveDispositions, readingsOf, recordName, recordProblems, scenarioOf,
 } from './verdicts.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -353,7 +353,11 @@ async function main(argv, env, now) {
       process.stdout.write(`${line} — dry run, nothing written\n`);
       continue;
     }
-    const outPath = path.join(outDir, `pr-${pr}.json`);
+    // The reader's own spelling of the name, imported rather than repeated.
+    // `corpusProblems` refuses a record whose filename does not follow its
+    // `identity.pr`, so a second literal here is a second thing to drift into
+    // a file this repository's own check would then refuse.
+    const outPath = path.join(outDir, recordName(pr));
     await writeRecord(outDir, outPath, record);
     process.stdout.write(`${outPath}\n${line}\n`);
   }

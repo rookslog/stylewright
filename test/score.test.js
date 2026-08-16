@@ -371,6 +371,20 @@ test('confirmed counts the findings an anchor reached, and missed is the rest', 
   assert.equal(r.confirmed + r.missed, truth.length);
 });
 
+test('a duplicated ground truth does not report a matched finding as dropped', () => {
+  // `matchDispositions` deduplicates by identifier while `missed` counted array
+  // entries, so a corpus holding one pull request twice read {confirmed:1,
+  // missed:1} where the truth is {confirmed:1, missed:0}. That inflates the
+  // counterweight — the direction that makes the compressed arm look worse.
+  // `corpusProblems` refuses such a corpus, and this keeps the invariant true
+  // whatever the function is handed.
+  const twice = [finding({ id: 1 }), finding({ id: 1 })];
+  const r = reviewMetrics('bench/probe.mjs:437', { output_tokens: '1000' }, twice);
+  assert.equal(r.confirmed, 1);
+  assert.equal(r.missed, 0);
+  assert.equal(r.perKtok, 1);
+});
+
 test('perKtok is confirmed per thousand output tokens', () => {
   const r = reviewMetrics('bench/probe.mjs:437 is wrong', { output_tokens: '500' }, [finding()]);
   assert.equal(r.outTokens, 500);
@@ -403,6 +417,27 @@ test('--review requires the token field, and admits absent as its value', async 
     await Promise.all(files.map(readMeta)), { review: truth })).join(' ');
   assert.match(await say(await five(`${dir}no-tokens`, 'a')), /have no output_tokens/);
   assert.equal(await say(await five(`${dir}absent`, 'a', { output_tokens: 'absent' })), '');
+});
+
+test('a token value this collector could not have written is refused', async () => {
+  // Presence alone let `garbage`, `-1` and `Infinity` withhold the primary
+  // figure exactly as the supported `absent` does, while the run still read
+  // audited. ADR-0024's split: `absent` is a protocol spelling and decides a
+  // reading, and a value no collector writes is a structural refusal.
+  const dir = await tmpdir();
+  const truth = { confirmed: new Map([['report', []]]), problems: [] };
+  const say = async (over) => {
+    const files = await five(`${dir}${over.output_tokens}`, 'a', over);
+    return (await auditable(files, await Promise.all(files.map(readMeta)),
+      { review: truth })).join(' ');
+  };
+  for (const bad of ['garbage', '-1', 'Infinity', '1.5']) {
+    assert.match(await say({ output_tokens: bad }), /could not have written/, `${bad} is refused`);
+  }
+  // Zero is a run that emitted nothing, which the collector does produce. It
+  // stays valid and still withholds the rate.
+  assert.equal(await say({ output_tokens: '0' }), '');
+  assert.equal(reviewMetrics('x', { output_tokens: '0' }, []).perKtok, '');
 });
 
 test('a scenario no verdict record covers is refused, not scored against nothing', async () => {

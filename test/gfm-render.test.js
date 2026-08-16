@@ -551,3 +551,32 @@ test('the over-refusal under a blockquote is pinned, because a reader ends it th
   assert.deepEqual(refusalsFor('> Quoted.\n## Deeper\n\nProse.'), []);
   assert.doesNotMatch(renderBlocks('> Quoted.\n## Deeper').split('</blockquote>')[0], /Deeper/);
 });
+
+// The verdict reader's fence bound answers to the parser too, by this file's
+// own rule. `bench/verdicts.mjs` reads a fenced `review-verdict` block and the
+// LAST one states the current disposition, so which lines count as a fence
+// decides a disposition rather than a formatting question.
+
+test('a verdict fence indented past three spaces is code, and the reader agrees', async () => {
+  const { verdictBlocks } = await import('../bench/verdicts.mjs');
+  const fence = (indent) => `${indent}\`\`\`review-verdict\n${indent}verdict: ACCEPTED\n${indent}\`\`\`\n`;
+
+  // Three spaces is the parser's own bound for a fenced block.
+  for (const indent of ['', ' ', '  ', '   ']) {
+    assert.match(renderBlocks(fence(indent)), /<code class="language-review-verdict">/,
+      `${indent.length} spaces still opens a fenced block for a reader`);
+    assert.equal(verdictBlocks(fence(indent)).length, 1,
+      `${indent.length} spaces still opens a block for the reader of this repository`);
+  }
+
+  // Past it, a reader sees an indented code block with the backticks showing —
+  // an EXAMPLE of the form. The rendered page carries the literal fence.
+  for (const indent of ['    ', '\t']) {
+    const seen = renderBlocks(fence(indent));
+    assert.doesNotMatch(seen, /class="language-review-verdict"/,
+      'a reader sees no fenced verdict block here');
+    assert.match(seen, /```review-verdict/, 'a reader sees the backticks themselves');
+    assert.deepEqual(verdictBlocks(fence(indent)), [],
+      'and the reader of this repository reads no disposition from it');
+  }
+});

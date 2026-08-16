@@ -173,12 +173,13 @@ fi
 # The trap is armed HERE and not earlier, because the refusals above belong to
 # the invocation and not to the arm on disk.
 #
-# Resuming an arm under a DIFFERENT prompt directory needs no fourth refusal
-# above. The scenario names differ, so the other set's samples are files the
-# plan never named: `armState` reports them as unexpected, the arm does not
-# cover its plan, and `check:studies` marks every figure it touched unaudited
-# with the reason on the figure. The mechanism that catches a mixed cell is
-# already there, one file over.
+# The scenario set is whatever this directory holds, and that is the whole of
+# what this runner knows about it. A caller that points two different selections
+# at ONE directory gets one arm covering both, legitimately, because the plan is
+# derived here and the arm then covers it — `armState` sees nothing unexpected.
+# So the caller keeps selections apart, and `bench/review-arms.mjs` does it by
+# writing each selection into its own directory under its own arm names.
+# ADR-0032 records the trace that corrected the opposite claim.
 SCENARIOS=
 for p in "$PROMPTS"/*.txt; do
   SCENARIOS="${SCENARIOS:+$SCENARIOS,}${p:t:r}"

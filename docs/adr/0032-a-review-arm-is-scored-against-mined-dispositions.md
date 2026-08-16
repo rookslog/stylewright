@@ -182,10 +182,23 @@ channel costs: every figure here measures injection and never installation.
 The review arms run through `bench/run.sh`, with a new `--prompts` flag, rather
 than through a second runner. A second runner would be a second copy of every
 refusal that file carries, and the first of them to drift would be the one that
-stopped catching a mixed cell. Resuming an arm under a different prompt
-directory needs no new refusal: the other set's scenario names differ, so
-`armState` reports its files as unexpected, the arm does not cover its plan, and
-`check:studies` marks every figure it touched unaudited.
+stopped catching a mixed cell.
+
+**Corrected on review, because the first draft of this section was wrong.** It
+claimed a second selection needs no new refusal, because `armState` would report
+the other set's files as unexpected. Traced, and it does not: every run wrote
+into one `review-prompts` directory, so after `--pr 112` then `--pr 118` that
+directory holds both scenarios, `run.sh` derives its plan from all of them, and
+the arm covers that larger plan legitimately. Nothing is ever unexpected, and
+`retain.mjs` promotes a study larger than the selection — the run of a size
+nobody chose that `--pr` exists to stop.
+
+So the selection is carried by the NAMES. A run writes into
+`review-prompts/<tag>` and plans `review-baseline-<tag>` and
+`review-compact-<tag>`, where the tag is the sorted pull-request numbers of the
+scenarios actually built. Re-running the same selection still resumes an
+interrupted arm, which is the half of resuming worth keeping, and a different
+selection cannot reach the first one's arms or its scenarios.
 
 ## Consequences
 

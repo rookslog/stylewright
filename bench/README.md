@@ -143,10 +143,15 @@ design.
 
 ```
 node bench/review-arms.mjs --pr 112 --pr 118 --write
-bench/run.sh review-baseline --prompts bench/review-prompts --reps 5
-bench/run.sh review-compact --prompts bench/review-prompts --reps 5 \
+bench/run.sh review-baseline-112-118 --prompts bench/review-prompts/112-118 --reps 5
+bench/run.sh review-compact-112-118 --prompts bench/review-prompts/112-118 --reps 5 \
   --system bench/review-contract.md
 ```
+
+`review-arms.mjs` prints those two lines, so read them from the plan rather than
+typing them. The selection is in every name. Two selections sharing one
+directory gave one arm covering both, and that arm covered its plan, so nothing
+downstream saw a problem. ADR-0032 carries the trace.
 
 A scenario is one review round, and a round is one commit a reviewer read.
 `review-arms.mjs` rebuilds that diff and writes the scenario file. It spends
@@ -161,8 +166,8 @@ Read the arms with `--review`, which needs the corpus:
 
 ```
 node bench/score.mjs --compare --review bench/verdicts \
-  --prompt bench/review-prompts/pr-118-r1.txt \
-  bench/out/review-{baseline,compact}/pr-118-r1-*.txt
+  --prompt bench/review-prompts/112-118/pr-118-r1.txt \
+  bench/out/review-{baseline,compact}-112-118/pr-118-r1-*.txt
 ```
 
 ## Half two, the field

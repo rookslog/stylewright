@@ -53,14 +53,36 @@ import { chainProblems } from './collect-probe.mjs';
 // A second copy is a second thing to drift, and drift here means one surface
 // printing a command a shell can read and the other printing one it cannot.
 import { commandPath, contentProblems, rerunEnv } from './study.mjs';
-import { deriveDispositions, readRecords, recordProblems } from './verdicts.mjs';
+import {
+  corpusProblems, deriveDispositions, readRecords, recordProblems,
+} from './verdicts.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
 
-/** The arm names, as constants, because three files below print them. */
+/** The arm-name stems. A run appends its selection tag to each. */
 export const BASELINE_ARM = 'review-baseline';
 export const TREATMENT_ARM = 'review-compact';
+
+/**
+ * The tag that makes a scenario set and its arms belong to ONE selection.
+ *
+ * Every run used to write into one `review-prompts` directory and plan the same
+ * two arm names. Traced: after `--pr 112 --write` then `--pr 118 --write`, that
+ * directory holds `pr-112-r1.txt` AND `pr-118-r1.txt`, so `run.sh` derives both
+ * scenarios from it, skips the samples the first run already collected, and
+ * writes one arm covering both. The arm covers its plan, so it is complete and
+ * scorable, and `retain.mjs` then promotes a study larger than the selection —
+ * which is precisely the run of a size nobody chose that `--pr` exists to stop.
+ *
+ * ADR-0032 claimed `armState` caught this, and that claim was wrong: the
+ * accumulating prompt directory makes the second run's larger plan legitimate,
+ * so nothing is ever unexpected. The tag is the repair, and the ADR now says so.
+ *
+ * It is the sorted pull-request numbers, so re-running the SAME selection still
+ * resumes an interrupted arm, which is the half of resuming worth keeping.
+ */
+export const selectionTag = (prs) => [...new Set(prs)].sort((a, b) => a - b).join('-');
 
 /** The treatment, at a fixed path, so the printed command cannot drift from it. */
 export const CONTRACT = 'bench/review-contract.md';
@@ -136,9 +158,16 @@ export async function buildScenarios(records, git = runGit, select = null) {
   const refusals = [];
   const wanted = select ? new Set(select) : null;
   const seen = new Set();
-  for (const { name, record, unreadable } of records) {
+  // The set-level problems, asked here too. A duplicated or misnamed record
+  // makes the ground truth wrong for every scenario built from it, and this
+  // file selects commits and writes prompts from the same bytes the scorer
+  // will later score against.
+  problems.push(...corpusProblems(records));
+  for (const { name, record, unreadable, state } of records) {
     if (unreadable) {
-      problems.push(`${name}: not readable as JSON.`);
+      problems.push(state && state !== 'file'
+        ? `${name}: is a ${state}, and a record is a plain file.`
+        : `${name}: not readable as JSON.`);
       continue;
     }
     const found = recordProblems(record, name);
@@ -254,12 +283,18 @@ export async function writeScenario(baseDir, outPath, text) {
  * They are printed rather than run. Every one of them spends the operator's
  * usage or writes into the committed tree, and this file decides neither.
  */
-export function plan({ promptsRel, verdictsRel, reps }) {
+export function plan({ promptsRel, verdictsRel, reps, tag }) {
+  // Both the arm names and the scenario directory carry the selection, so a
+  // second selection cannot resume the first one's arms or inherit its
+  // scenarios. A NAME is letters, digits, dashes and underscores, which the
+  // tag satisfies by being numbers joined with dashes.
+  const baseline = `${BASELINE_ARM}-${tag}`;
+  const treatment = `${TREATMENT_ARM}-${tag}`;
   return [
-    `bench/run.sh ${BASELINE_ARM} --prompts ${promptsRel} --reps ${reps}`,
-    `bench/run.sh ${TREATMENT_ARM} --prompts ${promptsRel} --reps ${reps} --system ${CONTRACT}`,
+    `bench/run.sh ${baseline} --prompts ${promptsRel} --reps ${reps}`,
+    `bench/run.sh ${treatment} --prompts ${promptsRel} --reps ${reps} --system ${CONTRACT}`,
     `node bench/retain.mjs --study <date>-review-verbosity \\`,
-    `  --arm ${BASELINE_ARM} --arm ${TREATMENT_ARM} \\`,
+    `  --arm ${baseline} --arm ${treatment} \\`,
     `  --prompts ${promptsRel} --verdicts ${verdictsRel} \\`,
     '  --license-check "what you checked, and against what"',
     'npm run check:studies',
@@ -319,6 +354,13 @@ async function main(argv) {
     return 1;
   }
 
+  // The tag comes from the pull requests actually BUILT, not from `--pr`. A
+  // whole-corpus run carries one too, and a selection whose rounds were refused
+  // gets the tag of what it holds rather than of what it asked for — so the
+  // directory and the arms always describe the scenarios in them.
+  const tag = selectionTag(scenarios.map((s) => s.pr));
+  const selectionDir = path.join(outDir, tag);
+
   // The selection is printed, because it is what the run's size answers to and
   // the plan below spends money proportional to it.
   process.stdout.write(opts.prs
@@ -330,7 +372,7 @@ async function main(argv) {
     process.stdout.write(`${s.scenario}: ${Buffer.byteLength(s.prompt)} bytes of diff `
       + `(${s.range}), ${s.confirmed} confirmed finding(s) as ground truth\n`);
     if (opts.write) {
-      await writeScenario(outDir, path.join(outDir, `${s.scenario}.txt`), s.prompt);
+      await writeScenario(outDir, path.join(selectionDir, `${s.scenario}.txt`), s.prompt);
     }
   }
   // The size is printed because the operator is about to pay for it, twice per
@@ -344,7 +386,8 @@ async function main(argv) {
   // commands a person pastes, and `bench/run.sh` is zsh, which reads a
   // backslash as an escape rather than as a separator.
   for (const line of plan({
-    promptsRel: commandPath(outDir),
+    tag,
+    promptsRel: commandPath(selectionDir),
     verdictsRel: commandPath(verdictsDir),
     reps: opts.reps,
   })) process.stdout.write(`${line}\n`);

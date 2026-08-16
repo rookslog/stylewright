@@ -87,6 +87,26 @@ test('an unclosed block is still a block, because the fence runs to the end', ()
     { kind: 'review-verdict', verdicts: ['OBSOLETE'] }]);
 });
 
+test('a fence indented past three spaces is an example, and no block is read', () => {
+  // A reader sees an indented code block with its backticks showing.
+  // `test/gfm-render.test.js` puts this through the parser and settles it.
+  const example = 'Real one:\n\n```review-verdict\nverdict: ACCEPTED\n```\n\n'
+    + 'The form looks like this:\n\n    ```review-verdict\n    verdict: OBSOLETE\n    ```\n';
+  assert.deepEqual(verdictBlocks(example), [
+    { kind: 'review-verdict', verdicts: ['ACCEPTED'] }]);
+  // Three spaces is the parser's own bound, so it still opens one.
+  assert.equal(verdictBlocks('   ```review-verdict\n   verdict: DEFERRED\n   ```\n').length, 1);
+  // A tab counts as four columns of indentation, so it opens nothing.
+  assert.deepEqual(verdictBlocks('\t```review-verdict\n\tverdict: OBSOLETE\n\t```\n'), []);
+});
+
+test('an indented example after a real block does not become the current verdict', () => {
+  const body = '```review-verdict\nverdict: ACCEPTED\n```\n\nFor reference:\n\n'
+    + '    ```review-verdict\n    verdict: REJECTED_BAD_FIT\n    ```\n';
+  assert.equal(readThread(thread({ replies: [{ id: 2, author: 'm', body }] })).verdict,
+    'ACCEPTED');
+});
+
 // --- the two readings -------------------------------------------------------
 
 test('the last block wins, so a reconsidered reply supersedes what stands above it', () => {
@@ -197,6 +217,28 @@ test('two rounds naming one commit describe one round twice', () => {
     { round: 2, scenario: 'pr-118-r2', review_commit: SHA, threads: [thread()] },
   ] });
   assert.match(recordProblems(r).join(' '), /repeats a review commit/);
+});
+
+test('a thread naming a different reviewed commit from its round is refused', () => {
+  // A round IS a reviewed commit. An anchor from another one points into a tree
+  // no arm reads, so `confirmed` and `missed` would describe the wrong file.
+  const other = 'e'.repeat(40);
+  assert.match(recordProblems(record({}, [thread({ original_commit_id: other })])).join(' '),
+    /names a different reviewed commit from its round/);
+  // Null is refused too: a thread whose reviewed commit is unknown has an
+  // anchor nothing can place.
+  assert.match(recordProblems(record({}, [thread({ original_commit_id: null })])).join(' '),
+    /original_commit_id names the commit the reviewer read/);
+});
+
+test('replies out of forge order are refused, and the reading sorts anyway', () => {
+  const older = { id: 2, author: 'm', body: block('REJECTED_BAD_FIT') };
+  const newer = { id: 9, author: 'm', body: block('ACCEPTED_MODIFIED') };
+  const jumbled = thread({ replies: [newer, older] });
+  assert.match(recordProblems(record({}, [jumbled])).join(' '), /out of forge order/);
+  // Both halves ship. The derivation reads forge identifiers, so a caller that
+  // reaches it before the refusal still gets the latest disposition.
+  assert.equal(readThread(jumbled).verdict, 'ACCEPTED_MODIFIED');
 });
 
 test('a record that states its own disposition is refused, at any depth', () => {
@@ -319,6 +361,28 @@ test('the census counts a withheld thread beside the ones that derived', async (
   assert.equal(counts.derived, 1);
   assert.equal(counts.withheld, 1);
   assert.match(summarise(counts), /1 derive a disposition, 1 withheld/);
+});
+
+test('one pull request labels a scenario once, and a copy is refused', async (t) => {
+  // Both copies pass `recordProblems`, so the refusal is a property of the SET.
+  const dir = await corpusDir(t, { 'pr-118.json': record(), 'pr-118-copy.json': record() });
+  const { problems } = await loadCorpus(dir);
+  assert.match(problems.join(' '), /pull request 118 is already mined as/);
+  assert.match(problems.join(' '),
+    /pr-118-copy\.json: a record of pull request 118 is named pr-118\.json/);
+});
+
+test('a symbolic link in the corpus is refused, never read through', async (t) => {
+  const dir = await corpusDir(t, { 'pr-118.json': record() });
+  const outside = path.join(dir, '..', `outside-${path.basename(dir)}.json`);
+  await fs.writeFile(outside, `${JSON.stringify(record({}, [thread()]), null, 2)}\n`);
+  t.after(() => fs.rm(outside, { force: true }));
+  await fs.symlink(outside, path.join(dir, 'pr-999.json'));
+  const { problems, counts } = await checkDirectory(dir);
+  assert.match(problems.join(' '), /is a symlink, and a record is a plain file/);
+  // Named and counted, never dropped, the way an unreadable record is.
+  assert.equal(counts.records, 2);
+  assert.equal(counts.unread, 1);
 });
 
 test('an empty corpus says so rather than reporting a green run over nothing', async (t) => {
