@@ -13,6 +13,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the caller: put every fact it needs there, fill the shape the caller asked
   for, carry the data rather than the journey, say where each claim came from,
   return a failure as a result, and size the message to the decision it serves.
+  It governs that message alone, because a file one agent leaves for another to
+  open is a channel where the premise does not hold.
   Two rules refuse the trade the length rules could otherwise buy, because a
   shorter return that drops a finding costs the caller more than it saves. The
   skill came out of an operator request, so every prescription in it is an `E`

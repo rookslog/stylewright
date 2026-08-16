@@ -45,6 +45,10 @@ section under it rather than labelling it. `Carry the data, and not the journey`
 instructs on its own, and `A failure is a result` asserts on its own. The five
 label headings are `N`, and so is the title.
 
+`Purpose` carries one row of each kind. Its first paragraph says what the
+channel is, and its second tells the reader which messages these rules leave
+alone, which directs and therefore grades `E`.
+
 Doubt resolves to `E` here. An `E` row claims our own authority and an `N` row
 claims none, so grading a directive as narrative retires it from review, which
 is the defect `AGENTS.md` names. Grading a piece of scenery as guidance costs a
@@ -82,10 +86,10 @@ already records for a session. The source record at
 | E-15 | Mark a claim you inferred, in the clause that makes it. | Say where each claim came from |  |  | Our own guidance |  |
 | E-16 | State a count beside the command or the file it came from, in the same clause. | Say where each claim came from |  |  | Our own guidance |  |
 | E-17 | Report what a check reported, and never what you expect it to report. | Say where each claim came from |  |  | Our own guidance |  |
-| E-18 | State in one line what you did not cover, rather than letting the message read as complete. | Say where each claim came from |  |  | Our own guidance |  |
+| E-18 | State what you did not cover in one line, and where the caller's shape has no room for it, the shape wins. | Say where each claim came from |  |  | Our own guidance, and it settles which of E-06 and this rule gives way |  |
 | E-19 | A caller re-runs a measured claim cheaply and re-derives an inference expensively. A message that blurs the two moves that cost onto the caller. | Say where each claim came from |  |  | Our own guidance, and it judges a return that blurs the two |  |
 | E-20 | A failure is a result | A failure is a result |  |  | Our own guidance, written as a section title |  |
-| E-21 | Return a blocked run as data: what you attempted, what you observed, and the smallest missing input. | A failure is a result |  |  | Our own guidance |  |
+| E-21 | Return a blocked run as data: what you attempted, what you observed, and the smallest thing that would let it continue. | A failure is a result |  |  | Our own guidance |  |
 | E-22 | Name a step you skipped, because silence about it reads as a step you took. | A failure is a result |  |  | Our own guidance |  |
 | E-23 | Leave the apology out, and let the failure state itself. | A failure is a result |  |  | Our own guidance |  |
 | E-24 | Length answers to the caller's decision | Length answers to the caller's decision |  |  | Our own guidance, written as a section title |  |
@@ -94,8 +98,9 @@ already records for a session. The source record at
 | E-27 | Work you did buys no words. A long return is not a report on effort, and a caller reading one pays for every line of it. | Length answers to the caller's decision |  |  | Our own guidance, and it judges a return sized by effort |  |
 | E-28 | Do not drop a finding to make the return shorter. | What this skill does not ask for |  |  | Our own guidance, and it bounds E-25 and E-26 |  |
 | E-29 | Do not shorten a shape the caller asked for. | What this skill does not ask for |  |  | Our own guidance, and it bounds E-25 and E-26 |  |
-| E-30 | `de-slop` treats one passage of prose and `compressed-deliberation` treats one reply, and each writes for a person. `proportionate-execution` governs a whole session. `navigable-references` says how to write the pointer this skill asks for. This skill treats the one message a calling agent receives. Follow all five. They do not disagree. | How this differs from the other craft skills |  |  | Our own guidance, and it instructs the reader to follow all five |  |
+| E-30 | `de-slop` treats one passage of prose and `compressed-deliberation` treats one reply, and each writes for a person. `proportionate-execution` governs a whole session. This skill treats the one message a calling agent receives. Follow all four. They do not disagree. | How this differs from the other craft skills |  |  | Our own guidance, and it instructs the reader to follow all four |  |
 | E-31 | Read every rule here as discipline that we assert. Do not read any of it as an effect that we observed. | What stands behind these rules |  |  | Our own guidance, and it instructs the reader how to read the skill |  |
+| E-32 | Read these rules for that message alone. A file you leave for another agent to open is a different channel, and the rules below do not govern it. | Purpose |  |  | Our own guidance, and it bounds what the trigger admits |  |
 | N-01 | subagent-returns | subagent-returns |  |  | Section title, asserts no rule |  |
 | N-02 | Purpose | Purpose |  |  | Section title, asserts no rule |  |
 | N-03 | A calling agent reads the message you end on, and it reads nothing else you wrote. So that message is a return value the caller acts on, rather than a report a person reads at leisure. This skill holds it to what the caller needs. | Purpose |  |  | States what this skill treats and who reads it, asserts no rule |  |

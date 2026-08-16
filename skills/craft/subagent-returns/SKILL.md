@@ -1,6 +1,6 @@
 ---
 name: subagent-returns
-description: Use when another agent reads your output. Triggers are a subagent final message, a return to a calling agent, a delegation report, and an agent-to-agent handoff. Symptoms are a restated task, narrated process, a shape the caller never asked for, and a count with no stated source.
+description: Use when a calling agent reads the final message you return. Triggers are a subagent final message, a return to a calling agent, a delegation report, and an agent-to-agent handoff. Symptoms are a restated task, narrated process, a shape the caller never asked for, and a count with no stated source.
 ---
 
 # subagent-returns
@@ -10,6 +10,9 @@ description: Use when another agent reads your output. Triggers are a subagent f
 A calling agent reads the message you end on, and it reads nothing else you
 wrote. So that message is a return value the caller acts on, rather than a
 report a person reads at leisure. This skill holds it to what the caller needs.
+
+Read these rules for that message alone. A file you leave for another agent to
+open is a different channel, and the rules below do not govern it.
 
 ## The final message is the whole delivery
 
@@ -35,14 +38,14 @@ report a person reads at leisure. This skill holds it to what the caller needs.
 - Mark a claim you inferred, in the clause that makes it.
 - State a count beside the command or the file it came from, in the same clause.
 - Report what a check reported, and never what you expect it to report.
-- State in one line what you did not cover, rather than letting the message read as complete.
+- State what you did not cover in one line, and where the caller's shape has no room for it, the shape wins.
 
 A caller re-runs a measured claim cheaply and re-derives an inference
 expensively. A message that blurs the two moves that cost onto the caller.
 
 ## A failure is a result
 
-- Return a blocked run as data: what you attempted, what you observed, and the smallest missing input.
+- Return a blocked run as data: what you attempted, what you observed, and the smallest thing that would let it continue.
 - Name a step you skipped, because silence about it reads as a step you took.
 - Leave the apology out, and let the failure state itself.
 
@@ -63,9 +66,8 @@ caller reading one pays for every line of it.
 
 `de-slop` treats one passage of prose and `compressed-deliberation` treats one
 reply, and each writes for a person. `proportionate-execution` governs a whole
-session. `navigable-references` says how to write the pointer this skill asks
-for. This skill treats the one message a calling agent receives. Follow all
-five. They do not disagree.
+session. This skill treats the one message a calling agent receives. Follow all
+four. They do not disagree.
 
 ## What stands behind these rules
 
