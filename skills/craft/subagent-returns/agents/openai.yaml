@@ -1,0 +1,4 @@
+interface:
+  display_name: "subagent-returns"
+  short_description: "Use when another agent reads your output."
+  default_prompt: "Use $subagent-returns to check this document."

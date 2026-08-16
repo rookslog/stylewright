@@ -7,6 +7,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- The `subagent-returns` skill, in the craft tier. An agent whose reader is
+  another agent writes a return value, and the calling agent sees the final
+  message and no part of the run behind it. So the skill holds that message to
+  the caller: put every fact it needs there, fill the shape the caller asked
+  for, carry the data rather than the journey, say where each claim came from,
+  return a failure as a result, and size the message to the decision it serves.
+  Two rules refuse the trade the length rules could otherwise buy, because a
+  shorter return that drops a finding costs the caller more than it saves. The
+  skill came out of an operator request, so every prescription in it is an `E`
+  row, and the matrix carries no `G` row and no source version. No arm has
+  been run. A study of this skill needs a runner that can drive a delegation and
+  keep what came back, which is the gap `proportionate-execution` already
+  records for a session, and `source/craft/subagent-returns.md` says so.
+
 - A verdict corpus, mined from this repository's own review threads, and the
   scorer support that reads it. This repository disposes of every review finding
   with a fenced `review-verdict` block, so it already holds a labelled corpus of
