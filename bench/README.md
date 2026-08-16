@@ -11,11 +11,20 @@ reproducible and artificial. The field half is real and uncontrolled.
 
 Fixed scenarios, fresh context, several runs each, one variable at a time.
 
-`run.sh` needs **zsh** and the `claude` CLI on `PATH`. Neither is a dependency of
-this package, and nothing in `npm run check` invokes the runner, so continuous
-integration never exercises this half. A Linux container without zsh will fail
-every command below before the harness starts. The scorer is plain Node and runs
-anywhere.
+`run.sh` needs **zsh** and the `claude` CLI on `PATH`. The calling shell also
+supplies the credential, because the runner builds no environment and reads no
+value: a real arm authenticates by the routes issue #77 ranks, which are
+`CLAUDE_CODE_OAUTH_TOKEN` for a subscription ahead of `ANTHROPIC_API_KEY`. None
+of that is a dependency of this package. A Linux container without zsh will fail
+every command below before the harness starts. `test/run-sh.test.js` drives the
+runner over a stand-in `claude` and skips where zsh is absent, so what
+continuous integration exercises is the runner's own control flow and never a
+model call. The scorer is plain Node and runs anywhere.
+
+**An arm is slow, and silence is not failure.** The first review arm on issue
+#109 took about three hours to collect eight samples, unaudited, and it printed
+nothing between them. Read a running arm by the files it has written, and give
+a claim that one died the evidence such a claim needs.
 
 ```
 bench/run.sh control                       # no guidance at all

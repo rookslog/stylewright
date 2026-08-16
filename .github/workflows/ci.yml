@@ -90,8 +90,10 @@ jobs:
       - run: npm ci
 
       # `npm run check` is the same set of checks the ubuntu job runs as named
-      # steps. None of them shells out, so nothing here needs zsh.
-      # `bench/run.sh` does, and CI never invokes the runner.
+      # steps. One of them shells out: `test/run-sh.test.js` drives
+      # `bench/run.sh` over a stand-in `claude`, so a host with zsh exercises
+      # the runner's control flow and a host without one skips those two tests.
+      # Nothing here ever reaches a model.
       - name: Every check
         run: npm run check
 
