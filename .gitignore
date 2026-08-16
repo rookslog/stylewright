@@ -4,4 +4,9 @@ node_modules
 
 # Bench samples are generated. The protocol reproduces them.
 bench/out/
+
+# Review scenarios are rebuilt from the pinned commits in bench/verdicts/, so
+# they are derived rather than evidence. A promoted study retains the copy the
+# arms actually answered.
+bench/review-prompts/
 .claude/worktrees/

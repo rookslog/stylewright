@@ -1,0 +1,131 @@
+{
+  "kind": "verdict-record",
+  "identity": {
+    "repo": "rookslog/stylewright",
+    "pr": 118,
+    "base_sha": "e44aa4f5f5bda50df888fed4a0859995b847ba77",
+    "head_sha": "a1768c1bb195bdeafe7af4a8245feeaa84ee42c0",
+    "merge_commit_sha": "e4ec6ec537169e921af41fcd6510ea8507d52a90",
+    "merged_at": "2026-08-14T22:01:39Z"
+  },
+  "mined_at": "2026-08-16T05:16:11.819Z",
+  "rounds": [
+    {
+      "round": 1,
+      "scenario": "pr-118-r1",
+      "review_commit": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+      "threads": [
+        {
+          "id": 3787192788,
+          "review_id": 4941228087,
+          "path": "grounding/standards/simplified-technical-english/references/examples.md",
+          "side": "RIGHT",
+          "line": null,
+          "original_line": 60,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "original_commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Classify normative pattern headings as guidance**\n\nThe heading “One instruction per sentence” states the revision constraint that this guide teaches, so classifying it as `N` incorrectly declares that it asserts no rule. In this context, the row must be `G` with the applicable source rule or `E` if it is editorial guidance; otherwise the matrix retires a normative unit from authority review while `ground --check` remains green. The same issue affects other directive-like pattern headings in this matrix, such as “Condition before command” and “Action verbs instead of abstract nouns.”\n\nAGENTS.md reference: [AGENTS.md:L48-L58](https://github.com/rookslog/stylewright/blob/d482596b9045ecaaedd64e28c237f7f2ca2fd06d/AGENTS.md#L48-L58)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3787281769,
+              "review_id": 4941334066,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: c864215\nfinding_category: grounding-classification\nreviewer: chatgpt-codex-connector\nnotes: Seven headings state a constraint, not three. Six become G rows citing what the skill's own matrix already cites for the same claim, and \"Unambiguous pronouns\" becomes an E row because Issue 9 carries no numbered pronoun rule. The seven contents entries repeating those constraints become E rows rather than G, because under-claiming on a pointer is the safe direction.\n```\n\nThe test the sweep applied is written into the matrix itself, above the table:\na heading is graded by whether it says what a writer must do. The rest name a\nsubject, such as `Procedure` or `Compliance boundary`."
+            }
+          ]
+        },
+        {
+          "id": 3787192793,
+          "review_id": 4941228087,
+          "path": "src/ground.js",
+          "side": "RIGHT",
+          "line": null,
+          "original_line": 1966,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "original_commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  Refuse symbolic links at reference-matrix paths**\n\nWhen an expected reference matrix is a symbolic link, `orphanMatrices` sees its pathname in `held` and does not report it, while `matrixAt` reaches this `readFile` and follows the link. Consequently, two files can share one physical audit record—or the check can consume a record outside the grounding tree—even though matrix identity is defined by its filesystem path. Validate the matrix itself with `lstat` and refuse anything other than a plain file before reading it.\n\nAGENTS.md reference: [AGENTS.md:L35-L44](https://github.com/rookslog/stylewright/blob/d482596b9045ecaaedd64e28c237f7f2ca2fd06d/AGENTS.md#L35-L44)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3787281881,
+              "review_id": 4941334190,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED\ncommit: c864215\nfinding_category: filesystem-identity\nreviewer: chatgpt-codex-connector\n```\n\n`matrixAt` asks `lstat` and refuses anything but a plain file, as\n`matrix-not-regular`."
+            }
+          ]
+        },
+        {
+          "id": 3787192797,
+          "review_id": 4941228087,
+          "path": "src/ground.js",
+          "side": "RIGHT",
+          "line": 2133,
+          "original_line": 1965,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "a1768c1bb195bdeafe7af4a8245feeaa84ee42c0",
+          "original_commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Do not exempt front matter in reference files**\n\nWhen a Markdown file under `references/` begins with a closed `---` block, passing it through `checkSkill` invokes `withoutFrontMatter` and silently removes that whole block from the units being graded. Front matter is exempt for `SKILL.md` because the harness consumes it as metadata, but reference files are installed writer context and no harness interprets their prefix; therefore a directive placed in that block ships completely unclassified while `ground --check` passes. Distinguish `SKILL.md` from reference subjects and either grade or refuse such a prefix in references.\n\nAGENTS.md reference: [AGENTS.md:L74-L78](https://github.com/rookslog/stylewright/blob/d482596b9045ecaaedd64e28c237f7f2ca2fd06d/AGENTS.md#L74-L78)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3787281997,
+              "review_id": 4941334318,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: c864215\nfinding_category: extractor-scope\nreviewer: chatgpt-codex-connector\nnotes: Refused rather than graded, of the two dispositions the finding offered. The block stays out of the units, because micromark renders those three lines as a thematic break and a setext heading, so grading them as prose would ground a paragraph no reader sees. Beyond the finding, `subject` lost its default: a caller that does not name the file it grades cannot be handed the exemption, which is the rule `now` already obeys.\n```\n\nThe render that decided the disposition is in `test/gfm-render.test.js`, by\nADR-0028's rule. ADR-0030 carries the reasoning."
+            }
+          ]
+        },
+        {
+          "id": 3787192802,
+          "review_id": 4941228087,
+          "path": "src/ground.js",
+          "side": "RIGHT",
+          "line": null,
+          "original_line": 1972,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "original_commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Scan matrices belonging to removed skills**\n\nBecause `orphanMatrices` is called only inside the loop over `loadCatalog`, a grounding directory whose corresponding skill was deleted or renamed is never visited. For example, leaving `grounding/standards/withdrawn/references/guide.md` after removing `skills/standards/withdrawn/` produces no `matrix-grades-nothing` finding, so the exact stale-record case this check is meant to catch remains green. Scan the grounding tiers independently and compare every matrix directory with the catalog rather than starting exclusively from existing skills.\n\nAGENTS.md reference: [AGENTS.md:L35-L45](https://github.com/rookslog/stylewright/blob/d482596b9045ecaaedd64e28c237f7f2ca2fd06d/AGENTS.md#L35-L45)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3787282087,
+              "review_id": 4941334425,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: c864215\nfinding_category: stale-record-detection\nreviewer: chatgpt-codex-connector\nnotes: The scan compares every FILE under grounding/ against the paths the catalogue answers to, rather than every matrix directory. That covers the reported case and the same defect one level up, which the review window could not show: a leftover <tier>/<name>.md for a skill that is gone. A stray reports under the name its path implies, because the catalogue is what it fell out of.\n```\n\nThe test plants both shapes and asserts the two names. Flipping the scan back to\nthe catalogue was observed to fail it."
+            }
+          ]
+        },
+        {
+          "id": 3787192809,
+          "review_id": 4941228087,
+          "path": "grounding/standards/simplified-technical-english/references/rule-navigation.md",
+          "side": "RIGHT",
+          "line": null,
+          "original_line": 48,
+          "start_line": null,
+          "original_start_line": null,
+          "commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "original_commit_id": "d482596b9045ecaaedd64e28c237f7f2ca2fd06d",
+          "author": "chatgpt-codex-connector[bot]",
+          "body": "**<sub><sub>![P1 Badge](https://img.shields.io/badge/P1-orange?style=flat)</sub></sub>  Separate editorial navigation from the source-backed table**\n\nThis `G` row claims source authority for the entire table designator, but the table's `Read when` column contains this repository's own navigation advice, such as consulting rules when wording is “uncertain” or while “selecting” and “revising” terms. Those recommendations are not merely source locations, and grading the indivisible block as `G` attributes every one of them to Rules 1.1–9.4 and Part 2. Split the source-location claims from the editorial recommendations so the latter can be graded as `E`.\n\nAGENTS.md reference: [AGENTS.md:L48-L54](https://github.com/rookslog/stylewright/blob/d482596b9045ecaaedd64e28c237f7f2ca2fd06d/AGENTS.md#L48-L54)\n\nUseful? React with 👍 / 👎.",
+          "replies": [
+            {
+              "id": 3787282247,
+              "review_id": 4941334566,
+              "author": "rookslog",
+              "body": "```review-verdict\nverdict: ACCEPTED_MODIFIED\ncommit: c864215\nfinding_category: grounding-classification\nreviewer: chatgpt-codex-connector\nnotes: A designator cannot be split, so the FILE was split instead. rule-navigation.md now carries a table of source locations, graded G, and a table of our own advice about when to read there, graded E. The questions repeat across both, which is the cost, and no row mixes the two.\n```\n\nThe skill file changed rather than the row, so a reader of the installed\nreference sees the authority boundary too."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

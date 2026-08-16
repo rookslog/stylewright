@@ -41,8 +41,17 @@ if (typeof run.result !== 'string' || !run.result.trim()) {
 // call alongside the answering one on some prompts and not others, so a strict
 // "exactly one" check refuses good runs at random. The model that wrote the
 // answer is the one that emitted the output tokens.
+//
+// Two readings come off the same entry, and they are kept apart. The RANK is
+// how the answering build is chosen, and an absent count ranks as zero so the
+// comparison below still has numbers to compare. The REPORTED count is what
+// the sidecar records, and it is null when neither spelling is there, because a
+// zero written for an absent field is the wrong number rather than a missing
+// one. Issue #109 divides by this figure, and a silent zero would divide by it.
+const count = (u) => (typeof u?.outputTokens === 'number' ? u.outputTokens
+  : (typeof u?.output_tokens === 'number' ? u.output_tokens : null));
 const usage = Object.entries(run.modelUsage ?? {})
-  .map(([id, u]) => [id, u.outputTokens ?? u.output_tokens ?? 0])
+  .map(([id, u]) => [id, count(u) ?? 0, count(u)])
   .sort((a, b) => b[1] - a[1]);
 
 if (!usage.length) {
@@ -56,4 +65,10 @@ if (usage.length > 1 && usage[0][1] === usage[1][1]) {
 }
 
 await fs.writeFile(outPath, run.result);
-process.stdout.write(usage[0][0]);
+// Two whitespace-separated fields: the build, and the output tokens it emitted
+// or the word `absent`. `run.sh` splits them into two sidecar entries. The
+// spelling `outputTokens` is the one this runner has read since it was written,
+// and no measurement here confirms it under a review invocation, so `absent` is
+// a state the protocol has to carry rather than an accident. ADR-0032 names it
+// as a gap for exactly that reason.
+process.stdout.write(`${usage[0][0]} ${usage[0][2] === null ? 'absent' : usage[0][2]}`);

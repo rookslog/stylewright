@@ -92,6 +92,29 @@ export const STUDY_MANIFEST = 'study.json';
 export const SCORER = 'bench/score.mjs';
 
 /**
+ * A path as a RETAINED COMMAND spells it: relative to the repository, with one
+ * separator, `/`.
+ *
+ * It sits beside `commandProblems`, which refuses the other spelling, so the
+ * writer and the reader of this rule are one file rather than one of them
+ * merely being careful. `bench/retain.mjs` states every command path through
+ * it, and `bench/review-arms.mjs` prints its plan through it.
+ *
+ * `path.relative` alone spells it `bench\samples\...` on Windows, and that
+ * spelling TRAVELS. A study promoted there is checked on Linux, where
+ * `commandProblems` resolves `bench\samples\x\prompts\report.txt` as one
+ * filename, finds it outside the study, and refuses — so the study cannot be
+ * re-run, and the message names the wrong cause. Measured on darwin against a
+ * Windows-spelled command: `names s\verdicts, which is not inside this study.`
+ *
+ * The doctrine was already written three times over and this was the one place
+ * that never inherited it. `src/manifest.js` and `src/tree.js` both say a
+ * manifest travels between machines, so a key carries one separator, and
+ * `SCORER` above is a forward-slash literal for exactly this reason.
+ */
+export const commandPath = (abs) => path.relative(REPO, abs).split(path.sep).join('/');
+
+/**
  * How long a re-run may take before it is killed, in milliseconds.
  *
  * A scorer that never returns would hang `npm run check` with no output and no
@@ -276,6 +299,26 @@ export function studyProblems(manifest, name = STUDY_MANIFEST) {
       }
     }
   }
+  // The ground truth a review study scored against, retained inside the study
+  // and digested, for the reason the prompts are. `--review` names this
+  // directory on the scorer's own command line, and `commandProblems` refuses a
+  // path outside the study — so a study that pointed at the live corpus would
+  // re-run against bytes a later mine could change, and reproduce a figure from
+  // evidence the study does not hold. An empty list is an ordinary style study.
+  //
+  // The key is `verdicts` and never `verdict`. The singular is on the refused
+  // list above, because a record that states one is the author's summary, and
+  // the plural here names retained bytes rather than a state.
+  if (!Array.isArray(manifest.verdicts)) {
+    say('verdicts lists the verdict records the study retains, and an empty list is a study '
+      + 'that scored against none.');
+  } else {
+    for (const v of manifest.verdicts) {
+      if (!isText(v?.record) || !isText(v?.path) || !HEX.test(String(v?.digest))) {
+        say('each verdict record names itself, its path, and its digest.');
+      }
+    }
+  }
   if (!Array.isArray(manifest.analyses)) {
     say('analyses retains the scorer command and its output, per scenario.');
   } else {
@@ -388,7 +431,7 @@ export function disqualify(results, reasons) {
  * flag nobody writes is an allowlist describing something other than the thing
  * it guards.
  */
-const SCORER_FLAGS = { '--compare': false, '--prompt': true };
+const SCORER_FLAGS = { '--compare': false, '--prompt': true, '--review': true };
 
 /**
  * Everything wrong with a retained command, before anything re-runs it.
@@ -430,6 +473,21 @@ export function commandProblems(command, { studyDir, repoRoot = REPO }) {
       continue;
     }
     expectPath = false;
+    // The separator BEFORE the containment, because the containment message is
+    // an artifact of the wrong spelling rather than its cause. A backslash-
+    // spelled path resolves inside the study on Windows and reads as one
+    // filename on every other platform, so without this the same bytes get two
+    // verdicts and the POSIX one says `is not inside this study`. `commandPath`
+    // above is the writer that never produces this spelling, and this is the
+    // reader that refuses it: a study promoted on one platform has to re-run on
+    // any other, or the evidence is local to the machine that made it. A study
+    // path is built from a `STUDY_NAME` directory and `NAME` arms and
+    // scenarios, so no legitimate argument carries a backslash.
+    if (arg.includes('\\')) {
+      problems.push(`spells ${arg} with a backslash. A retained path carries one separator, `
+        + '`/`, or a study promoted on one platform cannot be re-run on another.');
+      continue;
+    }
     if (!isBelow(studyDir, path.resolve(repoRoot, arg))) {
       problems.push(`names ${arg}, which is not inside this study.`);
     }
@@ -597,12 +655,25 @@ export async function checkStudy(dir, name = path.basename(dir)) {
     }
   }
 
+  const verdictPaths = [];
+  for (const entry of Array.isArray(manifest.verdicts) ? manifest.verdicts : []) {
+    const abs = inside(entry?.path, 'verdicts[].path');
+    if (!abs) continue;
+    verdictPaths.push(entry.path);
+    const bytes = await fs.readFile(abs).catch(() => null);
+    if (!bytes) say(`${entry.path} is named by the study and is not here.`);
+    else if (digestBytes(bytes) !== entry.digest) {
+      say(`${entry.path} does not match its recorded digest.`);
+    }
+  }
+
   // Every file that is actually here is accounted for. Scanning a file's
   // contents says nothing about whether the study claims to hold it, so an
   // unaccounted file could sit in a promoted tree indefinitely.
   for (const rel of retained) {
     const accounted = rel === STUDY_MANIFEST
       || promptPaths.includes(rel)
+      || verdictPaths.includes(rel)
       || armPaths.some((p) => rel === p || rel.startsWith(`${p}/`));
     if (!accounted) say(`${rel} is here and the study does not account for it.`);
   }

@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
-  score, auditable, readMeta, digest, signatures, SIGNATURE, HEDGE,
+  score, auditable, readMeta, digest, reviewMetrics, signatures, SIGNATURE, HEDGE,
 } from '../bench/score.mjs';
 
 const s = (text) => score(text, null, false);
@@ -335,7 +335,7 @@ test('every entry point guards itself the one way that works on both platforms',
       found.push(`${sub}/${name}`);
     }
   }
-  assert.equal(found.length, 11, `the entry-point inventory moved: ${found.sort().join(', ')}`);
+  assert.equal(found.length, 14, `the entry-point inventory moved: ${found.sort().join(', ')}`);
   for (const rel of found) {
     const text = await fs.readFile(path.join(root, rel), 'utf8');
     if (Object.hasOwn(UNGUARDED, rel)) {
@@ -348,4 +348,134 @@ test('every entry point guards itself the one way that works on both platforms',
     // nothing on the other.
     assert.ok(text.includes(GUARD), `${rel} does not carry the entry guard verbatim`);
   }
+});
+
+// The review cells, from issue #109. Each case encodes a sentence from
+// ADR-0032. They are a second family beside the shape metrics, and they measure
+// a reply against a ground truth rather than against nothing, so a defect here
+// moves a published figure the way a shape defect would.
+
+const finding = (over = {}) => ({
+  id: 1, path: 'bench/probe.mjs', from: 437, to: 437, verdict: 'ACCEPTED', confirms: true, ...over,
+});
+
+test('confirmed counts the findings an anchor reached, and missed is the rest', () => {
+  const truth = [finding({ id: 1 }), finding({ id: 2, from: 900, to: 900 })];
+  const r = reviewMetrics('bench/probe.mjs:437 — high confirmed — the flag is read late.',
+    { output_tokens: '250' }, truth);
+  assert.equal(r.anchors, 1);
+  assert.equal(r.confirmed, 1);
+  assert.equal(r.missed, 1);
+  // The two always sum to the ground truth, so a reader never has to hold a
+  // third number to know what the denominator was.
+  assert.equal(r.confirmed + r.missed, truth.length);
+});
+
+test('a duplicated ground truth does not report a matched finding as dropped', () => {
+  // `matchDispositions` deduplicates by identifier while `missed` counted array
+  // entries, so a corpus holding one pull request twice read {confirmed:1,
+  // missed:1} where the truth is {confirmed:1, missed:0}. That inflates the
+  // counterweight — the direction that makes the compressed arm look worse.
+  // `corpusProblems` refuses such a corpus, and this keeps the invariant true
+  // whatever the function is handed.
+  const twice = [finding({ id: 1 }), finding({ id: 1 })];
+  const r = reviewMetrics('bench/probe.mjs:437', { output_tokens: '1000' }, twice);
+  assert.equal(r.confirmed, 1);
+  assert.equal(r.missed, 0);
+  assert.equal(r.perKtok, 1);
+});
+
+test('perKtok is confirmed per thousand output tokens', () => {
+  const r = reviewMetrics('bench/probe.mjs:437 is wrong', { output_tokens: '500' }, [finding()]);
+  assert.equal(r.outTokens, 500);
+  assert.equal(r.perKtok, 2);
+});
+
+test('an absent token count withholds the rate rather than computing one', () => {
+  // A rate over an unknown denominator is the wrong number, not a missing one,
+  // and a withheld cell derives no figure at all.
+  const r = reviewMetrics('bench/probe.mjs:437 is wrong', { output_tokens: 'absent' }, [finding()]);
+  assert.equal(r.confirmed, 1);
+  assert.equal(r.outTokens, '');
+  assert.equal(r.perKtok, '');
+});
+
+test('a run that emitted no output tokens withholds the rate too', () => {
+  const r = reviewMetrics('bench/probe.mjs:437', { output_tokens: '0' }, [finding()]);
+  assert.equal(r.perKtok, '', 'dividing by zero prints Infinity into a table');
+});
+
+test('an arm that named nothing scores zero confirmed and misses everything', () => {
+  const r = reviewMetrics('No findings above the bar.', { output_tokens: '20' }, [finding()]);
+  assert.deepEqual([r.anchors, r.confirmed, r.missed, r.perKtok], [0, 0, 1, 0]);
+});
+
+test('--review requires the token field, and admits absent as its value', async () => {
+  const dir = await tmpdir();
+  const truth = { confirmed: new Map([['report', []]]), problems: [] };
+  const say = async (files) => (await auditable(files,
+    await Promise.all(files.map(readMeta)), { review: truth })).join(' ');
+  assert.match(await say(await five(`${dir}no-tokens`, 'a')), /have no output_tokens/);
+  assert.equal(await say(await five(`${dir}absent`, 'a', { output_tokens: 'absent' })), '');
+});
+
+test('a token value this collector could not have written is refused', async () => {
+  // Presence alone let `garbage`, `-1` and `Infinity` withhold the primary
+  // figure exactly as the supported `absent` does, while the run still read
+  // audited. ADR-0024's split: `absent` is a protocol spelling and decides a
+  // reading, and a value no collector writes is a structural refusal.
+  const dir = await tmpdir();
+  const truth = { confirmed: new Map([['report', []]]), problems: [] };
+  const say = async (over) => {
+    const files = await five(`${dir}${over.output_tokens}`, 'a', over);
+    return (await auditable(files, await Promise.all(files.map(readMeta)),
+      { review: truth })).join(' ');
+  };
+  for (const bad of ['garbage', '-1', 'Infinity', '1.5']) {
+    assert.match(await say({ output_tokens: bad }), /could not have written/, `${bad} is refused`);
+  }
+  // Zero is a run that emitted nothing, which the collector does produce. It
+  // stays valid and still withholds the rate.
+  assert.equal(await say({ output_tokens: '0' }), '');
+  assert.equal(reviewMetrics('x', { output_tokens: '0' }, []).perKtok, '');
+});
+
+test('a scenario no verdict record covers is refused, not scored against nothing', async () => {
+  const dir = await tmpdir();
+  const files = await five(`${dir}uncovered`, 'a', { output_tokens: '100' });
+  const truth = { confirmed: new Map([['pr-118-r1', []]]), problems: [] };
+  assert.match((await auditable(files, await Promise.all(files.map(readMeta)),
+    { review: truth })).join(' '), /no verdict record covers report/);
+});
+
+test('a corpus that does not check out is a reason, not something to score around', async () => {
+  const dir = await tmpdir();
+  const files = await five(`${dir}badcorpus`, 'a', { output_tokens: '100' });
+  const truth = { confirmed: new Map([['report', []]]), problems: ['pr-1.json: not JSON.'] };
+  assert.match((await auditable(files, await Promise.all(files.map(readMeta)),
+    { review: truth })).join(' '), /the verdict corpus does not check out/);
+});
+
+test('the table carries the review columns only when --review asks for them', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const root = path.dirname(import.meta.dirname);
+  const scorer = path.join(root, 'bench', 'score.mjs');
+  const run = (args) => promisify(execFile)(process.execPath, [scorer, ...args], { cwd: root });
+
+  const dir = await tmpdir();
+  const file = await sample(dir, 'a-1.txt', 'bench/probe.mjs:437 is wrong\n',
+    cell({ rep: 1, reps: 5, scenario: 'pr-119-r1', output_tokens: '400' }));
+
+  const plain = await run(['--unaudited', file]);
+  assert.ok(!plain.stdout.includes('perKtok'), 'a style run prints no review column');
+
+  const reviewed = await run(['--unaudited', '--review',
+    path.join(root, 'bench', 'verdicts'), file]);
+  assert.match(reviewed.stdout,
+    /^audit\tarm\tfile\t.*\tanchors\tconfirmed\tmissed\toutTokens\tperKtok$/m);
+  // pr-119-r1 confirms two findings, one anchored at 437 and one covering 437
+  // through 445, so a single stated line reaches both. That is the bound
+  // ADR-0032 states, measured here rather than asserted there.
+  assert.match(reviewed.stdout, /\t1\t2\t0\t400\t5\n/);
 });

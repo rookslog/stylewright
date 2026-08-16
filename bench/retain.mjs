@@ -52,8 +52,9 @@ import {
 } from './arm-manifest.mjs';
 import { digest as sidecarDigest, readMeta } from './score.mjs';
 import {
-  SCORER, STUDY_MANIFEST, STUDY_NAME, checkStudy, contentProblems, rerunEnv,
+  SCORER, STUDY_MANIFEST, STUDY_NAME, checkStudy, commandPath, contentProblems, rerunEnv,
 } from './study.mjs';
+import { loadCorpus, readRecords } from './verdicts.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -278,9 +279,17 @@ export function runScorer(args, cwd) {
 }
 
 export function parseArgs(argv) {
-  const opts = { study: null, arms: [], licenseCheck: null, from: null, out: null };
+  const opts = {
+    study: null, arms: [], licenseCheck: null, from: null, out: null,
+    prompts: null, verdicts: null,
+  };
   const keys = {
     '--study': 'study', '--license-check': 'licenseCheck', '--from': 'from', '--out': 'out',
+    // `--prompts` is where the scenario files live, because the review arms on
+    // issue #109 answer a different scenario set from the style arms and a
+    // second promotion tool would be a second copy of every refusal here.
+    // `--verdicts` retains the ground truth a review study scored against.
+    '--prompts': 'prompts', '--verdicts': 'verdicts',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -333,13 +342,14 @@ async function main(argv, now) {
   // The prompt files the study retains, checked against the samples that
   // answered them. A study retaining a prompt nobody answered is the failure
   // `score.mjs --prompt` already refuses at scoring time, one step earlier.
+  const promptsDir = path.resolve(opts.prompts ?? path.join(HERE, 'prompts'));
   const scenarios = [...new Set(arms.flatMap((a) => a.manifest?.scenarios ?? []))].sort();
   const prompts = [];
   for (const scenario of scenarios) {
-    const src = path.join(HERE, 'prompts', `${scenario}.txt`);
+    const src = path.join(promptsDir, `${scenario}.txt`);
     const bytes = await fs.readFile(src).catch(() => null);
     if (!bytes) {
-      problems.push(`prompts/${scenario}.txt is missing, and the study cannot retain it.`);
+      problems.push(`${path.relative(REPO, src)} is missing, and the study cannot retain it.`);
       continue;
     }
     const sha = sidecarDigest(bytes);
@@ -353,6 +363,39 @@ async function main(argv, now) {
       problems.push(`prompts/${scenario}.txt: ${found}`);
     }
     prompts.push({ scenario, bytes, digest: digestBytes(bytes) });
+  }
+
+  // The ground truth a review study scored against, retained INSIDE the study.
+  //
+  // It is not a convenience. `check:studies` re-runs the retained command, and
+  // `commandProblems` refuses a path outside the study, so a `--review` naming
+  // the live corpus would be refused outright — and if it were not, the re-run
+  // would reproduce a figure from bytes a later mine could change. The prompts
+  // are retained for the same reason and the argument transfers whole.
+  const verdictsDir = opts.verdicts ? path.resolve(opts.verdicts) : null;
+  const verdicts = [];
+  if (verdictsDir) {
+    const { problems: corpus } = await loadCorpus(verdictsDir);
+    for (const p of corpus) problems.push(`the verdict corpus does not check out: ${p}`);
+    for (const { name, unreadable } of await readRecords(verdictsDir)) {
+      if (unreadable) continue; // Already reported by `loadCorpus`, and not twice.
+      const src = path.join(verdictsDir, name);
+      const at = await destinationState(src);
+      if (at !== 'file') {
+        problems.push(`${name} is a ${at}, and only files are promoted.`);
+        continue;
+      }
+      const bytes = await fs.readFile(src);
+      for (const found of contentProblems(bytes.toString('utf8'))) {
+        problems.push(`${name}: ${found}`);
+      }
+      verdicts.push({ record: name, bytes, digest: digestBytes(bytes) });
+    }
+    if (!verdicts.length) {
+      problems.push(`${path.relative(REPO, verdictsDir)} holds no verdict record, so `
+        + '--verdicts retains nothing and the review columns would score against an empty '
+        + 'ground truth.');
+    }
   }
 
   if (problems.length) {
@@ -395,6 +438,9 @@ async function main(argv, now) {
     await writeContained(studyDir, path.join(studyDir, 'prompts', `${prompt.scenario}.txt`),
       prompt.bytes);
   }
+  for (const v of verdicts) {
+    await writeContained(studyDir, path.join(studyDir, 'verdicts', v.record), v.bytes);
+  }
 
   // Score the PROMOTED bytes, one scenario at a time. A median across a
   // correction and a report is not a number, which is why `score.mjs` refuses a
@@ -408,12 +454,17 @@ async function main(argv, now) {
   for (const prompt of prompts) {
     const files = arms.flatMap((arm) => arm.samples
       .filter((rel) => rel.startsWith(`${prompt.scenario}-`))
-      .map((rel) => path.relative(REPO, path.join(studyDir, `arms/${arm.name}`, rel))))
+      .map((rel) => commandPath(path.join(studyDir, `arms/${arm.name}`, rel))))
       .sort();
     if (!files.length) continue;
     const args = [
       SCORER,
-      '--prompt', path.relative(REPO, path.join(studyDir, 'prompts', `${prompt.scenario}.txt`)),
+      '--prompt', commandPath(path.join(studyDir, 'prompts', `${prompt.scenario}.txt`)),
+      // The PROMOTED corpus, never the live one, so the re-run reads the bytes
+      // this study holds. Every path here goes through `commandPath`, which is
+      // where the one-separator rule lives: `commandProblems` resolves these
+      // relative to the repository, on whatever platform reads the study next.
+      ...(verdicts.length ? ['--review', commandPath(path.join(studyDir, 'verdicts'))] : []),
       ...(arms.length > 1 ? ['--compare'] : []),
       ...files,
     ];
@@ -436,6 +487,9 @@ async function main(argv, now) {
     arms_digest: digestBytes(armDigests.slice().sort().join('\n')),
     prompts: prompts.map((p) => ({
       scenario: p.scenario, path: `prompts/${p.scenario}.txt`, digest: p.digest,
+    })),
+    verdicts: verdicts.map((v) => ({
+      record: v.record, path: `verdicts/${v.record}`, digest: v.digest,
     })),
     analyses,
     provenance_gaps: provenanceGaps(arms.flatMap((a) => a.metas)),

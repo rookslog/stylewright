@@ -24,7 +24,10 @@ async function extract(payload) {
   await fs.writeFile(raw, typeof payload === 'string' ? payload : JSON.stringify(payload));
   try {
     const { stdout } = await run(process.execPath, [EXTRACT, raw, out]);
-    return { ok: true, model: stdout, text: await fs.readFile(out, 'utf8') };
+    // Two whitespace-separated fields: the build, and the output tokens or the
+    // word `absent`. `bench/run.sh` splits them the same way.
+    const [model, tokens] = stdout.split(' ');
+    return { ok: true, model, tokens, text: await fs.readFile(out, 'utf8') };
   } catch (e) {
     let wrote = true;
     try { await fs.access(out); } catch { wrote = false; }
@@ -43,6 +46,27 @@ test('a successful run yields its text and the build that served it', async () =
   assert.equal(r.ok, true);
   assert.equal(r.text, 'The answer.');
   assert.equal(r.model, 'claude-opus-5');
+  assert.equal(r.tokens, '40');
+});
+
+// Issue #109 divides by this number, so an absent field must not arrive as a
+// zero. A zero is a run that emitted nothing, and `absent` is a harness that
+// reported nothing, and the two license different readings.
+test('an absent output-token count is reported as absent, never as zero', async () => {
+  const r = await extract({ ...good, modelUsage: { 'claude-opus-5': { inputTokens: 10 } } });
+  assert.equal(r.ok, true);
+  assert.equal(r.model, 'claude-opus-5');
+  assert.equal(r.tokens, 'absent');
+});
+
+test('the snake_case spelling of the token count is read as well', async () => {
+  const r = await extract({ ...good, modelUsage: { 'claude-opus-5': { output_tokens: 7 } } });
+  assert.equal(r.tokens, '7');
+});
+
+test('a run that emitted no output tokens reports zero, which is not absent', async () => {
+  const r = await extract({ ...good, modelUsage: { 'claude-opus-5': { outputTokens: 0 } } });
+  assert.equal(r.tokens, '0');
 });
 
 test('an auxiliary model billed beside the answer does not defeat the run', async () => {

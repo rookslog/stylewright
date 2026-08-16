@@ -2,31 +2,41 @@
 # Collect samples for one arm of a style comparison.
 #
 #   bench/run.sh <arm-name> [--rules user|none] [--reps N] [--system FILE]
+#                           [--prompts DIR]
 #
 # An arm is one configuration. A comparison needs at least two, and one of them
 # must be the no-guidance control. See bench/README.md for why.
 #
 # Samples land in bench/out/<arm-name>/<scenario>-<rep>.txt and are never
 # overwritten, so an interrupted run resumes where it stopped.
+#
+# `--prompts` points the arm at another scenario set, which is how the review
+# arms on issue #109 run through this runner rather than through a second one.
+# A second runner would be a second copy of every refusal below, and the first
+# of them to drift would be the one that stopped catching a mixed cell.
 set -e
 HERE="${0:A:h}"
 ARM="$1"; shift
-[ -z "$ARM" ] && { print -u2 "usage: run.sh <arm-name> [--rules user|none] [--reps N] [--system FILE]"; exit 2 }
+[ -z "$ARM" ] && { print -u2 "usage: run.sh <arm-name> [--rules user|none] [--reps N] [--system FILE] [--prompts DIR]"; exit 2 }
 
 RULES=none
 REPS=5
 SYSTEM=
 MODEL=opus
+PROMPTS="$HERE/prompts"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --rules)  RULES="$2"; shift 2 ;;
-    --reps)   REPS="$2";  shift 2 ;;
-    --system) SYSTEM="$2"; shift 2 ;;
-    --model)  MODEL="$2"; shift 2 ;;
+    --rules)   RULES="$2"; shift 2 ;;
+    --reps)    REPS="$2";  shift 2 ;;
+    --system)  SYSTEM="$2"; shift 2 ;;
+    --model)   MODEL="$2"; shift 2 ;;
+    --prompts) PROMPTS="${2:A}"; shift 2 ;;
     *) print -u2 "unknown flag: $1"; exit 2 ;;
   esac
 done
+
+[ -d "$PROMPTS" ] || { print -u2 "--prompts is a directory of scenarios, and $PROMPTS is not one"; exit 2 }
 
 # First field only. `claude --version` prints "2.1.220 (Claude Code)", and a
 # `.meta` line is whitespace-delimited key=value, so the parenthetical would
@@ -162,11 +172,19 @@ fi
 # the point of the abort, and the loop below clears it once the plan is covered.
 # The trap is armed HERE and not earlier, because the refusals above belong to
 # the invocation and not to the arm on disk.
+#
+# The scenario set is whatever this directory holds, and that is the whole of
+# what this runner knows about it. A caller that points two different selections
+# at ONE directory gets one arm covering both, legitimately, because the plan is
+# derived here and the arm then covers it — `armState` sees nothing unexpected.
+# So the caller keeps selections apart, and `bench/review-arms.mjs` does it by
+# writing each selection into its own directory under its own arm names.
+# ADR-0032 records the trace that corrected the opposite claim.
 SCENARIOS=
-for p in "$HERE"/prompts/*.txt; do
+for p in "$PROMPTS"/*.txt; do
   SCENARIOS="${SCENARIOS:+$SCENARIOS,}${p:t:r}"
 done
-[ -n "$SCENARIOS" ] || { print -u2 "no scenarios in $HERE/prompts"; exit 2 }
+[ -n "$SCENARIOS" ] || { print -u2 "no scenarios in $PROMPTS"; exit 2 }
 
 ARM_DIR="$HERE/out/$ARM"
 STOPPED="the runner exited before the arm covered its plan"
@@ -183,7 +201,7 @@ write_arm_manifest() {
 }
 trap write_arm_manifest EXIT
 
-for p in "$HERE"/prompts/*.txt; do
+for p in "$PROMPTS"/*.txt; do
   scenario="${p:t:r}"
   mkdir -p "$HERE/out/$ARM"
   for r in $(seq 1 "$REPS"); do
@@ -229,12 +247,18 @@ for p in "$HERE"/prompts/*.txt; do
     # there looking like a successful short one — and short is the direction a
     # compression treatment is supposed to move, so the defect would have
     # confirmed the hypothesis.
-    if ! MODEL_ID="$(node "$HERE/extract.mjs" "$raw" "$f.part" 2>"$f.extract.err")"; then
+    # Two fields on one line: the build that answered, and the output tokens it
+    # emitted or the word `absent`. The review metrics on issue #109 divide by
+    # the second, so the sidecar carries it beside every other treatment fact
+    # rather than a later pass going back to a raw file the runner deleted.
+    if ! EXTRACTED="$(node "$HERE/extract.mjs" "$raw" "$f.part" 2>"$f.extract.err")"; then
       print -u2 "FAILED $ARM/$scenario-$r — see $f.extract.err and ${f}.err"
       STOPPED="the harness run for $scenario-$r produced nothing the extractor could read"
       exit 1
     fi
     rm -f "$f.extract.err"
+    MODEL_ID="${EXTRACTED%% *}"
+    OUTPUT_TOKENS="${EXTRACTED##* }"
 
     # Re-hash and compare. A treatment that moved while the model was reading it
     # invalidates this sample and no other, so refuse this one rather than the
@@ -258,7 +282,7 @@ for p in "$HERE"/prompts/*.txt; do
     # correctly-named cell whose later reps measured different text. Differing
     # hashes within one arm mean that cell is contaminated; `score.mjs` refuses
     # such a set rather than trusting anyone to check.
-    print "arm=$ARM scenario=$scenario rep=$r reps=$REPS rules=$SOURCES system=$SYSTEM_REL system_sha=$SYSTEM_SHA user_rules_sha=$rules_after user_rules=$(user_rules_manifest) prompt_sha=$prompt_after model_id=$MODEL_ID cli=$CLI_VERSION at=$(date -u +%FT%TZ)" > "$f.meta"
+    print "arm=$ARM scenario=$scenario rep=$r reps=$REPS rules=$SOURCES system=$SYSTEM_REL system_sha=$SYSTEM_SHA user_rules_sha=$rules_after user_rules=$(user_rules_manifest) prompt_sha=$prompt_after model_id=$MODEL_ID output_tokens=$OUTPUT_TOKENS cli=$CLI_VERSION at=$(date -u +%FT%TZ)" > "$f.meta"
     print "$ARM/$scenario-$r $(wc -w < "$f") words [$MODEL_ID]"
   done
 done

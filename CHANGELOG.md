@@ -7,6 +7,26 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A verdict corpus, mined from this repository's own review threads, and the
+  scorer support that reads it. This repository disposes of every review finding
+  with a fenced `review-verdict` block, so it already holds a labelled corpus of
+  findings and their dispositions. `bench/mine-verdicts.mjs` retains the thread
+  and states no disposition, `bench/verdicts.mjs` derives one, and
+  `npm run check:verdicts` prints what it derived and joins the gate as a ninth
+  check. Two readings come off one thread and each withholds on its own cause, so
+  a thread with no reply and one anchored on the left of the diff say different
+  things rather than both reading as broken. `bench/score.mjs --review` adds five
+  columns for the review-verbosity study: what an arm claimed, how much of the
+  round's confirmed ground truth it reached, what it dropped, the output tokens
+  it spent, and confirmed findings per thousand of them. Both counts are bounds
+  rather than identifications, because a match is a path and a line within ten
+  lines. `bench/review-arms.mjs` rebuilds the diff each reviewer read, from the
+  commit the corpus pins, and prints the two arm invocations rather than running
+  them. A promoted study retains the corpus it scored against, so the re-run in
+  `check:studies` reads bytes the study holds. No arm has run and no figure
+  exists. ADR-0032 records the decision, its two deviations, and what a wider
+  window would cost.
+
 - A grounding matrix disposes of one file, and `ground --check` reads every file
   a skill ships to a writer. `SKILL.md` keeps `grounding/<tier>/<skill>.md`, and
   a Markdown file under `references/` answers to a matrix that mirrors its path,
