@@ -54,7 +54,7 @@
     "check": "npm test && npm run lint:docs && npm run check:ground && npm run check:docs && npm run check:probes && npm run check:verdicts && npm run check:resident && npm run check:studies && npm run check:editorial"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.0.0"
+    "@inquirer/prompts": "^8.7.0"
   },
   "devDependencies": {
     "acorn": "^8.18.0",
