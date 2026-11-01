@@ -33,7 +33,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         with:
           script: |
             const { pathToFileURL } = require('node:url');
